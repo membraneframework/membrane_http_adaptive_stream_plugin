@@ -6,15 +6,25 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
 
   def_input_pad :input, demand_unit: :buffers, caps: Membrane.Caps.HTTPAdaptiveStream.Channel
 
+  def_options playlist_name: [
+                type: :string,
+                spec: String.t(),
+                default: "index.m3u8"
+              ],
+              storage: [
+                type: :struct,
+                spec: Storage.config_t()
+              ]
+
   @impl true
-  def handle_init(_) do
-    storage_config = %storage{} = %Storage.File{location: "../hls/mp4/mbout"}
+  def handle_init(%__MODULE__{playlist_name: playlist_name, storage: storage}) do
+    %storage{} = storage_config = storage
 
     {:ok,
      %{
        storage: storage,
-       storage_config: storage_config,
-       playlist_name: "index.m3u8",
+       storage_state: storage.init(storage_config),
+       playlist_name: playlist_name,
        playlist: nil
      }}
   end
@@ -34,11 +44,11 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
     duration = buffer.metadata.duration
     {{add, rem}, playlist} = Playlist.put(state.playlist, duration)
     state = %{state | playlist: playlist}
-    %{storage: storage, storage_config: storage_config} = state
+    %{storage: storage, storage_state: storage_state} = state
 
-    with :ok <- rem |> Maybe.map(&storage.remove(&1, storage_config)) |> Maybe.unwrap_or(:ok),
-         :ok <- storage.store(add, buffer.payload, :binary, storage_config),
-         :ok <- store_playlist(playlist, state.playlist_name, storage, storage_config) do
+    with :ok <- rem |> Maybe.map(&storage.remove(&1, storage_state)) |> Maybe.unwrap_or(:ok),
+         :ok <- storage.store(add, buffer.payload, :binary, storage_state),
+         :ok <- store_playlist(playlist, state.playlist_name, storage, storage_state) do
       {{:ok, timer_interval: {:timer, duration}}, state}
     else
       error -> {error, state}
@@ -60,7 +70,7 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
       })
 
     state = %{state | playlist: playlist}
-    result = state.storage.store(caps.init_name, caps.init, :binary, state.storage_config)
+    result = state.storage.store(caps.init_name, caps.init, :binary, state.storage_state)
     {result, state}
   end
 
@@ -72,11 +82,11 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
   @impl true
   def handle_end_of_stream(:input, _ctx, state) do
     {playlist, state} = Bunch.Map.get_updated!(state, :playlist, &Playlist.finish/1)
-    result = store_playlist(playlist, state.playlist_name, state.storage, state.storage_config)
+    result = store_playlist(playlist, state.playlist_name, state.storage, state.storage_state)
     {result, state}
   end
 
-  defp store_playlist(playlist, playlist_name, storage, storage_config) do
-    storage.store(playlist_name, Playlist.serialize(playlist), :text, storage_config)
+  defp store_playlist(playlist, playlist_name, storage, storage_state) do
+    storage.store(playlist_name, Playlist.serialize(playlist), :text, storage_state)
   end
 end
