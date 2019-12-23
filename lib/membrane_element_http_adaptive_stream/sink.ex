@@ -1,13 +1,22 @@
 defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
   use Membrane.Sink
   alias FE.Maybe
+  alias Membrane.Element.HTTPAdaptiveStream.Storage
   alias Membrane.Element.HTTPAdaptiveStream.Playlist.HLS, as: Playlist
 
   def_input_pad :input, demand_unit: :buffers, caps: Membrane.Caps.HTTPAdaptiveStream.Channel
 
   @impl true
   def handle_init(_) do
-    {:ok, %{location: "../hls/mp4/mbout", name: "index.m3u8", playlist: nil}}
+    storage_config = %storage{} = %Storage.File{location: "../hls/mp4/mbout"}
+
+    {:ok,
+     %{
+       storage: storage,
+       storage_config: storage_config,
+       playlist_name: "index.m3u8",
+       playlist: nil
+     }}
   end
 
   @impl true
@@ -25,10 +34,11 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
     duration = buffer.metadata.duration
     {{add, rem}, playlist} = Playlist.put(state.playlist, duration)
     state = %{state | playlist: playlist}
+    %{storage: storage, storage_config: storage_config} = state
 
-    with :ok <- rem |> Maybe.map(&File.rm(located(&1, state))) |> Maybe.unwrap_or(:ok),
-         :ok <- File.write(located(add, state), buffer.payload, [:binary]),
-         :ok <- store_playlist(playlist, state) do
+    with :ok <- rem |> Maybe.map(&storage.remove(&1, storage_config)) |> Maybe.unwrap_or(:ok),
+         :ok <- storage.store(add, buffer.payload, :binary, storage_config),
+         :ok <- store_playlist(playlist, state.playlist_name, storage, storage_config) do
       {{:ok, timer_interval: {:timer, duration}}, state}
     else
       error -> {error, state}
@@ -50,7 +60,7 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
       })
 
     state = %{state | playlist: playlist}
-    result = File.write(located(caps.init_name, state), caps.init)
+    result = state.storage.store(caps.init_name, caps.init, :binary, state.storage_config)
     {result, state}
   end
 
@@ -62,14 +72,11 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
   @impl true
   def handle_end_of_stream(:input, _ctx, state) do
     {playlist, state} = Bunch.Map.get_updated!(state, :playlist, &Playlist.finish/1)
-    {store_playlist(playlist, state), state}
+    result = store_playlist(playlist, state.playlist_name, state.storage, state.storage_config)
+    {result, state}
   end
 
-  defp located(name, %{location: location}) do
-    Path.join(location, name)
-  end
-
-  defp store_playlist(playlist, state) do
-    File.write(located(state.name, state), Playlist.serialize(playlist))
+  defp store_playlist(playlist, playlist_name, storage, storage_config) do
+    storage.store(playlist_name, Playlist.serialize(playlist), :text, storage_config)
   end
 end
