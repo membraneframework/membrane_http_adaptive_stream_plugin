@@ -9,7 +9,7 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
   def_options playlist_name: [
                 type: :string,
                 spec: String.t(),
-                default: "index.m3u8"
+                default: "index"
               ],
               storage: [
                 type: :struct,
@@ -17,14 +17,14 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
               ]
 
   @impl true
-  def handle_init(%__MODULE__{playlist_name: playlist_name, storage: storage}) do
-    %storage{} = storage_config = storage
+  def handle_init(options) do
+    %__MODULE__{playlist_name: playlist_name, storage: %storage{} = storage_config} = options
 
     {:ok,
      %{
        storage: storage,
        storage_state: storage.init(storage_config),
-       playlist_name: playlist_name,
+       playlist_name: "#{playlist_name}#{Playlist.playlist_extension()}",
        playlist: nil
      }}
   end
@@ -42,12 +42,13 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
   @impl true
   def handle_write(:input, buffer, _ctx, state) do
     duration = buffer.metadata.duration
-    {{add, rem}, playlist} = Playlist.put(state.playlist, duration)
+    {{to_add, to_remove}, playlist} = Playlist.put(state.playlist, duration)
     state = %{state | playlist: playlist}
     %{storage: storage, storage_state: storage_state} = state
 
-    with :ok <- rem |> Maybe.map(&storage.remove(&1, storage_state)) |> Maybe.unwrap_or(:ok),
-         :ok <- storage.store(add, buffer.payload, :binary, storage_state),
+    with :ok <-
+           to_remove |> Maybe.map(&storage.remove(&1, storage_state)) |> Maybe.unwrap_or(:ok),
+         :ok <- storage.store(to_add, buffer.payload, :binary, storage_state),
          :ok <- store_playlist(playlist, state.playlist_name, storage, storage_state) do
       {{:ok, timer_interval: {:timer, duration}}, state}
     else
@@ -72,11 +73,6 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
     state = %{state | playlist: playlist}
     result = state.storage.store(caps.init_name, caps.init, :binary, state.storage_state)
     {result, state}
-  end
-
-  @impl true
-  def handle_event(pad, event, ctx, state) do
-    super(pad, event, ctx, state)
   end
 
   @impl true

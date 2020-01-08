@@ -15,28 +15,33 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Playlist.HLS do
   @config_keys Config.__struct__() |> Map.from_struct() |> Map.keys()
   defstruct @config_keys ++ [current_seq_num: 0, fragments: Qex.new(), finished?: false]
 
+  def playlist_extension, do: ".m3u8"
+
   def new(%Config{} = config) do
     Map.merge(%__MODULE__{}, Map.from_struct(config))
   end
 
-  def put(%__MODULE__{} = playlist, duration) do
+  def put(%__MODULE__{finished?: false} = playlist, duration) do
     use Ratio
     name = "#{playlist.fragment_prefix}#{playlist.current_seq_num}#{playlist.fragment_extension}"
 
     playlist =
       playlist
-      |> Map.update!(:fragments, &Qex.push(&1, {name, duration}))
+      |> Map.update!(:fragments, &Qex.push(&1, %{name: name, duration: duration}))
       |> Map.update!(:current_seq_num, &(&1 + 1))
       |> Map.update!(:max_duration, &max(&1, duration))
 
-    {rem, playlist} =
+    {to_remove_name, playlist} =
       if playlist.current_seq_num > playlist.max_size do
-        playlist |> Map.get_and_update!(:fragments, &Qex.pop!/1)
+        playlist
+        |> Map.get_and_update!(:fragments, &Qex.pop!/1)
+        |> Map.fetch!(:name)
+        |> Maybe.just()
       else
-        {nil, playlist}
+        {Maybe.nothing(), playlist}
       end
 
-    {{name, rem |> Maybe.new() |> Maybe.map(&elem(&1, 0))}, playlist}
+    {{name, to_remove_name}, playlist}
   end
 
   def finish(playlist) do
@@ -46,17 +51,18 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Playlist.HLS do
   def serialize(%__MODULE__{} = playlist) do
     use Ratio
 
+    target_duration = Ratio.ceil(playlist.max_duration / Time.second(1)) |> trunc
+    media_sequence = max(0, playlist.current_seq_num - playlist.max_size)
+
     """
     #EXTM3U
     #EXT-X-VERSION:#{@version}
-    #EXT-X-TARGETDURATION:#{Ratio.ceil(playlist.max_duration / Time.second(1)) |> trunc}
-    #EXT-X-MEDIA-SEQUENCE:#{max(0, playlist.current_seq_num - playlist.max_size)}
+    #EXT-X-TARGETDURATION:#{target_duration}
+    #EXT-X-MEDIA-SEQUENCE:#{media_sequence}
     #EXT-X-MAP:URI="#{playlist.init_name}"
     #{
       playlist.fragments
-      |> Enum.flat_map(fn {name, duration} ->
-        ["#EXTINF:#{Ratio.to_float(duration / Time.second(1))},", name]
-      end)
+      |> Enum.flat_map(&["#EXTINF:#{Ratio.to_float(&1.duration / Time.second(1))},", &1.name])
       |> Enum.join("\n")
     }
     #{if playlist.finished?, do: "#EXT-X-ENDLIST", else: ""}
