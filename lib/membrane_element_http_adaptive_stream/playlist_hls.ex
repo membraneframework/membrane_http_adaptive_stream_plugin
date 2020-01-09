@@ -33,10 +33,8 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Playlist.HLS do
 
     {to_remove_name, playlist} =
       if playlist.current_seq_num > playlist.max_size do
-        playlist
-        |> Map.get_and_update!(:fragments, &Qex.pop!/1)
-        |> Map.fetch!(:name)
-        |> Maybe.just()
+        {fragment, playlist} = playlist |> Map.get_and_update!(:fragments, &Qex.pop!/1)
+        {Maybe.just(fragment.name), playlist}
       else
         {Maybe.nothing(), playlist}
       end
