@@ -35,11 +35,6 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
   end
 
   @impl true
-  def handle_start_of_stream(:input, _ctx, state) do
-    {{:ok, start_timer: {:timer, :wait}}, state}
-  end
-
-  @impl true
   def handle_write(:input, buffer, _ctx, state) do
     duration = buffer.metadata.duration
     {{to_add, to_remove}, playlist} = Playlist.put(state.playlist, duration)
@@ -50,15 +45,10 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
            to_remove |> Maybe.map(&storage.remove(&1, storage_state)) |> Maybe.unwrap_or(:ok),
          :ok <- storage.store(to_add, buffer.payload, :binary, storage_state),
          :ok <- store_playlist(playlist, state.playlist_name, storage, storage_state) do
-      {{:ok, timer_interval: {:timer, duration}}, state}
+      {{:ok, demand: :input}, state}
     else
       error -> {error, state}
     end
-  end
-
-  @impl true
-  def handle_tick(:timer, _ctx, state) do
-    {{:ok, timer_interval: {:timer, :wait}, demand: :input}, state}
   end
 
   @impl true
