@@ -72,12 +72,12 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
     end
   end
 
-  # @impl true
-  # def handle_end_of_stream(:input, _ctx, state) do
-  #   {playlist, state} = Bunch.Map.get_updated!(state, :playlist, &Playlist.finish/1)
-  #   result = store_playlists(playlist, state.storage, state.storage_state)
-  #   {result, state}
-  # end
+  @impl true
+  def handle_end_of_stream(Pad.ref(:input, id), _ctx, state) do
+    {playlist, state} = Bunch.Map.get_updated!(state, :playlist, &Playlist.finish(&1, id))
+    result = store_playlists(playlist, state.storage, state.storage_state)
+    {result, state}
+  end
 
   defp store_playlists(playlist, storage, storage_state) do
     playlist

@@ -25,7 +25,7 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Playlist do
     )
   end
 
-  def finish(playlist) do
-    %__MODULE__{playlist | tracks: Map.new(playlist.tracks, &Track.finish/1)}
+  def finish(%__MODULE__{} = playlist, track_id) do
+    Bunch.Struct.update_in(playlist, [:tracks, track_id], &Track.finish/1)
   end
 end
