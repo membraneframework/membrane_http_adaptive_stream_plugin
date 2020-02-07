@@ -52,8 +52,7 @@ defmodule Membrane.Element.HTTPAdaptiveStream.MixProject do
     [
       {:membrane_core, "~> 0.5.0"},
       {:membrane_caps_http_adaptive_stream,
-       git: "git@github.com:membraneframework/membrane-caps-http-adaptive-stream",
-       branch: "develop"},
+       git: "git@github.com:membraneframework/membrane-caps-http-adaptive-stream"},
       {:fe, "~> 0.1.3"},
       {:ex_doc, "~> 0.21", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.0.0-rc.7", only: [:dev, :test], runtime: false}
