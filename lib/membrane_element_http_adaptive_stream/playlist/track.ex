@@ -15,7 +15,7 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Playlist.Track do
               [:id_string, :init_name, current_seq_num: 0, fragments: Qex.new(), finished?: false]
 
   def new(%Config{} = config) do
-    id_string = config.id |> :erlang.term_to_binary() |> Base.encode64()
+    id_string = config.id |> :erlang.term_to_binary() |> Base.url_encode64(padding: false)
 
     %__MODULE__{
       init_name: "#{config.content_type}_init_#{id_string}#{config.init_extension}",
