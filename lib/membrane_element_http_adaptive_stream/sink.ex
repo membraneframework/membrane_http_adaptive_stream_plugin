@@ -18,17 +18,23 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
               storage: [
                 type: :struct,
                 spec: Storage.config_t()
+              ],
+              max_fragments: [
+                type: :integer,
+                spec: pos_integer | :infinity,
+                default: :infinity
               ]
 
   @impl true
   def handle_init(options) do
-    %__MODULE__{playlist_name: playlist_name, storage: %storage{} = storage_config} = options
+    %__MODULE__{storage: %storage{} = storage_config} = options
 
     {:ok,
      %{
        storage: storage,
        storage_state: storage.init(storage_config),
-       playlist: %Playlist{name: playlist_name}
+       playlist: %Playlist{name: options.playlist_name},
+       max_fragments: options.max_fragments
      }}
   end
 
@@ -41,7 +47,8 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
           id: id,
           content_type: caps.content_type,
           init_extension: caps.init_extension,
-          fragment_extension: caps.fragment_extension
+          fragment_extension: caps.fragment_extension,
+          max_size: state.max_fragments
         }
       )
 

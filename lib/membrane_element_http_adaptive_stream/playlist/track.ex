@@ -2,11 +2,10 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Playlist.Track do
   alias FE.Maybe
 
   defmodule Config do
-    @enforce_keys [:id, :content_type, :init_extension, :fragment_extension]
+    @enforce_keys [:id, :content_type, :init_extension, :fragment_extension, :max_size]
     defstruct @enforce_keys ++
                 [
-                  max_fragment_duration: 0,
-                  max_size: 500
+                  max_fragment_duration: 0
                 ]
   end
 
@@ -38,7 +37,7 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Playlist.Track do
       |> Map.update!(:max_fragment_duration, &max(&1, duration))
 
     {to_remove_name, track} =
-      if track.current_seq_num > track.max_size do
+      if track.max_size != :infinity and track.current_seq_num > track.max_size do
         {fragment, track} = track |> Map.get_and_update!(:fragments, &Qex.pop!/1)
         {Maybe.just(fragment.name), track}
       else

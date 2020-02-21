@@ -41,7 +41,9 @@ defmodule Membrane.Element.HTTPAdaptiveStream.HLS.Playlist do
     use Ratio
 
     target_duration = Ratio.ceil(track.max_fragment_duration / Time.second(1)) |> trunc
-    media_sequence = max(0, track.current_seq_num - track.max_size)
+
+    media_sequence =
+      if track.max_size == :infinity, do: 0, else: max(0, track.current_seq_num - track.max_size)
 
     """
     #EXTM3U
