@@ -23,6 +23,10 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
                 type: :integer,
                 spec: pos_integer | :infinity,
                 default: :infinity
+              ],
+              target_duration: [
+                type: :time,
+                default: 0
               ]
 
   @impl true
@@ -34,7 +38,8 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
        storage: storage,
        storage_state: storage.init(storage_config),
        playlist: %Playlist{name: options.playlist_name},
-       max_fragments: options.max_fragments
+       max_fragments: options.max_fragments,
+       target_duration: options.target_duration
      }}
   end
 
@@ -48,7 +53,8 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
           content_type: caps.content_type,
           init_extension: caps.init_extension,
           fragment_extension: caps.fragment_extension,
-          max_size: state.max_fragments
+          max_size: state.max_fragments,
+          max_fragment_duration: state.target_duration
         }
       )
 

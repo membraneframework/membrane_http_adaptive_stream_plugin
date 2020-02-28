@@ -24,7 +24,7 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Playlist.Track do
   end
 
   def add_fragment(%__MODULE__{finished?: false} = track, duration) do
-    use Ratio
+    use Ratio, comparison: true
 
     name =
       "#{track.content_type}_fragment_#{track.current_seq_num}_#{track.id_string}" <>
@@ -34,7 +34,7 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Playlist.Track do
       track
       |> Map.update!(:fragments, &Qex.push(&1, %{name: name, duration: duration}))
       |> Map.update!(:current_seq_num, &(&1 + 1))
-      |> Map.update!(:max_fragment_duration, &max(&1, duration))
+      |> Map.update!(:max_fragment_duration, &if(&1 > duration, do: &1, else: duration))
 
     {to_remove_name, track} =
       if track.max_size != :infinity and track.current_seq_num > track.max_size do
