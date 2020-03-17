@@ -1,4 +1,4 @@
-defmodule Membrane.Element.HTTPAdaptiveStream.Storage.File do
+defmodule Membrane.Element.HTTPAdaptiveStream.FileStorage do
   @behaviour Membrane.Element.HTTPAdaptiveStream.Storage
 
   @enforce_keys [:location]
