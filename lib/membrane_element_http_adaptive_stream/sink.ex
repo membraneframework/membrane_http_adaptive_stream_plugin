@@ -1,9 +1,7 @@
 defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
+  use Bunch
   use Membrane.Sink
-  alias FE.Maybe
-  alias Membrane.Element.HTTPAdaptiveStream.HLS
-  alias Membrane.Element.HTTPAdaptiveStream.Playlist
-  alias Membrane.Element.HTTPAdaptiveStream.Storage
+  alias Membrane.Element.HTTPAdaptiveStream.{Playlist, Storage}
 
   def_input_pad :input,
     availability: :on_request,
@@ -14,6 +12,10 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
                 type: :string,
                 spec: String.t(),
                 default: "index"
+              ],
+              playlist_module: [
+                type: :atom,
+                spec: module
               ],
               storage: [
                 type: :struct,
@@ -31,16 +33,13 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
 
   @impl true
   def handle_init(options) do
-    %__MODULE__{storage: %storage{} = storage_config} = options
-
-    {:ok,
-     %{
-       storage: storage,
-       storage_state: storage.init(storage_config),
-       playlist: %Playlist{name: options.playlist_name},
-       max_fragments: options.max_fragments,
-       target_duration: options.target_duration
-     }}
+    options
+    |> Map.take([:playlist_module, :max_fragments, :target_duration])
+    |> Map.merge(%{
+      storage: Storage.new(options.storage),
+      playlist: %Playlist{name: options.playlist_name}
+    })
+    ~> {:ok, &1}
   end
 
   @impl true
@@ -59,8 +58,8 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
       )
 
     state = %{state | playlist: playlist}
-    result = state.storage.store(init_name, caps.init, :binary, state.storage_state)
-    {result, state}
+    {result, storage} = Storage.store_init(state.storage, init_name, caps.init)
+    {result, %{state | storage: storage}}
   end
 
   @impl true
@@ -71,32 +70,25 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
   @impl true
   def handle_write(Pad.ref(:input, id) = pad, buffer, _ctx, state) do
     duration = buffer.metadata.duration
-    {{to_add, to_remove}, playlist} = Playlist.add_fragment(state.playlist, id, duration)
+    {changeset, playlist} = Playlist.add_fragment(state.playlist, id, duration)
     state = %{state | playlist: playlist}
-    %{storage: storage, storage_state: storage_state} = state
+    %{storage: storage, playlist_module: playlist_module} = state
 
-    with :ok <-
-           to_remove |> Maybe.map(&storage.remove(&1, storage_state)) |> Maybe.unwrap_or(:ok),
-         :ok <- storage.store(to_add, buffer.payload, :binary, storage_state),
-         :ok <- store_playlists(playlist, storage, storage_state) do
-      {{:ok, demand: pad}, state}
+    with {:ok, storage} <- Storage.apply_chunk_changeset(storage, changeset, buffer.payload),
+         {:ok, storage} <- Storage.store_playlists(storage, playlist_module.serialize(playlist)) do
+      {{:ok, demand: pad}, %{state | storage: storage}}
     else
-      error -> {error, state}
+      {error, storage} -> {error, %{state | storage: storage}}
     end
   end
 
   @impl true
   def handle_end_of_stream(Pad.ref(:input, id), _ctx, state) do
     {playlist, state} = Bunch.Map.get_updated!(state, :playlist, &Playlist.finish(&1, id))
-    result = store_playlists(playlist, state.storage, state.storage_state)
-    {result, state}
-  end
 
-  defp store_playlists(playlist, storage, storage_state) do
-    playlist
-    |> HLS.Playlist.serialize()
-    |> Bunch.Enum.try_each(fn {name, playlist} ->
-      storage.store(name, playlist, :text, storage_state)
-    end)
+    {result, storage} =
+      Storage.store_playlists(state.storage, state.playlist_module.serialize(playlist))
+
+    {result, %{state | storage: storage}}
   end
 end
