@@ -21,12 +21,15 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
                 type: :struct,
                 spec: Storage.config_t()
               ],
-              max_fragments: [
-                type: :integer,
-                spec: pos_integer | :infinity,
-                default: :infinity
+              windowed?: [
+                type: :bool,
+                default: true
               ],
-              target_duration: [
+              target_window_duration: [
+                spec: pos_integer | :infinity | nil,
+                default: nil
+              ],
+              target_fragment_duration: [
                 type: :time,
                 default: 0
               ]
@@ -52,8 +55,8 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
           content_type: caps.content_type,
           init_extension: caps.init_extension,
           fragment_extension: caps.fragment_extension,
-          max_size: state.max_fragments,
-          max_fragment_duration: state.target_duration
+          target_window_duration: state.target_fragment_duration,
+          target_fragment_duration: state.target_fragment_duration
         }
       )
 
@@ -72,10 +75,11 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
     duration = buffer.metadata.duration
     {changeset, playlist} = Playlist.add_fragment(state.playlist, id, duration)
     state = %{state | playlist: playlist}
-    %{storage: storage, playlist_module: playlist_module} = state
+    %{storage: storage, playlist_module: playlist_module, windowed?: windowed?} = state
 
     with {:ok, storage} <- Storage.apply_chunk_changeset(storage, changeset, buffer.payload),
-         {:ok, storage} <- Storage.store_playlists(storage, playlist_module.serialize(playlist)) do
+         {:ok, storage} <-
+           maybe_store_playlists(storage, playlist_module.serialize(playlist), windowed?) do
       {{:ok, demand: pad}, %{state | storage: storage}}
     else
       {error, storage} -> {error, %{state | storage: storage}}
@@ -87,8 +91,20 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
     {playlist, state} = Bunch.Map.get_updated!(state, :playlist, &Playlist.finish(&1, id))
 
     {result, storage} =
-      Storage.store_playlists(state.storage, state.playlist_module.serialize(playlist))
+      maybe_store_playlists(
+        state.storage,
+        state.playlist_module.serialize(playlist),
+        state.windowed?
+      )
 
     {result, %{state | storage: storage}}
+  end
+
+  defp maybe_store_playlists(storage, playlists, true) do
+    Storage.store_playlists(storage, playlists)
+  end
+
+  defp maybe_store_playlists(storage, _playlists, false) do
+    {:ok, storage}
   end
 end
