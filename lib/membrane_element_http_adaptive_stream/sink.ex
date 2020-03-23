@@ -40,7 +40,8 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
     |> Map.take([:playlist_module, :max_fragments, :target_duration])
     |> Map.merge(%{
       storage: Storage.new(options.storage),
-      playlist: %Playlist{name: options.playlist_name}
+      playlist: %Playlist{name: options.playlist_name},
+      to_notify: MapSet.new()
     })
     ~> {:ok, &1}
   end
@@ -66,8 +67,9 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
   end
 
   @impl true
-  def handle_start_of_stream(Pad.ref(:input, _) = pad, _ctx, state) do
-    {{:ok, demand: pad}, state}
+  def handle_start_of_stream(Pad.ref(:input, id) = pad, _ctx, state) do
+    to_notify = MapSet.put(state.to_notify, id)
+    {{:ok, demand: pad}, %{state | to_notify: to_notify}}
   end
 
   @impl true
@@ -75,12 +77,25 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
     duration = buffer.metadata.duration
     {changeset, playlist} = Playlist.add_fragment(state.playlist, id, duration)
     state = %{state | playlist: playlist}
-    %{storage: storage, playlist_module: playlist_module, windowed?: windowed?} = state
+
+    %{
+      storage: storage,
+      playlist_module: playlist_module,
+      windowed?: windowed?,
+      to_notify: to_notify
+    } = state
 
     with {:ok, storage} <- Storage.apply_chunk_changeset(storage, changeset, buffer.payload),
          {:ok, storage} <-
            maybe_store_playlists(storage, playlist_module.serialize(playlist), windowed?) do
-      {{:ok, demand: pad}, %{state | storage: storage}}
+      {notify, state} =
+        if MapSet.member?(to_notify, id) do
+          {[notify: {:stream_playable, id}], %{state | to_notify: MapSet.delete(to_notify, id)}}
+        else
+          {[], state}
+        end
+
+      {{:ok, notify ++ [demand: pad]}, %{state | storage: storage}}
     else
       {error, storage} -> {error, %{state | storage: storage}}
     end
