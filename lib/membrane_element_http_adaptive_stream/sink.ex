@@ -25,6 +25,10 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
                 type: :bool,
                 default: true
               ],
+              store_permanent?: [
+                type: :bool,
+                default: false
+              ],
               target_window_duration: [
                 spec: pos_integer | :infinity | nil,
                 default: nil
@@ -37,7 +41,8 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
   @impl true
   def handle_init(options) do
     options
-    |> Map.take([:playlist_module, :max_fragments, :target_duration])
+    |> Map.from_struct()
+    |> Map.delete(:playlist_name)
     |> Map.merge(%{
       storage: Storage.new(options.storage),
       playlist: %Playlist{name: options.playlist_name},
@@ -56,8 +61,10 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
           content_type: caps.content_type,
           init_extension: caps.init_extension,
           fragment_extension: caps.fragment_extension,
-          target_window_duration: state.target_fragment_duration,
-          target_fragment_duration: state.target_fragment_duration
+          target_window_duration: state.target_window_duration,
+          target_fragment_duration: state.target_fragment_duration,
+          windowed?: state.windowed,
+          permanent?: state.store_permanent?
         }
       )
 
@@ -74,27 +81,15 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
 
   @impl true
   def handle_write(Pad.ref(:input, id) = pad, buffer, _ctx, state) do
+    %{storage: storage, playlist: playlist, playlist_module: playlist_module} = state
     duration = buffer.metadata.duration
-    {changeset, playlist} = Playlist.add_fragment(state.playlist, id, duration)
+    {changeset, playlist} = Playlist.add_fragment(playlist, id, duration)
+    playlists = playlist_module.serialize(playlist)
     state = %{state | playlist: playlist}
 
-    %{
-      storage: storage,
-      playlist_module: playlist_module,
-      windowed?: windowed?,
-      to_notify: to_notify
-    } = state
-
     with {:ok, storage} <- Storage.apply_chunk_changeset(storage, changeset, buffer.payload),
-         {:ok, storage} <-
-           maybe_store_playlists(storage, playlist_module.serialize(playlist), windowed?) do
-      {notify, state} =
-        if MapSet.member?(to_notify, id) do
-          {[notify: {:stream_playable, id}], %{state | to_notify: MapSet.delete(to_notify, id)}}
-        else
-          {[], state}
-        end
-
+         {:ok, storage} <- Storage.store_playlists(storage, playlists) do
+      {notify, state} = maybe_notify_playable(id, state)
       {{:ok, notify ++ [demand: pad]}, %{state | storage: storage}}
     else
       {error, storage} -> {error, %{state | storage: storage}}
@@ -103,23 +98,34 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
 
   @impl true
   def handle_end_of_stream(Pad.ref(:input, id), _ctx, state) do
-    {playlist, state} = Bunch.Map.get_updated!(state, :playlist, &Playlist.finish(&1, id))
+    %{playlist: playlist, playlist_module: playlist_module, storage: storage} = state
+    playlist = Playlist.finish(playlist, id)
 
-    {result, storage} =
-      maybe_store_playlists(
-        state.storage,
-        state.playlist_module.serialize(playlist),
-        state.windowed?
-      )
+    {store_result, storage} =
+      Storage.store_playlists(storage, playlist_module.serialize(playlist))
 
+    storage = Storage.clear_cache(storage)
+    state = %{state | storage: storage, playlist: playlist}
+    {store_result, state}
+  end
+
+  @impl true
+  def handle_playing_to_prepared(_ctx, %{store_permanent?: true} = state) do
+    playlists = state.playlist |> Playlist.from_beginning() |> state.playlist_module.serialize()
+    {result, storage} = Storage.store_playlists(state.storage, playlists)
     {result, %{state | storage: storage}}
   end
 
-  defp maybe_store_playlists(storage, playlists, true) do
-    Storage.store_playlists(storage, playlists)
+  @impl true
+  def handle_playing_to_prepared(_ctx, state) do
+    {:ok, state}
   end
 
-  defp maybe_store_playlists(storage, _playlists, false) do
-    {:ok, storage}
+  defp maybe_notify_playable(id, %{to_notify: to_notify} = state) do
+    if MapSet.member?(to_notify, id) do
+      {[notify: {:stream_playable, id}], %{state | to_notify: MapSet.delete(to_notify, id)}}
+    else
+      {[], state}
+    end
   end
 end

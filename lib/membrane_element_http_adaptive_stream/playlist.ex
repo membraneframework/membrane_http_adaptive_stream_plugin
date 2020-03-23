@@ -1,4 +1,5 @@
 defmodule Membrane.Element.HTTPAdaptiveStream.Playlist do
+  use Bunch.Access
   alias __MODULE__.Track
 
   @callback serialize(t) :: [{playlist_name :: String.t(), playlist_content :: String.t()}]
@@ -18,7 +19,7 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Playlist do
   end
 
   def add_fragment(%__MODULE__{} = playlist, track_id, duration) do
-    Bunch.Struct.get_and_update_in(
+    get_and_update_in(
       playlist,
       [:tracks, track_id],
       &Track.add_fragment(&1, duration)
@@ -26,6 +27,11 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Playlist do
   end
 
   def finish(%__MODULE__{} = playlist, track_id) do
-    Bunch.Struct.update_in(playlist, [:tracks, track_id], &Track.finish/1)
+    update_in(playlist, [:tracks, track_id], &Track.finish/1)
+  end
+
+  def from_beginning(%__MODULE__{} = playlist) do
+    tracks = Enum.map(playlist.tracks, &Track.from_beginning/1)
+    %__MODULE__{playlist | tracks: tracks}
   end
 end
