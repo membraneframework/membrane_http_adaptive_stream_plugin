@@ -26,7 +26,7 @@ defmodule Membrane.Element.HTTPAdaptiveStream.SinkTest do
 
     assert_receive {SendStorage, :store, %{type: :playlist}}
     assert_receive {SendStorage, :store, %{name: "audio_fragment_2_" <> _}}
-    assert_receive {SendStorage, :remove, "audio_fragment_0_" <> _}
+    assert_receive {SendStorage, :remove, %{name: "audio_fragment_0_" <> _}}
     refute_receive {SendStorage, _, _}
   end
 
@@ -62,14 +62,14 @@ defmodule Membrane.Element.HTTPAdaptiveStream.SinkTest do
 
     assert_receive {SendStorage, :store, %{type: :playlist, name: "video.m3u8"}}
     assert_receive {SendStorage, :store, %{name: "video_fragment_1_" <> _}}
-    assert_receive {SendStorage, :remove, "video_fragment_0_" <> _}
+    assert_receive {SendStorage, :remove, %{name: "video_fragment_0_" <> _}}
 
     assert {{:ok, _actions}, state} =
              Sink.handle_write(Pad.ref(:input, :audio), gen_buf(2), nil, state)
 
     assert_receive {SendStorage, :store, %{type: :playlist, name: "audio.m3u8"}}
     assert_receive {SendStorage, :store, %{name: "audio_fragment_2_" <> _}}
-    assert_receive {SendStorage, :remove, "audio_fragment_0_" <> _}
+    assert_receive {SendStorage, :remove, %{name: "audio_fragment_0_" <> _}}
     refute_receive {SendStorage, _, _}
   end
 

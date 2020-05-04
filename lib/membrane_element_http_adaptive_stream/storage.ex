@@ -8,10 +8,14 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Storage do
   @callback store(
               resource_name :: String.t(),
               content :: String.t(),
-              content_type :: :text | :binary,
+              context :: %{type: :playlist | :init | :chunk, mode: :text | :binary},
               state_t
             ) :: :ok | {:error, reason :: any}
-  @callback remove(resource_name :: String.t(), state_t) :: :ok | {:error, reason :: any}
+  @callback remove(
+              resource_name :: String.t(),
+              context :: %{type: :playlist | :init | :chunk},
+              state_t
+            ) :: :ok | {:error, reason :: any}
 
   @enforce_keys [:storage_impl, :impl_state, :cache_enabled?]
   defstruct @enforce_keys ++ [cache: %{}]
@@ -60,7 +64,8 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Storage do
   def apply_chunk_changeset(storage, {to_add, to_remove}, payload) do
     %__MODULE__{storage_impl: storage_impl, impl_state: impl_state} = storage
 
-    with :ok <- Bunch.Enum.try_each(to_remove, &storage_impl.remove(&1, impl_state)),
+    with :ok <-
+           Bunch.Enum.try_each(to_remove, &storage_impl.remove(&1, %{type: :chunk}, impl_state)),
          :ok <- storage_impl.store(to_add, payload, %{mode: :binary, type: :chunk}, impl_state) do
       :ok
     end

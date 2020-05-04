@@ -14,8 +14,8 @@ defmodule Membrane.Element.HTTPAdaptiveStream.SendStorage do
   end
 
   @impl true
-  def remove(name, %__MODULE__{destination: destination}) do
-    send(destination, {__MODULE__, :remove, name})
+  def remove(name, context, %__MODULE__{destination: destination}) do
+    send(destination, {__MODULE__, :remove, Map.merge(context, %{name: name})})
     :ok
   end
 end
