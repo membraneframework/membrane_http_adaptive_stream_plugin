@@ -109,7 +109,7 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Playlist.Track do
     {fragment, new_fragments} = Qex.pop!(fragments)
     new_window_duration = window_duration - fragment.duration
 
-    if new_window_duration > target_window_duration do
+    if new_window_duration >= target_window_duration and new_window_duration > 0 do
       do_pop_stale_fragments(
         new_fragments,
         new_window_duration,

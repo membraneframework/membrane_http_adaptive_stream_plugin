@@ -11,15 +11,24 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
   def_options playlist_name: [
                 type: :string,
                 spec: String.t(),
-                default: "index"
+                default: "index",
+                description: "Name of the main playlist file"
               ],
               playlist_module: [
                 type: :atom,
-                spec: module
+                spec: module,
+                description: """
+                Implementation of the `Membrane.Element.HTTPAdaptiveStream.Playlist`
+                behaviour.
+                """
               ],
               storage: [
                 type: :struct,
-                spec: Storage.config_t()
+                spec: Storage.config_t(),
+                description: """
+                Implementation of the `Membrane.Element.HTTPAdaptiveStream.Storage`
+                behaviour.
+                """
               ],
               windowed?: [
                 type: :bool,
@@ -63,7 +72,7 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
           fragment_extension: caps.fragment_extension,
           target_window_duration: state.target_window_duration,
           target_fragment_duration: state.target_fragment_duration,
-          windowed?: state.windowed,
+          windowed?: state.windowed?,
           permanent?: state.store_permanent?
         }
       )
