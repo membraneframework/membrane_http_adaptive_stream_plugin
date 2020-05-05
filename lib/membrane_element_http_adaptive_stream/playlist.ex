@@ -6,10 +6,11 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Playlist do
 
   @type t :: %__MODULE__{
           name: String.t(),
+          module: module,
           tracks: %{(id :: any) => Track.t()}
         }
 
-  @enforce_keys [:name]
+  @enforce_keys [:name, :module]
   defstruct @enforce_keys ++ [tracks: %{}]
 
   def add_track(playlist, %Track.Config{} = config) do
@@ -24,6 +25,10 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Playlist do
       [:tracks, track_id],
       &Track.add_fragment(&1, duration)
     )
+  end
+
+  def serialize(%__MODULE__{module: module} = playlist) do
+    module.serialize(playlist)
   end
 
   def finish(%__MODULE__{} = playlist, track_id) do

@@ -52,9 +52,10 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
     options
     |> Map.from_struct()
     |> Map.delete(:playlist_name)
+    |> Map.delete(:playlist_module)
     |> Map.merge(%{
       storage: Storage.new(options.storage),
-      playlist: %Playlist{name: options.playlist_name},
+      playlist: %Playlist{name: options.playlist_name, module: options.playlist_module},
       to_notify: MapSet.new()
     })
     ~> {:ok, &1}
@@ -90,14 +91,13 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
 
   @impl true
   def handle_write(Pad.ref(:input, id) = pad, buffer, _ctx, state) do
-    %{storage: storage, playlist: playlist, playlist_module: playlist_module} = state
+    %{storage: storage, playlist: playlist} = state
     duration = buffer.metadata.duration
     {changeset, playlist} = Playlist.add_fragment(playlist, id, duration)
-    playlists = playlist_module.serialize(playlist)
     state = %{state | playlist: playlist}
 
     with {:ok, storage} <- Storage.apply_chunk_changeset(storage, changeset, buffer.payload),
-         {:ok, storage} <- Storage.store_playlists(storage, playlists) do
+         {:ok, storage} <- serialize_and_store_playlist(playlist, storage) do
       {notify, state} = maybe_notify_playable(id, state)
       {{:ok, notify ++ [demand: pad]}, %{state | storage: storage}}
     else
@@ -107,12 +107,9 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
 
   @impl true
   def handle_end_of_stream(Pad.ref(:input, id), _ctx, state) do
-    %{playlist: playlist, playlist_module: playlist_module, storage: storage} = state
+    %{playlist: playlist, storage: storage} = state
     playlist = Playlist.finish(playlist, id)
-
-    {store_result, storage} =
-      Storage.store_playlists(storage, playlist_module.serialize(playlist))
-
+    {store_result, storage} = serialize_and_store_playlist(playlist, storage)
     storage = Storage.clear_cache(storage)
     state = %{state | storage: storage, playlist: playlist}
     {store_result, state}
@@ -122,7 +119,6 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
   def handle_playing_to_prepared(_ctx, state) do
     %{
       playlist: playlist,
-      playlist_module: playlist_module,
       storage: storage,
       store_permanent?: store_permanent?
     } = state
@@ -137,8 +133,9 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
 
     result =
       if store_permanent? do
-        playlist = Playlist.from_beginning(playlist)
-        {result, storage} = Storage.store_playlists(storage, playlist_module.serialize(playlist))
+        {result, storage} =
+          playlist |> Playlist.from_beginning() |> serialize_and_store_playlist(storage)
+
         {result, %{state | storage: storage}}
       else
         {:ok, state}
@@ -155,5 +152,10 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
     else
       {[], state}
     end
+  end
+
+  defp serialize_and_store_playlist(playlist, storage) do
+    playlist_files = Playlist.serialize(playlist)
+    Storage.store_playlists(storage, playlist_files)
   end
 end
