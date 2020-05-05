@@ -31,7 +31,11 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Playlist do
   end
 
   def from_beginning(%__MODULE__{} = playlist) do
-    tracks = Enum.map(playlist.tracks, &Track.from_beginning/1)
+    tracks = Bunch.Map.map_values(playlist.tracks, &Track.from_beginning/1)
     %__MODULE__{playlist | tracks: tracks}
+  end
+
+  def all_fragments(%__MODULE__{} = playlist) do
+    playlist.tracks |> Map.values() |> Enum.flat_map(&Track.all_fragments/1)
   end
 end

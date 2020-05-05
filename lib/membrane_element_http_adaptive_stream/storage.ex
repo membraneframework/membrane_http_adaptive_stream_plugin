@@ -18,7 +18,7 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Storage do
             ) :: :ok | {:error, reason :: any}
 
   @enforce_keys [:storage_impl, :impl_state, :cache_enabled?]
-  defstruct @enforce_keys ++ [cache: %{}]
+  defstruct @enforce_keys ++ [cache: %{}, stored_playlists: MapSet.new()]
 
   def new(%storage_impl{} = storage_config, opts \\ []) do
     %__MODULE__{
@@ -37,13 +37,15 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Storage do
       storage_impl: storage_impl,
       impl_state: impl_state,
       cache: cache,
-      cache_enabled?: cache_enabled?
+      cache_enabled?: cache_enabled?,
+      stored_playlists: stored_playlists
     } = storage
 
     withl cache: false <- cache[name] == playlist,
           store:
             :ok <-
               storage_impl.store(name, playlist, %{mode: :text, type: :playlist}, impl_state),
+          do: storage = %{storage | stored_playlists: MapSet.put(stored_playlists, name)},
           update_cache?: true <- cache_enabled? do
       storage = put_in(storage, [:cache, name], playlist)
       {:ok, storage}
@@ -70,6 +72,20 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Storage do
       :ok
     end
     ~> {&1, storage}
+  end
+
+  def cleanup(storage, chunks) do
+    %__MODULE__{storage_impl: storage_impl, impl_state: impl_state, stored_playlists: playlists} =
+      storage
+
+    with :ok <-
+           Bunch.Enum.try_each(
+             playlists,
+             &storage_impl.remove(&1, %{type: :playlist}, impl_state)
+           ),
+         :ok <- Bunch.Enum.try_each(chunks, &storage_impl.remove(&1, %{type: :chunk}, impl_state)) do
+      {:ok, %__MODULE__{storage | cache: %{}, stored_playlists: MapSet.new()}}
+    end
   end
 
   def clear_cache(storage) do

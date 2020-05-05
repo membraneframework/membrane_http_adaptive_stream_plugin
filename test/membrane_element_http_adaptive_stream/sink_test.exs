@@ -28,6 +28,14 @@ defmodule Membrane.Element.HTTPAdaptiveStream.SinkTest do
     assert_receive {SendStorage, :store, %{name: "audio_fragment_2_" <> _}}
     assert_receive {SendStorage, :remove, %{name: "audio_fragment_0_" <> _}}
     refute_receive {SendStorage, _, _}
+
+    assert {{:ok, actions}, state} = Sink.handle_playing_to_prepared(nil, state)
+    assert {:ok, {:cleanup, cleanup_fun}} = Keyword.fetch(actions, :notify)
+    assert :ok = cleanup_fun.()
+    assert_receive {SendStorage, :remove, %{type: :playlist, name: "index" <> _}}
+    assert_receive {SendStorage, :remove, %{name: "audio_fragment_1_" <> _}}
+    assert_receive {SendStorage, :remove, %{name: "audio_fragment_2_" <> _}}
+    refute_receive {SendStorage, _, _}
   end
 
   test "multi track" do
@@ -70,6 +78,17 @@ defmodule Membrane.Element.HTTPAdaptiveStream.SinkTest do
     assert_receive {SendStorage, :store, %{type: :playlist, name: "audio.m3u8"}}
     assert_receive {SendStorage, :store, %{name: "audio_fragment_2_" <> _}}
     assert_receive {SendStorage, :remove, %{name: "audio_fragment_0_" <> _}}
+    refute_receive {SendStorage, _, _}
+
+    assert {{:ok, actions}, state} = Sink.handle_playing_to_prepared(nil, state)
+    assert {:ok, {:cleanup, cleanup_fun}} = Keyword.fetch(actions, :notify)
+    assert :ok = cleanup_fun.()
+    assert_receive {SendStorage, :remove, %{type: :playlist, name: "index" <> _}}
+    assert_receive {SendStorage, :remove, %{type: :playlist, name: "audio" <> _}}
+    assert_receive {SendStorage, :remove, %{type: :playlist, name: "video" <> _}}
+    assert_receive {SendStorage, :remove, %{name: "audio_fragment_1_" <> _}}
+    assert_receive {SendStorage, :remove, %{name: "audio_fragment_2_" <> _}}
+    assert_receive {SendStorage, :remove, %{name: "video_fragment_1_" <> _}}
     refute_receive {SendStorage, _, _}
   end
 

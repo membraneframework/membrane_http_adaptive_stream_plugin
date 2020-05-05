@@ -119,15 +119,34 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
   end
 
   @impl true
-  def handle_playing_to_prepared(_ctx, %{store_permanent?: true} = state) do
-    playlists = state.playlist |> Playlist.from_beginning() |> state.playlist_module.serialize()
-    {result, storage} = Storage.store_playlists(state.storage, playlists)
-    {result, %{state | storage: storage}}
-  end
-
-  @impl true
   def handle_playing_to_prepared(_ctx, state) do
-    {:ok, state}
+    %{
+      playlist: playlist,
+      playlist_module: playlist_module,
+      storage: storage,
+      store_permanent?: store_permanent?
+    } = state
+
+    to_remove = Playlist.all_fragments(playlist)
+
+    cleanup = fn ->
+      with {:ok, _storage} <- Storage.cleanup(storage, to_remove) do
+        :ok
+      end
+    end
+
+    result =
+      if store_permanent? do
+        playlist = Playlist.from_beginning(playlist)
+        {result, storage} = Storage.store_playlists(storage, playlist_module.serialize(playlist))
+        {result, %{state | storage: storage}}
+      else
+        {:ok, state}
+      end
+
+    with {:ok, state} <- result do
+      {{:ok, notify: {:cleanup, cleanup}}, state}
+    end
   end
 
   defp maybe_notify_playable(id, %{to_notify: to_notify} = state) do

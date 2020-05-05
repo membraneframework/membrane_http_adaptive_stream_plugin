@@ -82,6 +82,10 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Playlist.Track do
     }
   end
 
+  def all_fragments(%__MODULE__{} = track) do
+    Qex.join(track.stale_fragments, track.fragments) |> Enum.map(& &1.name)
+  end
+
   defp pop_stale_fragments(%__MODULE__{windowed?: false} = track) do
     {Enum.to_list(track.fragments), %__MODULE__{track | fragments: Qex.new()}}
   end
