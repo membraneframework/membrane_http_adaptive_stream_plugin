@@ -1,4 +1,4 @@
-defmodule Membrane.Element.HTTPAdaptiveStream.Storage do
+defmodule Membrane.HTTPAdaptiveStream.Storage do
   use Bunch
   use Bunch.Access
 

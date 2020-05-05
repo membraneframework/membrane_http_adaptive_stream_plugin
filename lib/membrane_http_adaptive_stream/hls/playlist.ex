@@ -1,6 +1,6 @@
-defmodule Membrane.Element.HTTPAdaptiveStream.HLS.Playlist do
-  alias Membrane.Element.HTTPAdaptiveStream.Playlist
-  alias Membrane.Element.HTTPAdaptiveStream.Playlist.Track
+defmodule Membrane.HTTPAdaptiveStream.HLS.Playlist do
+  alias Membrane.HTTPAdaptiveStream.Playlist
+  alias Membrane.HTTPAdaptiveStream.Playlist.Track
   alias Membrane.Time
 
   @behaviour Playlist

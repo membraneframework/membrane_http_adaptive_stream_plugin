@@ -1,5 +1,5 @@
-defmodule Membrane.Element.HTTPAdaptiveStream.SendStorage do
-  @behaviour Membrane.Element.HTTPAdaptiveStream.Storage
+defmodule Membrane.HTTPAdaptiveStream.Storages.SendStorage do
+  @behaviour Membrane.HTTPAdaptiveStream.Storage
 
   @enforce_keys [:destination]
   defstruct @enforce_keys

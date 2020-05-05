@@ -1,4 +1,4 @@
-defmodule Membrane.Element.HTTPAdaptiveStream.Playlist do
+defmodule Membrane.HTTPAdaptiveStream.Playlist do
   use Bunch.Access
   alias __MODULE__.Track
 

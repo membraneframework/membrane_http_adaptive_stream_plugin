@@ -1,8 +1,9 @@
-defmodule Membrane.Element.HTTPAdaptiveStream.SinkTest do
+defmodule Membrane.HTTPAdaptiveStream.SinkTest do
   use ExUnit.Case, async: true
   require Membrane.Pad
-  alias Membrane.Element.HTTPAdaptiveStream.{SendStorage, Sink}
   alias Membrane.{Buffer, Pad, Time}
+  alias Membrane.HTTPAdaptiveStream.Sink
+  alias Membrane.HTTPAdaptiveStream.Storages.SendStorage
 
   test "single track" do
     assert {:ok, state} = init()
@@ -94,7 +95,7 @@ defmodule Membrane.Element.HTTPAdaptiveStream.SinkTest do
 
   defp init() do
     Sink.handle_init(%Sink{
-      playlist_module: Membrane.Element.HTTPAdaptiveStream.HLS.Playlist,
+      playlist_module: Membrane.HTTPAdaptiveStream.HLS.Playlist,
       storage: %SendStorage{destination: self()},
       target_window_duration: Time.seconds(5)
     })

@@ -1,4 +1,4 @@
-defmodule Membrane.Element.HTTPAdaptiveStream.Playlist.Track do
+defmodule Membrane.HTTPAdaptiveStream.Playlist.Track do
   defmodule Config do
     @enforce_keys [
       :id,

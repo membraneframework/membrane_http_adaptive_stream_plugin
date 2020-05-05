@@ -1,7 +1,7 @@
-defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
+defmodule Membrane.HTTPAdaptiveStream.Sink do
   use Bunch
   use Membrane.Sink
-  alias Membrane.Element.HTTPAdaptiveStream.{Playlist, Storage}
+  alias Membrane.HTTPAdaptiveStream.{Playlist, Storage}
 
   def_input_pad :input,
     availability: :on_request,
@@ -18,7 +18,7 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
                 type: :atom,
                 spec: module,
                 description: """
-                Implementation of the `Membrane.Element.HTTPAdaptiveStream.Playlist`
+                Implementation of the `Membrane.HTTPAdaptiveStream.Playlist`
                 behaviour.
                 """
               ],
@@ -26,7 +26,7 @@ defmodule Membrane.Element.HTTPAdaptiveStream.Sink do
                 type: :struct,
                 spec: Storage.config_t(),
                 description: """
-                Implementation of the `Membrane.Element.HTTPAdaptiveStream.Storage`
+                Implementation of the `Membrane.HTTPAdaptiveStream.Storage`
                 behaviour.
                 """
               ],
