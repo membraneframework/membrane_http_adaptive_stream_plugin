@@ -1,4 +1,24 @@
 defmodule Membrane.HTTPAdaptiveStream.Sink do
+  @moduledoc """
+  Sink for generating HTTP streaming playlists.
+
+  Uses `Membrane.HTTPAdaptiveStream.Playlist` for playlist serialization
+  and `Membrane.HTTPAdaptiveStream.Storage` for saving files.
+
+  ## Examples
+
+  The following configuration:
+
+      %#{inspect(__MODULE__)}{
+        playlist_name: "playlist",
+        playlist_module: Membrane.HTTPAdaptiveStream.HLS.Playlist,
+        storage: %Membrane.HTTPAdaptiveStream.Storages.FileStorage{directory: "output"}
+      }
+
+  will generate a HLS playlist in the `output` directory, playable from
+  `output/playlist.m3u8` file.
+  """
+
   use Bunch
   use Membrane.Sink
   alias Membrane.HTTPAdaptiveStream.{Playlist, Storage}
@@ -30,21 +50,29 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
                 behaviour.
                 """
               ],
-              windowed?: [
-                type: :bool,
-                default: true
+              target_window_duration: [
+                spec: pos_integer | :infinity,
+                default: Membrane.Time.seconds(5),
+                description: """
+                Playlist duration is keept above that time, while the oldest chunks
+                are removed whenever possible.
+                """
               ],
               store_permanent?: [
                 type: :bool,
-                default: false
-              ],
-              target_window_duration: [
-                spec: pos_integer | :infinity | nil,
-                default: nil
+                default: false,
+                description: """
+                If true, stale chunks are removed from the playlist only. Once
+                playback finishes, they are put back into the playlist.
+                """
               ],
               target_fragment_duration: [
                 type: :time,
-                default: 0
+                default: 0,
+                description: """
+                Expected length of each chunk. Setting it is not necessary, but
+                may help players achieve better UX.
+                """
               ]
 
   @impl true
@@ -73,7 +101,6 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
           fragment_extension: caps.fragment_extension,
           target_window_duration: state.target_window_duration,
           target_fragment_duration: state.target_fragment_duration,
-          windowed?: state.windowed?,
           permanent?: state.store_permanent?
         }
       )
@@ -126,9 +153,8 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     to_remove = Playlist.all_fragments(playlist)
 
     cleanup = fn ->
-      with {:ok, _storage} <- Storage.cleanup(storage, to_remove) do
-        :ok
-      end
+      {result, _storage} = Storage.cleanup(storage, to_remove)
+      result
     end
 
     result =

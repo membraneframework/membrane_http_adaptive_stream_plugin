@@ -33,7 +33,13 @@ defmodule Membrane.HTTPAdaptiveStream.MixProject do
       main: "readme",
       extras: ["README.md"],
       source_ref: "v#{@version}",
-      nest_modules_by_prefix: [Membrane.HTTPAdaptiveStream]
+      nest_modules_by_prefix: [Membrane.HTTPAdaptiveStream],
+      groups_for_modules: [
+        Elements: [~r/^Membrane.HTTPAdaptiveStream.Sink/],
+        HLS: [~r/^Membrane.HTTPAdaptiveStream.HLS/],
+        Playlist: [~r/^Membrane.HTTPAdaptiveStream.Playlist/],
+        Storages: [~r/^Membrane.HTTPAdaptiveStream.Storage/]
+      ]
     ]
   end
 

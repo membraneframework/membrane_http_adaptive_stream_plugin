@@ -1,8 +1,31 @@
 defmodule Membrane.HTTPAdaptiveStream.Storages.GenServerStorage do
+  @moduledoc """
+  `Membrane.HTTPAdaptiveStream.Storage` implementation that issues a call or cast
+  with a `t:message_t/0` to given destination on each call to store/remove.
+  """
+
   @behaviour Membrane.HTTPAdaptiveStream.Storage
 
   @enforce_keys [:destination]
   defstruct @enforce_keys ++ [method: :call]
+
+  @type t :: %__MODULE__{
+          destination: Process.dest(),
+          method: :call | :cast
+        }
+
+  @type message_t :: store_t | remove_t
+
+  @type store_t ::
+          {__MODULE__, :store,
+           %{
+             name: String.t(),
+             contents: String.t(),
+             type: :playlist | :init | :chunk,
+             mode: :text | :binary
+           }}
+
+  @type remove_t :: {__MODULE__, :store, %{name: String.t(), type: :playlist | :init | :chunk}}
 
   @impl true
   def init(%__MODULE__{} = config) do

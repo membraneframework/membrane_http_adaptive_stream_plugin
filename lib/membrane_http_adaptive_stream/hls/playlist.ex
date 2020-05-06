@@ -1,4 +1,9 @@
 defmodule Membrane.HTTPAdaptiveStream.HLS.Playlist do
+  @moduledoc """
+  `Membrane.HTTPAdaptiveStream.Playlist` implementation for HLS.
+
+  Currently supports up to one audio and video stream.
+  """
   alias Membrane.HTTPAdaptiveStream.Playlist
   alias Membrane.HTTPAdaptiveStream.Playlist.Track
   alias Membrane.Time

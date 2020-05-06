@@ -1,5 +1,15 @@
 defmodule Membrane.HTTPAdaptiveStream.Playlist.Track do
+  @moduledoc """
+  Struct representing a state of a single playlist track and functions to operate
+  on it.
+  """
   defmodule Config do
+    @moduledoc """
+    Track configuration.
+    """
+
+    alias Membrane.HTTPAdaptiveStream.Playlist.Track
+
     @enforce_keys [
       :id,
       :content_type,
@@ -9,10 +19,19 @@ defmodule Membrane.HTTPAdaptiveStream.Playlist.Track do
     ]
     defstruct @enforce_keys ++
                 [
-                  windowed?: true,
                   target_window_duration: nil,
                   permanent?: false
                 ]
+
+    @type t :: %__MODULE__{
+            id: Track.id_t(),
+            content_type: :audio | :video,
+            init_extension: String.t(),
+            fragment_extension: String.t(),
+            target_fragment_duration: Membrane.Time.t() | Ratio.t(),
+            target_window_duration: Membrane.Time.t() | Ratio.t(),
+            permanent?: boolean
+          }
   end
 
   @config_keys Config.__struct__() |> Map.from_struct() |> Map.keys()
@@ -27,14 +46,28 @@ defmodule Membrane.HTTPAdaptiveStream.Playlist.Track do
                 window_duration: 0
               ]
 
-  def new(%Config{windowed?: true, target_window_duration: nil} = config) do
-    raise ArgumentError, inspect(config)
-  end
+  @type t :: %__MODULE__{
+          id: id_t,
+          content_type: :audio | :video,
+          init_extension: String.t(),
+          fragment_extension: String.t(),
+          target_fragment_duration: fragment_duration_t,
+          target_window_duration: Membrane.Time.t() | Ratio.t(),
+          permanent?: boolean,
+          id_string: String.t(),
+          init_name: String.t(),
+          current_seq_num: non_neg_integer,
+          fragments: fragments_t,
+          stale_fragments: fragments_t,
+          finished?: boolean,
+          window_duration: non_neg_integer
+        }
 
-  def new(%Config{windowed?: false} = config) do
-    new(%Config{config | target_window_duration: 0})
-  end
+  @type id_t :: any
+  @type fragments_t :: Qex.t({name :: String.t(), fragment_duration_t})
+  @type fragment_duration_t :: Membrane.Time.t() | Ratio.t()
 
+  @spec new(Config.t()) :: t
   def new(%Config{} = config) do
     id_string = config.id |> :erlang.term_to_binary() |> Base.url_encode64(padding: false)
 
@@ -45,6 +78,8 @@ defmodule Membrane.HTTPAdaptiveStream.Playlist.Track do
     |> Map.merge(Map.from_struct(config))
   end
 
+  @spec add_fragment(t, fragment_duration_t) ::
+          {{to_add_name :: String.t(), to_remove_names :: [String.t()]}, t}
   def add_fragment(%__MODULE__{finished?: false} = track, duration) do
     use Ratio, comparison: true
 
@@ -70,10 +105,12 @@ defmodule Membrane.HTTPAdaptiveStream.Playlist.Track do
     {{name, to_remove_names}, %__MODULE__{track | stale_fragments: stale_fragments}}
   end
 
+  @spec finish(t) :: t
   def finish(track) do
     %__MODULE__{track | finished?: true}
   end
 
+  @spec from_beginning(t) :: t
   def from_beginning(%__MODULE__{permanent?: true} = track) do
     %__MODULE__{
       track
@@ -82,12 +119,9 @@ defmodule Membrane.HTTPAdaptiveStream.Playlist.Track do
     }
   end
 
+  @spec all_fragments(t) :: [fragment_name :: String.t()]
   def all_fragments(%__MODULE__{} = track) do
     Qex.join(track.stale_fragments, track.fragments) |> Enum.map(& &1.name)
-  end
-
-  defp pop_stale_fragments(%__MODULE__{windowed?: false} = track) do
-    {Enum.to_list(track.fragments), %__MODULE__{track | fragments: Qex.new()}}
   end
 
   defp pop_stale_fragments(%__MODULE__{target_window_duration: :infinity} = track) do
