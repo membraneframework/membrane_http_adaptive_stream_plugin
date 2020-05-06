@@ -21,6 +21,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
 
   use Bunch
   use Membrane.Sink
+  alias Membrane.CMAF
   alias Membrane.HTTPAdaptiveStream.{Playlist, Storage}
 
   def_input_pad :input,
@@ -90,15 +91,15 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   end
 
   @impl true
-  def handle_caps(Pad.ref(:input, id), caps, _ctx, state) do
+  def handle_caps(Pad.ref(:input, id), %CMAF{} = caps, _ctx, state) do
     {init_name, playlist} =
       Playlist.add_track(
         state.playlist,
         %Playlist.Track.Config{
           id: id,
           content_type: caps.content_type,
-          init_extension: caps.init_extension,
-          fragment_extension: caps.fragment_extension,
+          init_extension: ".mp4",
+          fragment_extension: ".m4s",
           target_window_duration: state.target_window_duration,
           target_fragment_duration: state.target_fragment_duration,
           permanent?: state.store_permanent?

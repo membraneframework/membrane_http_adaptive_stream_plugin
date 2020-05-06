@@ -104,11 +104,8 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
   defp add_track(content_type, state) do
     Sink.handle_caps(
       Pad.ref(:input, content_type),
-      %Membrane.Caps.HTTPAdaptiveStream.Track{
+      %Membrane.CMAF{
         content_type: content_type,
-        init_extension: ".mp4",
-        fragment_extension: ".m4s",
-        container: :cmaf,
         init: "test_init"
       },
       nil,
