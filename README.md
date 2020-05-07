@@ -1,4 +1,4 @@
-# Membrane HTTPAdaptiveStream Plugin
+# Membrane HTTP Adaptive Streaming Plugin
 
 [![Hex.pm](https://img.shields.io/hexpm/v/membrane_http_adaptive_stream_plugin.svg)](https://hex.pm/packages/membrane_http_adaptive_stream_plugin)
 [![API Docs](https://img.shields.io/badge/api-docs-yellow.svg?style=flat)](https://hexdocs.pm/membrane_http_adaptive_stream_plugin/)
