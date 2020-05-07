@@ -4,8 +4,9 @@
 [![API Docs](https://img.shields.io/badge/api-docs-yellow.svg?style=flat)](https://hexdocs.pm/membrane_http_adaptive_stream_plugin/)
 [![CircleCI](https://circleci.com/gh/membraneframework/membrane_http_adaptive_stream_plugin.svg?style=svg)](https://circleci.com/gh/membraneframework/membrane_http_adaptive_stream_plugin)
 
-Plugin for generating HTTP adaptive streaming playlists.
-Currently, only HTTP Live Streaming (HLS) protocol is supported.
+Plugin generating playlists for HTTP adaptive streaming protocols.
+Currently, only HTTP Live Streaming (HLS) is supported.
+In future, the support for MPEG-DASH is planned as well
 
 ## Installation
 
