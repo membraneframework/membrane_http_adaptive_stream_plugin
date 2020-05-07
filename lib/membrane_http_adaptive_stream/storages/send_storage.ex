@@ -24,7 +24,7 @@ defmodule Membrane.HTTPAdaptiveStream.Storages.SendStorage do
              mode: :text | :binary
            }}
 
-  @type remove_t :: {__MODULE__, :store, %{name: String.t(), type: :playlist | :init | :chunk}}
+  @type remove_t :: {__MODULE__, :remove, %{name: String.t(), type: :playlist | :init | :chunk}}
 
   @impl true
   def init(%__MODULE__{} = config), do: config
