@@ -8,7 +8,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
   test "single track" do
     assert {:ok, state} = init()
     assert {:ok, state} = add_track(:audio, state)
-    assert_receive({SendStorage, :store, %{type: :init}})
+    assert_receive {SendStorage, :store, %{type: :init}}
 
     assert {{:ok, _actions}, state} =
              Sink.handle_write(Pad.ref(:input, :audio), gen_buf(2), nil, state)
