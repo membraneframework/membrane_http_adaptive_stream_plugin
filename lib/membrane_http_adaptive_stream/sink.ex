@@ -7,8 +7,8 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
 
   ## Notifications
 
-  - `{:track_playable, pad_ref}` - sent when the first chunk of a track is stored,
-    and thus the track is ready to be played
+  - `{:track_playable, input_pad_id}` - sent when the first chunk of a track is
+    stored, and thus the track is ready to be played
   - `{:cleanup, cleanup_function :: (()-> :ok)}` - sent when playback changes
     from playing to prepared. Invoking `cleanup_function` lambda results in removing
     all the files that remain after the streaming
@@ -184,7 +184,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
 
   defp maybe_notify_playable(id, %{awaiting_first_fragment: awaiting_first_fragment} = state) do
     if MapSet.member?(awaiting_first_fragment, id) do
-      {[notify: {:track_playable, Pad.ref(:input, id)}],
+      {[notify: {:track_playable, id}],
        %{state | awaiting_first_fragment: MapSet.delete(awaiting_first_fragment, id)}}
     else
       {[], state}
