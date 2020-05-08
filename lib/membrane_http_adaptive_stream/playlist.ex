@@ -51,7 +51,7 @@ defmodule Membrane.HTTPAdaptiveStream.Playlist do
   @doc """
   Restores all the stale chunks in all tracks.
 
-  All the tracks must be configured to be 'permanent'.
+  All the tracks must be configured to be 'persist'ed.
   """
   def from_beginning(%__MODULE__{} = playlist) do
     tracks = Bunch.Map.map_values(playlist.tracks, &Track.from_beginning/1)

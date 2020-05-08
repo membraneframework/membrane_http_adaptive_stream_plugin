@@ -5,6 +5,14 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   Uses `Membrane.HTTPAdaptiveStream.Playlist` for playlist serialization
   and `Membrane.HTTPAdaptiveStream.Storage` for saving files.
 
+  ## Notifications
+
+  - `{:track_playable, pad_ref}` - sent when the first chunk of a track is stored,
+    and thus the track is ready to be played
+  - `{:cleanup, cleanup_function :: (()-> :ok)}` - sent when playback changes
+    from playing to prepared. Invoking `cleanup_function` lambda results in removing
+    all the files that remain after the streaming
+
   ## Examples
 
   The following configuration:
@@ -27,7 +35,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   def_input_pad :input,
     availability: :on_request,
     demand_unit: :buffers,
-    caps: Membrane.Caps.HTTPAdaptiveStream.Track
+    caps: CMAF
 
   def_options playlist_name: [
                 type: :string,
@@ -47,19 +55,20 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
                 type: :struct,
                 spec: Storage.config_t(),
                 description: """
-                Implementation of the `Membrane.HTTPAdaptiveStream.Storage`
-                behaviour.
+                Storage configuration. May be one of `Membrane.HTTPAdaptiveStream.Storages.*`.
+                See `Membrane.HTTPAdaptiveStream.Storage` behaviour.
                 """
               ],
               target_window_duration: [
                 spec: pos_integer | :infinity,
+                type: :time,
                 default: Membrane.Time.seconds(5),
                 description: """
                 Playlist duration is keept above that time, while the oldest chunks
                 are removed whenever possible.
                 """
               ],
-              store_permanent?: [
+              persist?: [
                 type: :bool,
                 default: false,
                 description: """
@@ -85,7 +94,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     |> Map.merge(%{
       storage: Storage.new(options.storage),
       playlist: %Playlist{name: options.playlist_name, module: options.playlist_module},
-      to_notify: MapSet.new()
+      awaiting_first_fragment: MapSet.new()
     })
     ~> {:ok, &1}
   end
@@ -102,7 +111,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
           fragment_extension: ".m4s",
           target_window_duration: state.target_window_duration,
           target_fragment_duration: state.target_fragment_duration,
-          permanent?: state.store_permanent?
+          persist?: state.persist?
         }
       )
 
@@ -113,8 +122,8 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
 
   @impl true
   def handle_start_of_stream(Pad.ref(:input, id) = pad, _ctx, state) do
-    to_notify = MapSet.put(state.to_notify, id)
-    {{:ok, demand: pad}, %{state | to_notify: to_notify}}
+    awaiting_first_fragment = MapSet.put(state.awaiting_first_fragment, id)
+    {{:ok, demand: pad}, %{state | awaiting_first_fragment: awaiting_first_fragment}}
   end
 
   @impl true
@@ -148,7 +157,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     %{
       playlist: playlist,
       storage: storage,
-      store_permanent?: store_permanent?
+      persist?: persist?
     } = state
 
     to_remove = Playlist.all_fragments(playlist)
@@ -159,7 +168,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     end
 
     result =
-      if store_permanent? do
+      if persist? do
         {result, storage} =
           playlist |> Playlist.from_beginning() |> serialize_and_store_playlist(storage)
 
@@ -173,9 +182,10 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     end
   end
 
-  defp maybe_notify_playable(id, %{to_notify: to_notify} = state) do
-    if MapSet.member?(to_notify, id) do
-      {[notify: {:stream_playable, id}], %{state | to_notify: MapSet.delete(to_notify, id)}}
+  defp maybe_notify_playable(id, %{awaiting_first_fragment: awaiting_first_fragment} = state) do
+    if MapSet.member?(awaiting_first_fragment, id) do
+      {[notify: {:track_playable, Pad.ref(:input, id)}],
+       %{state | awaiting_first_fragment: MapSet.delete(awaiting_first_fragment, id)}}
     else
       {[], state}
     end

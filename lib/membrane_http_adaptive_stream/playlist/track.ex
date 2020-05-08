@@ -20,7 +20,7 @@ defmodule Membrane.HTTPAdaptiveStream.Playlist.Track do
     defstruct @enforce_keys ++
                 [
                   target_window_duration: nil,
-                  permanent?: false
+                  persist?: false
                 ]
 
     @type t :: %__MODULE__{
@@ -30,7 +30,7 @@ defmodule Membrane.HTTPAdaptiveStream.Playlist.Track do
             fragment_extension: String.t(),
             target_fragment_duration: Membrane.Time.t() | Ratio.t(),
             target_window_duration: Membrane.Time.t() | Ratio.t(),
-            permanent?: boolean
+            persist?: boolean
           }
   end
 
@@ -53,7 +53,7 @@ defmodule Membrane.HTTPAdaptiveStream.Playlist.Track do
           fragment_extension: String.t(),
           target_fragment_duration: fragment_duration_t,
           target_window_duration: Membrane.Time.t() | Ratio.t(),
-          permanent?: boolean,
+          persist?: boolean,
           id_string: String.t(),
           init_name: String.t(),
           current_seq_num: non_neg_integer,
@@ -96,7 +96,7 @@ defmodule Membrane.HTTPAdaptiveStream.Playlist.Track do
       |> pop_stale_fragments()
 
     {to_remove_names, stale_fragments} =
-      if track.permanent? do
+      if track.persist? do
         {[], Qex.join(track.stale_fragments, Qex.new(stale_fragments))}
       else
         {Enum.map(stale_fragments, & &1.name), track.stale_fragments}
@@ -111,7 +111,7 @@ defmodule Membrane.HTTPAdaptiveStream.Playlist.Track do
   end
 
   @spec from_beginning(t) :: t
-  def from_beginning(%__MODULE__{permanent?: true} = track) do
+  def from_beginning(%__MODULE__{persist?: true} = track) do
     %__MODULE__{
       track
       | fragments: Qex.join(track.stale_fragments, track.fragments),
