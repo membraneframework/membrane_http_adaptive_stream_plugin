@@ -35,7 +35,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   def_input_pad :input,
     availability: :on_request,
     demand_unit: :buffers,
-    caps: CMAF
+    caps: CMAF.Track
 
   def_options manifest_name: [
                 type: :string,
@@ -100,7 +100,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   end
 
   @impl true
-  def handle_caps(Pad.ref(:input, id), %CMAF{} = caps, _ctx, state) do
+  def handle_caps(Pad.ref(:input, id), %CMAF.Track{} = caps, _ctx, state) do
     {header_name, manifest} =
       Manifest.add_track(
         state.manifest,
@@ -116,7 +116,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
       )
 
     state = %{state | manifest: manifest}
-    {result, storage} = Storage.store_header(state.storage, header_name, caps.init)
+    {result, storage} = Storage.store_header(state.storage, header_name, caps.header)
     {result, %{state | storage: storage}}
   end
 

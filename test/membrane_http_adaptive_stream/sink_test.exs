@@ -8,15 +8,15 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
 
   defmodule Source do
     use Membrane.Source
-    alias Membrane.CMAF
+    alias Membrane.CMAF.Track
 
-    def_output_pad :output, caps: CMAF, mode: :push
+    def_output_pad :output, caps: Track, mode: :push
 
     def_options content_type: [spec: :audio | :video]
 
     @impl true
     def handle_prepared_to_playing(_ctx, state) do
-      caps = %CMAF{content_type: state.content_type, init: "test_header"}
+      caps = %Track{content_type: state.content_type, header: "test_header"}
       {{:ok, caps: {:output, caps}}, state}
     end
 
