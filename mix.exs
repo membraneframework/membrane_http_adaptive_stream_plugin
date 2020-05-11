@@ -58,7 +58,7 @@ defmodule Membrane.HTTPAdaptiveStream.MixProject do
 
   defp deps do
     [
-      {:membrane_core, "~> 0.5.0"},
+      {:membrane_core, "~> 0.5.2"},
       {:membrane_cmaf_format,
        github: "membraneframework/membrane_cmaf_format", branch: "develop"},
       {:ex_doc, "~> 0.21", only: [:dev, :test], runtime: false},

@@ -47,9 +47,10 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
 
     :ok = Testing.Pipeline.stop(pipeline)
     assert_pipeline_playback_changed(pipeline, _, :stopped)
+    assert_receive {SendStorage, :store, %{type: :playlist, name: "index.m3u8"}}
     assert_pipeline_notified(pipeline, :sink, {:cleanup, cleanup_fun})
     assert :ok = cleanup_fun.()
-    assert_receive {SendStorage, :remove, %{type: :playlist, name: "index" <> _}}
+    assert_receive {SendStorage, :remove, %{type: :playlist, name: "index.m3u8"}}
     assert_receive {SendStorage, :remove, %{name: "audio_fragment_1_" <> _}}
     assert_receive {SendStorage, :remove, %{name: "audio_fragment_2_" <> _}}
     refute_receive {SendStorage, _, _}
@@ -89,11 +90,17 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
 
     :ok = Testing.Pipeline.stop(pipeline)
     assert_pipeline_playback_changed(pipeline, _, :stopped)
+    assert_receive {SendStorage, :store, %{type: :playlist, name: "audio.m3u8"}}
+    assert_receive {SendStorage, :store, %{type: :playlist, name: "video.m3u8"}}
+    # Cache will be cleared on first track removal, thus index and that track playlist
+    # will be stored again upon second track removal.
+    assert_receive {SendStorage, :store, %{type: :playlist, name: "index.m3u8"}}
+    assert_receive {SendStorage, :store, %{type: :playlist, name: _}}
     assert_pipeline_notified(pipeline, :sink, {:cleanup, cleanup_fun})
     assert :ok = cleanup_fun.()
-    assert_receive {SendStorage, :remove, %{type: :playlist, name: "index" <> _}}
-    assert_receive {SendStorage, :remove, %{type: :playlist, name: "audio" <> _}}
-    assert_receive {SendStorage, :remove, %{type: :playlist, name: "video" <> _}}
+    assert_receive {SendStorage, :remove, %{type: :playlist, name: "index.m3u8"}}
+    assert_receive {SendStorage, :remove, %{type: :playlist, name: "audio.m3u8"}}
+    assert_receive {SendStorage, :remove, %{type: :playlist, name: "video.m3u8"}}
     assert_receive {SendStorage, :remove, %{name: "audio_fragment_1_" <> _}}
     assert_receive {SendStorage, :remove, %{name: "audio_fragment_2_" <> _}}
     assert_receive {SendStorage, :remove, %{name: "video_fragment_1_" <> _}}
