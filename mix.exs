@@ -39,7 +39,7 @@ defmodule Membrane.HTTPAdaptiveStream.MixProject do
       groups_for_modules: [
         Elements: [~r/^Membrane.HTTPAdaptiveStream.Sink/],
         HLS: [~r/^Membrane.HTTPAdaptiveStream.HLS/],
-        Playlist: [~r/^Membrane.HTTPAdaptiveStream.Playlist/],
+        Manifest: [~r/^Membrane.HTTPAdaptiveStream.Manifest/],
         Storages: [~r/^Membrane.HTTPAdaptiveStream.Storage/]
       ]
     ]

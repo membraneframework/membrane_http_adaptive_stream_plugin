@@ -21,11 +21,12 @@ defmodule Membrane.HTTPAdaptiveStream.Storages.GenServerStorage do
            %{
              name: String.t(),
              contents: String.t(),
-             type: :playlist | :init | :chunk,
+             type: :manifest | :header | :segment,
              mode: :text | :binary
            }}
 
-  @type remove_t :: {__MODULE__, :remove, %{name: String.t(), type: :playlist | :init | :chunk}}
+  @type remove_t ::
+          {__MODULE__, :remove, %{name: String.t(), type: :manifest | :header | :segment}}
 
   @impl true
   def init(%__MODULE__{} = config) do

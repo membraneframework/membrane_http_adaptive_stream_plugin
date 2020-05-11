@@ -1,6 +1,6 @@
 defmodule Membrane.HTTPAdaptiveStream.Storage do
   @moduledoc """
-  Behaviour for storing playlists and stream chunks.
+  Behaviour for storing manifests and stream segments.
   """
   use Bunch
   use Bunch.Access
@@ -13,24 +13,24 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   @callback store(
               resource_name :: String.t(),
               content :: String.t(),
-              context :: %{type: :playlist | :init | :chunk, mode: :text | :binary},
+              context :: %{type: :manifest | :header | :segment, mode: :text | :binary},
               state_t
             ) :: callback_result_t
   @callback remove(
               resource_name :: String.t(),
-              context :: %{type: :playlist | :init | :chunk},
+              context :: %{type: :manifest | :header | :segment},
               state_t
             ) :: callback_result_t
 
   @enforce_keys [:storage_impl, :impl_state, :cache_enabled?]
-  defstruct @enforce_keys ++ [cache: %{}, stored_playlists: MapSet.new()]
+  defstruct @enforce_keys ++ [cache: %{}, stored_manifests: MapSet.new()]
 
   @opaque t :: %__MODULE__{
             storage_impl: module,
             impl_state: any,
             cache_enabled?: bool,
             cache: map,
-            stored_playlists: MapSet.t()
+            stored_manifests: MapSet.t()
           }
 
   @doc """
@@ -46,30 +46,30 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   end
 
   @doc """
-  Stores serialized playlist files
+  Stores serialized manifest files
   """
-  @spec store_playlists(t, [{name :: String.t(), content :: String.t()}]) ::
+  @spec store_manifests(t, [{name :: String.t(), content :: String.t()}]) ::
           {callback_result_t, t}
-  def store_playlists(storage, playlists) do
-    Bunch.Enum.try_reduce(playlists, storage, &store_playlist/2)
+  def store_manifests(storage, manifests) do
+    Bunch.Enum.try_reduce(manifests, storage, &store_manifest/2)
   end
 
-  defp store_playlist({name, playlist}, storage) do
+  defp store_manifest({name, manifest}, storage) do
     %__MODULE__{
       storage_impl: storage_impl,
       impl_state: impl_state,
       cache: cache,
       cache_enabled?: cache_enabled?,
-      stored_playlists: stored_playlists
+      stored_manifests: stored_manifests
     } = storage
 
-    withl cache: false <- cache[name] == playlist,
+    withl cache: false <- cache[name] == manifest,
           store:
             :ok <-
-              storage_impl.store(name, playlist, %{mode: :text, type: :playlist}, impl_state),
-          do: storage = %{storage | stored_playlists: MapSet.put(stored_playlists, name)},
+              storage_impl.store(name, manifest, %{mode: :text, type: :manifest}, impl_state),
+          do: storage = %{storage | stored_manifests: MapSet.put(stored_manifests, name)},
           update_cache?: true <- cache_enabled? do
-      storage = put_in(storage, [:cache, name], playlist)
+      storage = put_in(storage, [:cache, name], manifest)
       {:ok, storage}
     else
       cache: true -> {:ok, storage}
@@ -79,57 +79,58 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   end
 
   @doc """
-  Stores stream init file.
+  Stores stream header file.
   """
-  @spec store_init(t, name :: String.t(), payload :: binary) :: {callback_result_t, t}
-  def store_init(storage, name, payload) do
+  @spec store_header(t, name :: String.t(), payload :: binary) :: {callback_result_t, t}
+  def store_header(storage, name, payload) do
     %__MODULE__{storage_impl: storage_impl, impl_state: impl_state} = storage
 
-    result = storage_impl.store(name, payload, %{mode: :binary, type: :init}, impl_state)
+    result = storage_impl.store(name, payload, %{mode: :binary, type: :header}, impl_state)
     {result, storage}
   end
 
   @doc """
-  Stores a new chunk and removes stale ones.
+  Stores a new segment and removes stale ones.
   """
-  @spec apply_chunk_changeset(
+  @spec apply_segment_changeset(
           t,
           {to_add :: String.t(), to_remove :: [String.t()]},
           payload :: binary
         ) :: {callback_result_t, t}
-  def apply_chunk_changeset(storage, {to_add, to_remove}, payload) do
+  def apply_segment_changeset(storage, {to_add, to_remove}, payload) do
     %__MODULE__{storage_impl: storage_impl, impl_state: impl_state} = storage
 
     with :ok <-
-           Bunch.Enum.try_each(to_remove, &storage_impl.remove(&1, %{type: :chunk}, impl_state)),
-         :ok <- storage_impl.store(to_add, payload, %{mode: :binary, type: :chunk}, impl_state) do
+           Bunch.Enum.try_each(to_remove, &storage_impl.remove(&1, %{type: :segment}, impl_state)),
+         :ok <- storage_impl.store(to_add, payload, %{mode: :binary, type: :segment}, impl_state) do
       :ok
     end
     ~> {&1, storage}
   end
 
   @doc """
-  Removes all the saved chunks and playlists.
+  Removes all the saved segments and manifests.
   """
-  @spec cleanup(t, chunks :: [String.t()]) :: {callback_result_t, t}
-  def cleanup(storage, chunks) do
-    %__MODULE__{storage_impl: storage_impl, impl_state: impl_state, stored_playlists: playlists} =
+  @spec cleanup(t, segments :: [String.t()]) :: {callback_result_t, t}
+  def cleanup(storage, segments) do
+    %__MODULE__{storage_impl: storage_impl, impl_state: impl_state, stored_manifests: manifests} =
       storage
 
     with :ok <-
            Bunch.Enum.try_each(
-             playlists,
-             &storage_impl.remove(&1, %{type: :playlist}, impl_state)
+             manifests,
+             &storage_impl.remove(&1, %{type: :manifest}, impl_state)
            ),
-         :ok <- Bunch.Enum.try_each(chunks, &storage_impl.remove(&1, %{type: :chunk}, impl_state)) do
-      {:ok, %__MODULE__{storage | cache: %{}, stored_playlists: MapSet.new()}}
+         :ok <-
+           Bunch.Enum.try_each(segments, &storage_impl.remove(&1, %{type: :segment}, impl_state)) do
+      {:ok, %__MODULE__{storage | cache: %{}, stored_manifests: MapSet.new()}}
     else
       error -> {error, storage}
     end
   end
 
   @doc """
-  Clears the playlist cache.
+  Clears the manifest cache.
   """
   @spec clear_cache(t) :: t
   def clear_cache(storage) do

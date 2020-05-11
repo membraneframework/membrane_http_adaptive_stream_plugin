@@ -1,11 +1,11 @@
-defmodule Membrane.HTTPAdaptiveStream.Playlist do
+defmodule Membrane.HTTPAdaptiveStream.Manifest do
   @moduledoc """
-  Behaviour for playlist serialization.
+  Behaviour for manifest serialization.
   """
   use Bunch.Access
   alias __MODULE__.Track
 
-  @callback serialize(t) :: [{playlist_name :: String.t(), playlist_content :: String.t()}]
+  @callback serialize(t) :: [{manifest_name :: String.t(), manifest_content :: String.t()}]
 
   @type t :: %__MODULE__{
           name: String.t(),
@@ -17,51 +17,51 @@ defmodule Membrane.HTTPAdaptiveStream.Playlist do
   defstruct @enforce_keys ++ [tracks: %{}]
 
   @doc """
-  Adds a track to the playlist.
+  Adds a track to the manifest.
 
-  Returns the name under which the init file should be stored.
+  Returns the name under which the header file should be stored.
   """
-  @spec add_track(t, Track.Config.t()) :: {init_name :: String.t(), t}
-  def add_track(playlist, %Track.Config{} = config) do
+  @spec add_track(t, Track.Config.t()) :: {header_name :: String.t(), t}
+  def add_track(manifest, %Track.Config{} = config) do
     track = Track.new(config)
-    playlist = %__MODULE__{playlist | tracks: Map.put(playlist.tracks, config.id, track)}
-    {track.init_name, playlist}
+    manifest = %__MODULE__{manifest | tracks: Map.put(manifest.tracks, config.id, track)}
+    {track.header_name, manifest}
   end
 
-  @spec add_fragment(t, track_id :: Track.id_t(), Track.fragment_duration_t()) ::
+  @spec add_segment(t, track_id :: Track.id_t(), Track.segment_duration_t()) ::
           {{to_add_name :: String.t(), to_remove_names :: [String.t()]}, t}
-  def add_fragment(%__MODULE__{} = playlist, track_id, duration) do
+  def add_segment(%__MODULE__{} = manifest, track_id, duration) do
     get_and_update_in(
-      playlist,
+      manifest,
       [:tracks, track_id],
-      &Track.add_fragment(&1, duration)
+      &Track.add_segment(&1, duration)
     )
   end
 
-  @spec serialize(t) :: [{name :: String.t(), playlist :: String.t()}]
-  def serialize(%__MODULE__{module: module} = playlist) do
-    module.serialize(playlist)
+  @spec serialize(t) :: [{name :: String.t(), manifest :: String.t()}]
+  def serialize(%__MODULE__{module: module} = manifest) do
+    module.serialize(manifest)
   end
 
   @spec finish(t, Track.id_t()) :: t
-  def finish(%__MODULE__{} = playlist, track_id) do
-    update_in(playlist, [:tracks, track_id], &Track.finish/1)
+  def finish(%__MODULE__{} = manifest, track_id) do
+    update_in(manifest, [:tracks, track_id], &Track.finish/1)
   end
 
   @doc """
-  Restores all the stale chunks in all tracks.
+  Restores all the stale segments in all tracks.
 
   All the tracks must be configured to be 'persist'ed.
   """
-  def from_beginning(%__MODULE__{} = playlist) do
-    tracks = Bunch.Map.map_values(playlist.tracks, &Track.from_beginning/1)
-    %__MODULE__{playlist | tracks: tracks}
+  def from_beginning(%__MODULE__{} = manifest) do
+    tracks = Bunch.Map.map_values(manifest.tracks, &Track.from_beginning/1)
+    %__MODULE__{manifest | tracks: tracks}
   end
 
   @doc """
-  Returns stale and current fragments' names from all tracks
+  Returns stale and current segments' names from all tracks
   """
-  def all_fragments(%__MODULE__{} = playlist) do
-    playlist.tracks |> Map.values() |> Enum.flat_map(&Track.all_fragments/1)
+  def all_segments(%__MODULE__{} = manifest) do
+    manifest.tracks |> Map.values() |> Enum.flat_map(&Track.all_segments/1)
   end
 end
