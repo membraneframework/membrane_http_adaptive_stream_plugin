@@ -121,9 +121,25 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   end
 
   @impl true
-  def handle_start_of_stream(Pad.ref(:input, id) = pad, _ctx, state) do
+  def handle_prepared_to_playing(ctx, state) do
+    demands = ctx.pads |> Map.keys() |> Enum.map(&{:demand, &1})
+    {{:ok, demands}, state}
+  end
+
+  @impl true
+  def handle_pad_added(pad, %{playback_state: :playing}, state) do
+    {{:ok, demand: pad}, state}
+  end
+
+  @impl true
+  def handle_pad_added(_pad, _ctx, state) do
+    {:ok, state}
+  end
+
+  @impl true
+  def handle_start_of_stream(Pad.ref(:input, id), _ctx, state) do
     awaiting_first_segment = MapSet.put(state.awaiting_first_segment, id)
-    {{:ok, demand: pad}, %{state | awaiting_first_segment: awaiting_first_segment}}
+    {:ok, %{state | awaiting_first_segment: awaiting_first_segment}}
   end
 
   @impl true
