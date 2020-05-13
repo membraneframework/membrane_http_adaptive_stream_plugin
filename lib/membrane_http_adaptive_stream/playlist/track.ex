@@ -23,6 +23,17 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
                   persist?: false
                 ]
 
+    @typedoc """
+    Track configuration consists of the following fields:
+    - `id` - identifies the track, will be serialized and attached to names of manifests, headers and segments
+    - `content_type` - either audio or video
+    - `header_extension` - extension of the header file (for example .mp4 for CMAF)
+    - `segment_extension` - extension of the segment files (for example .m4s for CMAF)
+    - `target_segment_duration` - expected duration of each segment
+    - `target_window_duration` - track manifest duration is keept above that time, while the oldest segments
+                are removed whenever possible
+    - `persist?` - determines whether the entire track contents should be available after the streaming finishes
+    """
     @type t :: %__MODULE__{
             id: Track.id_t(),
             content_type: :audio | :video,
@@ -46,6 +57,18 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
                 window_duration: 0
               ]
 
+  @typedoc """
+  The struct representing a track.
+
+  Consists of all the fields from `Config.t` and also:
+  - `id_string` - serialized `id`
+  - `header_name` - name of the header file
+  - `current_seq_num` - the number to identify the next segment
+  - `segments` - segments' names and durations
+  - `stale_segments` - stale segments' names and durations, kept empty unless `persist?` is set to true
+  - `finished?` - determines whether the track is finished
+  - `window_duration` - current window duration
+  """
   @type t :: %__MODULE__{
           id: id_t,
           content_type: :audio | :video,

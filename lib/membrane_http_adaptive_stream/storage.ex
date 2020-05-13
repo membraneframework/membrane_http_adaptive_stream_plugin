@@ -9,13 +9,24 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   @type state_t :: any
   @type callback_result_t :: :ok | {:error, reason :: any}
 
+  @doc """
+  Generates the storage state based on the configuration struct.
+  """
   @callback init(config_t) :: state_t
+
+  @doc """
+  Stores the resource.
+  """
   @callback store(
               resource_name :: String.t(),
               content :: String.t(),
               context :: %{type: :manifest | :header | :segment, mode: :text | :binary},
               state_t
             ) :: callback_result_t
+
+  @doc """
+  Removes the resource.
+  """
   @callback remove(
               resource_name :: String.t(),
               context :: %{type: :manifest | :header | :segment},
@@ -35,6 +46,9 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
 
   @doc """
   Initializes the storage.
+
+  Accepts the following options:
+  - `enable_cache` - if true (default), manifests won't be stored when not changed
   """
   @spec new(config_t, [{:enable_cache, boolean}]) :: t
   def new(%storage_impl{} = storage_config, opts \\ []) do
