@@ -6,7 +6,7 @@ defmodule Membrane.HTTPAdaptiveStream.MixProject do
 
   def project do
     [
-      app: :membrane_http_adaptive_stream,
+      app: :membrane_http_adaptive_stream_plugin,
       version: @version,
       elixir: "~> 1.7",
       elixirc_paths: elixirc_paths(Mix.env()),
