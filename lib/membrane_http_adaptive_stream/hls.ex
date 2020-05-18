@@ -1,4 +1,4 @@
-defmodule Membrane.HTTPAdaptiveStream.HLS.Manifest do
+defmodule Membrane.HTTPAdaptiveStream.HLS do
   @moduledoc """
   `Membrane.HTTPAdaptiveStream.Manifest` implementation for HLS.
 

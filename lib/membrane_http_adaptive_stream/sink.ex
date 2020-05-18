@@ -19,7 +19,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
 
       %#{inspect(__MODULE__)}{
         manifest_name: "manifest",
-        manifest_module: Membrane.HTTPAdaptiveStream.HLS.Manifest,
+        manifest_module: Membrane.HTTPAdaptiveStream.HLS,
         storage: %Membrane.HTTPAdaptiveStream.Storages.FileStorage{directory: "output"}
       }
 
