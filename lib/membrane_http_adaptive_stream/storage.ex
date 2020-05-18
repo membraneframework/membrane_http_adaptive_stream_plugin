@@ -48,7 +48,7 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   Initializes the storage.
 
   Accepts the following options:
-  - `enable_cache` - if true (default), manifests won't be stored when not changed
+  - `enable_cache` - if true (default), manifests will be stored only if they've been changed
   """
   @spec new(config_t, [{:enable_cache, boolean}]) :: t
   def new(%storage_impl{} = storage_config, opts \\ []) do
