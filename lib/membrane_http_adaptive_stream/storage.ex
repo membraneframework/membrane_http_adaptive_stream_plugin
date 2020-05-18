@@ -19,7 +19,7 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   """
   @callback store(
               resource_name :: String.t(),
-              content :: String.t(),
+              content :: String.t() | binary,
               context :: %{type: :manifest | :header | :segment, mode: :text | :binary},
               state_t
             ) :: callback_result_t
