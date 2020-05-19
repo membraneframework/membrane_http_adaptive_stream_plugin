@@ -15,7 +15,9 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   @callback init(config_t) :: state_t
 
   @doc """
-  Stores the resource.
+  Stores the resource on a storage.
+  
+  Gets the mode that should be used when writing to a file and type of the resource
   """
   @callback store(
               resource_name :: String.t(),
