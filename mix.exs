@@ -1,21 +1,23 @@
-defmodule Membrane.Element.HTTPAdaptiveStream.MixProject do
+defmodule Membrane.HTTPAdaptiveStream.MixProject do
   use Mix.Project
 
   @version "0.1.0"
-  @github_url "https://github.com/membraneframework/membrane-element-http-adaptive-stream"
+  @github_url "https://github.com/membraneframework/membrane_http_adaptive_stream_plugin"
 
   def project do
     [
-      app: :membrane_element_http_adaptive_stream,
+      app: :membrane_http_adaptive_stream_plugin,
       version: @version,
       elixir: "~> 1.7",
       elixirc_paths: elixirc_paths(Mix.env()),
-      description: "Membrane Multimedia Framework (HTTPAdaptiveStream Element)",
+      deps: deps(),
+      # hex
+      description: "Membrane plugin for adaptive streaming over HTTP",
       package: package(),
-      name: "Membrane Element: HTTPAdaptiveStream",
+      # docs
+      name: "Membrane HTTP Adaptive Stream plugin",
       source_url: @github_url,
-      docs: docs(),
-      deps: deps()
+      docs: docs()
     ]
   end
 
@@ -33,7 +35,13 @@ defmodule Membrane.Element.HTTPAdaptiveStream.MixProject do
       main: "readme",
       extras: ["README.md"],
       source_ref: "v#{@version}",
-      nest_modules_by_prefix: [Membrane.Element.HTTPAdaptiveStream]
+      nest_modules_by_prefix: [Membrane.HTTPAdaptiveStream],
+      groups_for_modules: [
+        Elements: [~r/^Membrane.HTTPAdaptiveStream.Sink/],
+        HLS: [~r/^Membrane.HTTPAdaptiveStream.HLS/],
+        Manifest: [~r/^Membrane.HTTPAdaptiveStream.Manifest/],
+        Storages: [~r/^Membrane.HTTPAdaptiveStream.Storage/]
+      ]
     ]
   end
 
@@ -50,10 +58,9 @@ defmodule Membrane.Element.HTTPAdaptiveStream.MixProject do
 
   defp deps do
     [
-      {:membrane_core, "~> 0.5.0"},
-      {:membrane_caps_http_adaptive_stream,
-       git: "git@github.com:membraneframework/membrane-caps-http-adaptive-stream"},
-      {:fe, "~> 0.1.3"},
+      {:membrane_core, "~> 0.5.2"},
+      {:membrane_cmaf_format,
+       github: "membraneframework/membrane_cmaf_format", branch: "develop"},
       {:ex_doc, "~> 0.21", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.0.0-rc.7", only: [:dev, :test], runtime: false}
     ]

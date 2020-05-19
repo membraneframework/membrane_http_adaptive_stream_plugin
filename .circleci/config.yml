@@ -8,8 +8,8 @@ jobs:
     working_directory: '~/app'
 
     steps:
-      - checkout 
+      - checkout
       - run: mix deps.get
       - run: mix format --check-formatted
+      - run: mix compile --warnings-as-errors
       - run: mix test
-
