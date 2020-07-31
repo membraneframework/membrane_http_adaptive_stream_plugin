@@ -16,7 +16,7 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
 
   @doc """
   Stores the resource on a storage.
-  
+
   Gets the mode that should be used when writing to a file and type of the resource
   """
   @callback store(
