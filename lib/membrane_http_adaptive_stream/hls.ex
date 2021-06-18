@@ -45,7 +45,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   defp serialize_track(%Track{} = track) do
     use Ratio
 
-    target_duration = Ratio.ceil(track.target_segment_duration / Time.second()) |> trunc
+    target_duration = Ratio.ceil(track.target_segment_duration / Time.second()) |> trunc()
     media_sequence = track.current_seq_num - Enum.count(track.segments)
 
     """
@@ -54,12 +54,19 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     #EXT-X-TARGETDURATION:#{target_duration}
     #EXT-X-MEDIA-SEQUENCE:#{media_sequence}
     #EXT-X-MAP:URI="#{track.header_name}"
-    #{
-      track.segments
-      |> Enum.flat_map(&["#EXTINF:#{Ratio.to_float(&1.duration / Time.second())},", &1.name])
-      |> Enum.join("\n")
-    }
+    #{track.segments |> Enum.flat_map(&serialize_single_segment/1) |> Enum.join("\n")}
     #{if track.finished?, do: "#EXT-X-ENDLIST", else: ""}
     """
+  end
+
+  defp serialize_single_segment({:discontiunity, header_name}) do
+    """
+    #EXT-X-DISCONTINUITY
+    #EXT-X-MAP:URI=#{header_name}
+    """
+  end
+
+  defp serialize_single_segment(segment) do
+    ["#EXTINF:#{Ratio.to_float(segment.duration / Time.second())},", segment.name]
   end
 end

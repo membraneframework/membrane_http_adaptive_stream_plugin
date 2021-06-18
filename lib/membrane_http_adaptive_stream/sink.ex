@@ -102,18 +102,22 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   @impl true
   def handle_caps(Pad.ref(:input, id), %CMAF.Track{} = caps, _ctx, state) do
     {header_name, manifest} =
-      Manifest.add_track(
-        state.manifest,
-        %Manifest.Track.Config{
-          id: id,
-          content_type: caps.content_type,
-          header_extension: ".mp4",
-          segment_extension: ".m4s",
-          target_window_duration: state.target_window_duration,
-          target_segment_duration: state.target_segment_duration,
-          persist?: state.persist?
-        }
-      )
+      if not Manifest.has_track?(state.manifest, id) do
+        Manifest.add_track(
+          state.manifest,
+          %Manifest.Track.Config{
+            id: id,
+            content_type: caps.content_type,
+            header_extension: ".mp4",
+            segment_extension: ".m4s",
+            target_window_duration: state.target_window_duration,
+            target_segment_duration: state.target_segment_duration,
+            persist?: state.persist?
+          }
+        )
+      else
+        Manifest.change_track_header(state.manifest, id)
+      end
 
     state = %{state | manifest: manifest}
     {result, storage} = Storage.store_header(state.storage, header_name, caps.header)

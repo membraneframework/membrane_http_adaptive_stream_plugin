@@ -43,6 +43,17 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
     module.serialize(manifest)
   end
 
+  @spec has_track?(t(), Track.id_t()) :: boolean()
+  def has_track?(%__MODULE__{tracks: tracks}, track_id), do: Map.has_key?(tracks, track_id)
+
+  def change_track_header(%__MODULE__{} = manifest, track_id) do
+    get_and_update_in(
+      manifest,
+      [:tracks, track_id],
+      &Track.add_header/1
+    )
+  end
+
   @spec finish(t, Track.id_t()) :: t
   def finish(%__MODULE__{} = manifest, track_id) do
     update_in(manifest, [:tracks, track_id], &Track.finish/1)
