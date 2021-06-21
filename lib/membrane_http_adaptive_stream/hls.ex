@@ -59,14 +59,15 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     """
   end
 
-  defp serialize_single_segment({:discontiunity, header_name}) do
-    """
-    #EXT-X-DISCONTINUITY
-    #EXT-X-MAP:URI=#{header_name}
-    """
+  defp serialize_single_segment({:discontinuity, header_name}) do
+    [
+      "#EXT-X-DISCONTINUITY",
+      "#EXT-X-MAP:URI=#{header_name}"
+    ]
   end
 
   defp serialize_single_segment(segment) do
-    ["#EXTINF:#{Ratio.to_float(segment.duration / Time.second())},", segment.name]
+    time = Ratio.to_float(segment.duration) / Time.second()
+    ["#EXTINF:#{time},", segment.name]
   end
 end

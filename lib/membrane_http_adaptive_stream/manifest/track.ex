@@ -196,7 +196,6 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   defp do_pop_stale_segments(segments, window_duration, target_window_duration, acc, header_name) do
     use Ratio, comparison: true
     {segment, new_segments} = Qex.pop!(segments)
-    new_window_duration = window_duration - segment.duration
 
     case segment do
       {:discontinuity, header_name} ->
@@ -209,6 +208,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
         )
 
       _segment ->
+        new_window_duration = window_duration - segment.duration
+
         if new_window_duration >= target_window_duration and new_window_duration > 0 do
           do_pop_stale_segments(
             new_segments,
