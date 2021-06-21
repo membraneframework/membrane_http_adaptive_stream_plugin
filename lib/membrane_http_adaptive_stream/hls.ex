@@ -54,11 +54,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     #EXT-X-TARGETDURATION:#{target_duration}
     #EXT-X-MEDIA-SEQUENCE:#{media_sequence}
     #EXT-X-MAP:URI="#{track.header_name}"
-    #{
-      track.segments
-      |> Enum.flat_map(&["#EXTINF:#{Ratio.to_float(&1.duration / Time.second())},", &1.name])
-      |> Enum.join("\n")
-    }
+    #{track.segments |> Enum.flat_map(&["#EXTINF:#{Ratio.to_float(&1.duration / Time.second())},", &1.name]) |> Enum.join("\n")}
     #{if track.finished?, do: "#EXT-X-ENDLIST", else: ""}
     """
   end
