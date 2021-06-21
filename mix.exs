@@ -59,7 +59,7 @@ defmodule Membrane.HTTPAdaptiveStream.MixProject do
   defp deps do
     [
       {:membrane_core, "~> 0.7.0"},
-      {:membrane_cmaf_format, "~> 0.2.0"},
+      {:membrane_cmaf_format, "~> 0.3.0"},
       {:ex_doc, "~> 0.21", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.0.0-rc.7", only: [:dev, :test], runtime: false}
     ]
