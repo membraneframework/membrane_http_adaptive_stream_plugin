@@ -203,7 +203,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
           new_segments,
           window_duration,
           target_window_duration,
-          [segment | acc],
+          [%{name: header_name} | acc],
           header_name
         )
 

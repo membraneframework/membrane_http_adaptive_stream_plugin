@@ -67,7 +67,8 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   end
 
   defp serialize_single_segment(segment) do
-    time = Ratio.to_float(segment.duration) / Time.second()
+    use Ratio
+    time = Ratio.to_float(segment.duration / Time.second())
     ["#EXTINF:#{time},", segment.name]
   end
 end
