@@ -53,14 +53,16 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     #EXT-X-VERSION:#{@version}
     #EXT-X-TARGETDURATION:#{target_duration}
     #EXT-X-MEDIA-SEQUENCE:#{media_sequence}
+    #EXT-X-DISCONTINUITY-SEQUENCE:#{track.current_discontinuity_seq_num}
     #EXT-X-MAP:URI="#{track.header_name}"
     #{track.segments |> Enum.flat_map(&serialize_single_segment/1) |> Enum.join("\n")}
     #{if track.finished?, do: "#EXT-X-ENDLIST", else: ""}
     """
   end
 
-  defp serialize_single_segment({:discontinuity, header_name}) do
+  defp serialize_single_segment({:discontinuity, header_name, number}) do
     [
+      "#EXT-X-DISCONTINUITY-SEQUENCE:#{number}",
       "#EXT-X-DISCONTINUITY",
       "#EXT-X-MAP:URI=#{header_name}"
     ]

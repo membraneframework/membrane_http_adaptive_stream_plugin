@@ -51,11 +51,12 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
                 :id_string,
                 :header_name,
                 current_seq_num: 0,
+                current_discontinuity_seq_num: 0,
                 segments: Qex.new(),
                 stale_segments: Qex.new(),
                 finished?: false,
                 window_duration: 0,
-                header_counter: 0
+                header_counter: 1
               ]
 
   @typedoc """
@@ -65,6 +66,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   - `id_string` - serialized `id`
   - `header_name` - name of the header file
   - `current_seq_num` - the number to identify the next segment
+  - `current_discontinuity_seq_num` - number of current discontinuity sequence.
   - `segments` - segments' names and durations
   - `stale_segments` - stale segments' names and durations, kept empty unless `persist?` is set to true
   - `finished?` - determines whether the track is finished
@@ -81,6 +83,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
           id_string: String.t(),
           header_name: String.t(),
           current_seq_num: non_neg_integer,
+          current_discontinuity_seq_num: non_neg_integer,
           segments: segments_t,
           stale_segments: segments_t,
           finished?: boolean,
@@ -90,7 +93,10 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
 
   @type id_t :: any
   @type segments_t ::
-          Qex.t({:discontinuity, String.t()} | {name :: String.t(), segment_duration_t})
+          Qex.t(
+            {:discontinuity, String.t(), non_neg_integer()}
+            | {name :: String.t(), segment_duration_t}
+          )
   @type segment_duration_t :: Membrane.Time.t() | Ratio.t()
 
   @spec new(Config.t()) :: t
@@ -98,7 +104,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     id_string = config.id |> :erlang.term_to_binary() |> Base.url_encode64(padding: false)
 
     %__MODULE__{
-      header_name: "#{config.content_type}_header_#{id_string}_part0_#{config.header_extension}",
+      header_name: header_name(config, 0),
       id_string: id_string
     }
     |> Map.merge(Map.from_struct(config))
@@ -131,12 +137,12 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     {{name, to_remove_names}, %__MODULE__{track | stale_segments: stale_segments}}
   end
 
-  def add_header(%__MODULE__{finished?: false} = track) do
+  def add_header(%__MODULE__{finished?: false, header_counter: counter} = track) do
     header = header_name(track, track.header_counter)
 
     track =
       track
-      |> Map.update!(:segments, &Qex.push(&1, {:discontinuity, header}))
+      |> Map.update!(:segments, &Qex.push(&1, {:discontinuity, header, counter}))
       |> Map.update!(:header_counter, &(&1 + 1))
 
     {header, track}
@@ -177,34 +183,42 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       segments: segments,
       window_duration: window_duration,
       target_window_duration: target_window_duration,
-      header_name: header_name
+      header_name: header_name,
+      current_discontinuity_seq_num: seq_number
     } = track
 
-    {to_remove, segments, window_duration, header_name} =
-      do_pop_stale_segments(segments, window_duration, target_window_duration, [], header_name)
+    {to_remove, segments, window_duration, {header_name, seq_number}} =
+      do_pop_stale_segments(
+        segments,
+        window_duration,
+        target_window_duration,
+        [],
+        {header_name, seq_number}
+      )
 
     track = %__MODULE__{
       track
       | segments: segments,
         window_duration: window_duration,
-        header_name: header_name
+        header_name: header_name,
+        current_discontinuity_seq_num: seq_number
     }
 
     {to_remove, track}
   end
 
-  defp do_pop_stale_segments(segments, window_duration, target_window_duration, acc, header_name) do
+  defp do_pop_stale_segments(segments, window_duration, target_window_duration, acc, header) do
     use Ratio, comparison: true
     {segment, new_segments} = Qex.pop!(segments)
 
     case segment do
-      {:discontinuity, header_name} ->
+      {:discontinuity, new_header, seq_number} ->
         do_pop_stale_segments(
           new_segments,
           window_duration,
           target_window_duration,
-          [%{name: header_name} | acc],
-          header_name
+          acc,
+          {new_header, seq_number}
         )
 
       _segment ->
@@ -216,10 +230,10 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
             new_window_duration,
             target_window_duration,
             [segment | acc],
-            header_name
+            header
           )
         else
-          {Enum.reverse(acc), segments, window_duration, header_name}
+          {Enum.reverse(acc), segments, window_duration, header}
         end
     end
   end
