@@ -54,9 +54,10 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
                 current_discontinuity_seq_num: 0,
                 segments: Qex.new(),
                 stale_segments: Qex.new(),
+                stale_headers: Qex.new(),
                 finished?: false,
                 window_duration: 0,
-                header_counter: 1
+                discontinuities_counter: 0
               ]
 
   @typedoc """
@@ -69,6 +70,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   - `current_discontinuity_seq_num` - number of current discontinuity sequence.
   - `segments` - segments' names and durations
   - `stale_segments` - stale segments' names and durations, kept empty unless `persist?` is set to true
+  - `stale_headers` - stale headers' names, kept empty unless `persist?` is set to true
   - `finished?` - determines whether the track is finished
   - `window_duration` - current window duration
   """
@@ -88,16 +90,20 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
           stale_segments: segments_t,
           finished?: boolean,
           window_duration: non_neg_integer,
-          header_counter: 0
+          discontinuities_counter: non_neg_integer
         }
 
   @type id_t :: any
   @type segments_t ::
-          Qex.t(
-            {:discontinuity, String.t(), non_neg_integer()}
-            | {name :: String.t(), segment_duration_t}
-          )
+          Qex.t(%{
+            name: String.t(),
+            duration: segment_duration_t(),
+            attributes: list(segment_attribute_t())
+          })
+  @type segment_attribute_t :: any()
   @type segment_duration_t :: Membrane.Time.t() | Ratio.t()
+
+  @type to_remove_names_t :: [segment_names: [String.t()], header_names: [String.t()]]
 
   @spec new(Config.t()) :: t
   def new(%Config{} = config) do
@@ -110,42 +116,53 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     |> Map.merge(Map.from_struct(config))
   end
 
-  @spec add_segment(t, segment_duration_t) ::
-          {{to_add_name :: String.t(), to_remove_names :: [String.t()]}, t}
-  def add_segment(%__MODULE__{finished?: false} = track, duration) do
+  @spec add_segment(t, segment_duration_t, list(segment_attribute_t())) ::
+          {{to_add_name :: String.t(), to_remove_names :: to_remove_names_t()}, t}
+  def add_segment(%__MODULE__{finished?: false} = track, duration, attributes \\ []) do
     use Ratio, comparison: true
 
     name =
       "#{track.content_type}_segment_#{track.current_seq_num}_" <>
         "#{track.id_string}#{track.segment_extension}"
 
-    {stale_segments, track} =
+    {stale_segments, stale_headers, track} =
       track
-      |> Map.update!(:segments, &Qex.push(&1, %{name: name, duration: duration}))
+      |> Map.update!(
+        :segments,
+        &Qex.push(&1, %{name: name, duration: duration, attributes: attributes})
+      )
       |> Map.update!(:current_seq_num, &(&1 + 1))
       |> Map.update!(:window_duration, &(&1 + duration))
       |> Map.update!(:target_segment_duration, &if(&1 > duration, do: &1, else: duration))
-      |> pop_stale_segments()
+      |> pop_stale_segments_and_headers()
 
-    {to_remove_names, stale_segments} =
+    {to_remove_segment_names, to_remove_header_names, stale_segments, stale_headers} =
       if track.persist? do
-        {[], Qex.join(track.stale_segments, Qex.new(stale_segments))}
+        {
+          [],
+          [],
+          Qex.join(track.stale_segments, Qex.new(stale_segments)),
+          Qex.join(track.stale_headers, Qex.new(stale_headers))
+        }
       else
-        {Enum.map(stale_segments, & &1.name), track.stale_segments}
+        {
+          Enum.map(stale_segments, & &1.name),
+          stale_headers,
+          track.stale_segments,
+          track.stale_headers
+        }
       end
 
-    {{name, to_remove_names}, %__MODULE__{track | stale_segments: stale_segments}}
+    {{name, [segment_names: to_remove_segment_names, header_names: to_remove_header_names]},
+     %__MODULE__{track | stale_segments: stale_segments, stale_headers: stale_headers}}
   end
 
-  def add_header(%__MODULE__{finished?: false, header_counter: counter} = track) do
-    header = header_name(track, track.header_counter)
+  @spec discontinue(t()) ::
+          {{header_name :: String.t(), discontinuity_seq_num :: non_neg_integer()}, t()}
+  def discontinue(%__MODULE__{finished?: false, discontinuities_counter: counter} = track) do
+    header = header_name(track, counter + 1)
 
-    track =
-      track
-      |> Map.update!(:segments, &Qex.push(&1, {:discontinuity, header, counter}))
-      |> Map.update!(:header_counter, &(&1 + 1))
-
-    {header, track}
+    {{header, counter + 1}, %__MODULE__{track | discontinuities_counter: counter + 1}}
   end
 
   defp header_name(%{} = config, counter) do
@@ -159,7 +176,6 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     %__MODULE__{track | finished?: true}
   end
 
-  # todo - in the current form, discontinuity will not work with that
   @spec from_beginning(t) :: t
   def from_beginning(%__MODULE__{persist?: true} = track) do
     %__MODULE__{
@@ -174,67 +190,87 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     Qex.join(track.stale_segments, track.segments) |> Enum.map(& &1.name)
   end
 
-  defp pop_stale_segments(%__MODULE__{target_window_duration: :infinity} = track) do
-    {[], track}
+  defp pop_stale_segments_and_headers(%__MODULE__{target_window_duration: :infinity} = track) do
+    {[], [], track}
   end
 
-  defp pop_stale_segments(track) do
+  defp pop_stale_segments_and_headers(track) do
     %__MODULE__{
       segments: segments,
       window_duration: window_duration,
       target_window_duration: target_window_duration,
       header_name: header_name,
-      current_discontinuity_seq_num: seq_number
+      current_discontinuity_seq_num: discontinuity_seq_number
     } = track
 
-    {to_remove, segments, window_duration, {header_name, seq_number}} =
+    {segments_to_remove, headers_to_remove, segments, window_duration,
+     {new_header_name, discontinuity_seq_number}} =
       do_pop_stale_segments(
         segments,
         window_duration,
         target_window_duration,
         [],
-        {header_name, seq_number}
+        [],
+        {header_name, discontinuity_seq_number}
       )
+
+    # filter out `new_header_name` as it could have been carried by some segment
+    # that is about to be deleted but the header has become the main track header
+    headers_to_remove =
+      headers_to_remove
+      |> Enum.filter(&(&1 != new_header_name))
 
     track = %__MODULE__{
       track
       | segments: segments,
         window_duration: window_duration,
-        header_name: header_name,
-        current_discontinuity_seq_num: seq_number
+        header_name: new_header_name,
+        current_discontinuity_seq_num: discontinuity_seq_number
     }
 
-    {to_remove, track}
+    {segments_to_remove, headers_to_remove, track}
   end
 
-  defp do_pop_stale_segments(segments, window_duration, target_window_duration, acc, header) do
+  defp do_pop_stale_segments(
+         segments,
+         window_duration,
+         target_window_duration,
+         segments_acc,
+         headers_acc,
+         header
+       ) do
     use Ratio, comparison: true
     {segment, new_segments} = Qex.pop!(segments)
+    new_window_duration = window_duration - segment.duration
 
-    case segment do
-      {:discontinuity, new_header, seq_number} ->
-        do_pop_stale_segments(
-          new_segments,
-          window_duration,
-          target_window_duration,
-          acc,
+    new_header =
+      case segment.attributes |> Enum.find(&match?({:discontinuity, _, _}, &1)) do
+        {:discontinuity, new_header, seq_number} ->
           {new_header, seq_number}
-        )
 
-      _segment ->
-        new_window_duration = window_duration - segment.duration
+        _ ->
+          header
+      end
 
-        if new_window_duration >= target_window_duration and new_window_duration > 0 do
-          do_pop_stale_segments(
-            new_segments,
-            new_window_duration,
-            target_window_duration,
-            [segment | acc],
-            header
-          )
-        else
-          {Enum.reverse(acc), segments, window_duration, header}
-        end
+    headers_acc =
+      if new_header != header do
+        {header_name, _} = header
+        [header_name | headers_acc]
+      else
+        headers_acc
+      end
+
+    if new_window_duration >= target_window_duration and new_window_duration > 0 do
+      do_pop_stale_segments(
+        new_segments,
+        new_window_duration,
+        target_window_duration,
+        [segment | segments_acc],
+        headers_acc,
+        new_header
+      )
+    else
+      {Enum.reverse(segments_acc), Enum.reverse(headers_acc), segments, window_duration, header}
     end
   end
 end

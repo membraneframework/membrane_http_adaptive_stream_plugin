@@ -55,22 +55,24 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     #EXT-X-MEDIA-SEQUENCE:#{media_sequence}
     #EXT-X-DISCONTINUITY-SEQUENCE:#{track.current_discontinuity_seq_num}
     #EXT-X-MAP:URI="#{track.header_name}"
-    #{track.segments |> Enum.flat_map(&serialize_single_segment/1) |> Enum.join("\n")}
+    #{track.segments |> Enum.flat_map(&serialize_segment/1) |> Enum.join("\n")}
     #{if track.finished?, do: "#EXT-X-ENDLIST", else: ""}
     """
   end
 
-  defp serialize_single_segment({:discontinuity, header_name, number}) do
+  defp serialize_segment(segment) do
+    use Ratio
+    time = Ratio.to_float(segment.duration / Time.second())
+
+    (segment.attributes |> Enum.flat_map(&serialize_segment_attribute/1)) ++
+      ["#EXTINF:#{time},", segment.name]
+  end
+
+  defp serialize_segment_attribute({:discontinuity, header_name, number}) do
     [
       "#EXT-X-DISCONTINUITY-SEQUENCE:#{number}",
       "#EXT-X-DISCONTINUITY",
       "#EXT-X-MAP:URI=#{header_name}"
     ]
-  end
-
-  defp serialize_single_segment(segment) do
-    use Ratio
-    time = Ratio.to_float(segment.duration / Time.second())
-    ["#EXTINF:#{time},", segment.name]
   end
 end

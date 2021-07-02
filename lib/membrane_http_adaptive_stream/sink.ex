@@ -94,34 +94,50 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     |> Map.merge(%{
       storage: Storage.new(options.storage),
       manifest: %Manifest{name: options.manifest_name, module: options.manifest_module},
-      awaiting_first_segment: MapSet.new()
+      awaiting_first_segment: MapSet.new(),
+      awaiting_discontinuities: %{}
     })
     ~> {:ok, &1}
   end
 
   @impl true
-  def handle_caps(Pad.ref(:input, id), %CMAF.Track{} = caps, _ctx, state) do
-    {header_name, manifest} =
-      if not Manifest.has_track?(state.manifest, id) do
-        Manifest.add_track(
-          state.manifest,
-          %Manifest.Track.Config{
-            id: id,
-            content_type: caps.content_type,
-            header_extension: ".mp4",
-            segment_extension: ".m4s",
-            target_window_duration: state.target_window_duration,
-            target_segment_duration: state.target_segment_duration,
-            persist?: state.persist?
-          }
-        )
+  def handle_caps(Pad.ref(:input, track_id), %CMAF.Track{} = caps, _ctx, state) do
+    {header_name, manifest, awaiting_discontinuity} =
+      if Manifest.has_track?(state.manifest, track_id) do
+        {{header_name, discontinuity_seq}, manifest} =
+          Manifest.discontinue_track(state.manifest, track_id)
+
+        discontinuity = {:discontinuity, header_name, discontinuity_seq}
+
+        {header_name, manifest, discontinuity}
       else
-        Manifest.change_track_header(state.manifest, id)
+        {header_name, manifest} =
+          Manifest.add_track(
+            state.manifest,
+            %Manifest.Track.Config{
+              id: track_id,
+              content_type: caps.content_type,
+              header_extension: ".mp4",
+              segment_extension: ".m4s",
+              target_window_duration: state.target_window_duration,
+              target_segment_duration: state.target_segment_duration,
+              persist?: state.persist?
+            }
+          )
+
+        {header_name, manifest, nil}
       end
 
-    state = %{state | manifest: manifest}
     {result, storage} = Storage.store_header(state.storage, header_name, caps.header)
-    {result, %{state | storage: storage}}
+
+    {result,
+     %{
+       state
+       | storage: storage,
+         manifest: manifest,
+         awaiting_discontinuities:
+           Map.put(state.awaiting_discontinuities, track_id, awaiting_discontinuity)
+     }}
   end
 
   @impl true
@@ -150,8 +166,23 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   def handle_write(Pad.ref(:input, id) = pad, buffer, _ctx, state) do
     %{storage: storage, manifest: manifest} = state
     duration = buffer.metadata.duration
-    {changeset, manifest} = Manifest.add_segment(manifest, id, duration)
-    state = %{state | manifest: manifest}
+
+    segment_attributes =
+      case Map.get(state.awaiting_discontinuities, id) do
+        nil ->
+          []
+
+        discontinuity ->
+          [discontinuity]
+      end
+
+    {changeset, manifest} = Manifest.add_segment(manifest, id, duration, segment_attributes)
+
+    state = %{
+      state
+      | manifest: manifest,
+        awaiting_discontinuities: Map.delete(state.awaiting_discontinuities, id)
+    }
 
     with {:ok, storage} <- Storage.apply_segment_changeset(storage, changeset, buffer.payload),
          {:ok, storage} <- serialize_and_store_manifest(manifest, storage) do
