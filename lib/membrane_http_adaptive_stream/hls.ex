@@ -64,7 +64,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     use Ratio
     time = Ratio.to_float(segment.duration / Time.second())
 
-    (segment.attributes |> Enum.flat_map(&serialize_segment_attribute/1)) ++
+    Enum.flat_map(segment.attributes, &serialize_segment_attribute/1) ++
       ["#EXTINF:#{time},", segment.name]
   end
 
