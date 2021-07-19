@@ -1,12 +1,10 @@
 Mix.install([
-  {:membrane_core, "~> 0.7.0", override: true},
-  {:membrane_file_plugin, "~> 0.5.0"},
-  {:membrane_http_adaptive_stream_plugin, github: "membraneframework/membrane_http_adaptive_stream_plugin", branch: "master", override: true},
-  {:membrane_h264_ffmpeg_plugin, "~> 0.9.0"},
-  {:membrane_mp4_plugin, "~> 0.6.0"},
-
+  :membrane_core,
+  :membrane_file_plugin,
+  {:membrane_http_adaptive_stream_plugin, path: Path.expand("../"), override: true},
+  :membrane_h264_ffmpeg_plugin,
+  :membrane_mp4_plugin
 ])
-
 
 defmodule Example do
   @moduledoc """
@@ -26,7 +24,7 @@ defmodule Example do
   provided by ffmpeg.
 
   ```bash
-  # run this command in output directory
+  # run this command in the output directory
   python3 -m http.server 8000`
   ```
 
@@ -67,7 +65,7 @@ defmodule Example do
     ]
 
     links = [
-      link(:source) 
+      link(:source)
       |> to(:parser)
       |> to(:payloader)
       |> to(:cmaf_muxer)
@@ -78,26 +76,23 @@ defmodule Example do
   end
 
   @imple true
-  def handle_element_end_of_stream({:sink,_}, _ctx, state) do
-    Membrane.Pipeline.stop_and_terminate(self(), [])
+  def handle_element_end_of_stream({:sink, _}, _ctx, state) do
+    Membrane.Pipeline.stop_and_terminate(self())
     {:ok, state}
   end
 
   def handle_element_end_of_stream(_element, _ctx, state) do
     {:ok, state}
   end
-
-
 end
 
-ref = 
+ref =
   Example.start_link()
   |> elem(1)
-  |> tap(& Membrane.Pipeline.play/1)
-  |> then(& Process.monitor/1)
+  |> tap(&Membrane.Pipeline.play/1)
+  |> then(&Process.monitor/1)
 
 receive do
   {:DOWN, ^ref, :process, _pid, _reason} ->
     :ok
 end
-
