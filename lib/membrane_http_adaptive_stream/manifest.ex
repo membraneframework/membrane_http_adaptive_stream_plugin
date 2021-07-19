@@ -29,18 +29,31 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
   end
 
   @spec add_segment(t, track_id :: Track.id_t(), Track.segment_duration_t()) ::
-          {{to_add_name :: String.t(), to_remove_names :: [String.t()]}, t}
-  def add_segment(%__MODULE__{} = manifest, track_id, duration) do
+          {{to_add_name :: String.t(), to_remove_names :: Track.to_remove_names_t()}, t}
+  def add_segment(%__MODULE__{} = manifest, track_id, duration, attributes \\ []) do
     get_and_update_in(
       manifest,
       [:tracks, track_id],
-      &Track.add_segment(&1, duration)
+      &Track.add_segment(&1, duration, attributes)
     )
   end
 
   @spec serialize(t) :: [{name :: String.t(), manifest :: String.t()}]
   def serialize(%__MODULE__{module: module} = manifest) do
     module.serialize(manifest)
+  end
+
+  @spec has_track?(t(), Track.id_t()) :: boolean()
+  def has_track?(%__MODULE__{tracks: tracks}, track_id), do: Map.has_key?(tracks, track_id)
+
+  @spec discontinue_track(t(), Track.id_t()) ::
+          {{new_header_name :: String.t(), discontinuity_seq :: non_neg_integer()}, t()}
+  def discontinue_track(%__MODULE__{} = manifest, track_id) do
+    get_and_update_in(
+      manifest,
+      [:tracks, track_id],
+      &Track.discontinue/1
+    )
   end
 
   @spec finish(t, Track.id_t()) :: t
