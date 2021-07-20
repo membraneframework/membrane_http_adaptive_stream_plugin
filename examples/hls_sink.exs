@@ -75,7 +75,7 @@ defmodule Example do
     {{:ok, spec: %ParentSpec{children: children, links: links}}, %{}}
   end
 
-  @imple true
+  @impl true
   def handle_element_end_of_stream({:sink, _}, _ctx, state) do
     Membrane.Pipeline.stop_and_terminate(self())
     {:ok, state}
@@ -84,6 +84,11 @@ defmodule Example do
   def handle_element_end_of_stream(_element, _ctx, state) do
     {:ok, state}
   end
+end
+
+# stop executing when running on CircleCI
+if System.get_env("CIRCLE_CI") do
+  System.halt(0)
 end
 
 ref =
