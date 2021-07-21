@@ -1,24 +1,20 @@
 Mix.install([
   :membrane_core,
-  :membrane_file_plugin,
   {:membrane_http_adaptive_stream_plugin, path: Path.expand("../"), override: true},
   :membrane_h264_ffmpeg_plugin,
-  :membrane_mp4_plugin
+  :membrane_mp4_plugin,
+  :membrane_hackney_plugin
 ])
 
 defmodule Example do
   @moduledoc """
   An example pipeline showing how to use `Membrane.HTTPAdaptiveStream.Sink` element.
 
-  The pipeline will open a file containing h264 stream, parse and payload the video stream, mux it to CMAF format and
+  The pipeline will download a file containing h264 stream, parse and payload the video stream, mux it to CMAF format and
   finally dump it to an HLS playlist.
 
-  First of all you will need to generate some h264 file. You can do so with ffmpeg:
-  ```
-  ffmpeg -f lavfi -i testsrc -t 30 -pix_fmt yuv420p -an -bsf:v h264_mp4toannexb test.h264
-  ```
-
-  Second of all, you need to create an output directory where the hls playlist will be stored.
+  Given output directory for hls playlist must exist before running the example. You can either modify the script to change the directory yourself
+  or provide `HLS_OUTPUT_DIR` environmental variable pointing to preferred path.
 
   To play the stream you will need an http server and an hls player. The easiest way is to go with a built-in python http server and `ffplay` command
   provided by ffmpeg.
@@ -45,7 +41,10 @@ defmodule Example do
   @impl true
   def handle_init(_) do
     children = [
-      source: %Membrane.File.Source{location: "test.h264"},
+      source: %Membrane.Hackney.Source{
+        location: "https://raw.githubusercontent.com/membraneframework/static/gh-pages/video-samples/test-video.h264",
+        hackney_opts: [follow_redirect: true]
+      },
       parser: %Membrane.H264.FFmpeg.Parser{
         framerate: {30, 1},
         alignment: :au,
@@ -60,7 +59,7 @@ defmodule Example do
         target_window_duration: 30 |> Membrane.Time.seconds(),
         target_segment_duration: 2 |> Membrane.Time.seconds(),
         persist?: false,
-        storage: %Membrane.HTTPAdaptiveStream.Storages.FileStorage{directory: "output"}
+        storage: %Membrane.HTTPAdaptiveStream.Storages.FileStorage{directory: System.get_env("HLS_OUTPUT_DIR", "output")}
       }
     ]
 
@@ -84,11 +83,6 @@ defmodule Example do
   def handle_element_end_of_stream(_element, _ctx, state) do
     {:ok, state}
   end
-end
-
-# stop executing when running on CircleCI
-if System.get_env("CIRCLE_CI") do
-  System.halt(0)
 end
 
 ref =
