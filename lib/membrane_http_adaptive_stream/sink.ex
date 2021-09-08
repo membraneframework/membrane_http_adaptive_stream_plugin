@@ -31,6 +31,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   use Membrane.Sink
   alias Membrane.CMAF
   alias Membrane.HTTPAdaptiveStream.{Manifest, Storage}
+  require Manifest.SegmentAttribute
 
   def_input_pad :input,
     availability: :on_request,
@@ -107,7 +108,8 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
         {{header_name, discontinuity_seq}, manifest} =
           Manifest.discontinue_track(state.manifest, track_id)
 
-        discontinuity = {:discontinuity, header_name, discontinuity_seq}
+        # TODO: fix violation of the single responsibility principle
+        discontinuity = Manifest.SegmentAttribute.discontinuity(header_name, discontinuity_seq)
 
         {header_name, manifest, discontinuity}
       else
@@ -135,6 +137,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
        state
        | storage: storage,
          manifest: manifest,
+         # TODO: this looks like a violation of the single responsibility principle. I would say that this should be the responsibility of the track
          awaiting_discontinuities:
            Map.put(state.awaiting_discontinuities, track_id, awaiting_discontinuity)
      }}
@@ -211,6 +214,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
       persist?: persist?
     } = state
 
+    # TODO: really? even if persist?
     to_remove = Manifest.all_segments(manifest)
 
     cleanup = fn ->

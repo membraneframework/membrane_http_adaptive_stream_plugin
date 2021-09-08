@@ -4,11 +4,12 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
 
   Currently supports up to one audio and video stream.
   """
+
+  @behaviour Membrane.HTTPAdaptiveStream.Manifest
+
   alias Membrane.HTTPAdaptiveStream.Manifest
   alias Membrane.HTTPAdaptiveStream.Manifest.Track
   alias Membrane.Time
-
-  @behaviour Manifest
 
   @version 7
 
@@ -21,6 +22,24 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   #EXT-X-MEDIA:TYPE=AUDIO,NAME="a",GROUP-ID="a",AUTOSELECT=YES,DEFAULT=YES,URI="audio.m3u8"
   """
 
+  defmodule SegmentAttribute do
+    @moduledoc false
+    @behaviour Membrane.HTTPAdaptiveStream.Manifest.SegmentAttribute
+    import Membrane.HTTPAdaptiveStream.Manifest.SegmentAttribute
+
+    @impl true
+    def serialize(discontinuity(header_name, number)) do
+      [
+        "#EXT-X-DISCONTINUITY-SEQUENCE:#{number}",
+        "#EXT-X-DISCONTINUITY",
+        "#EXT-X-MAP:URI=#{header_name}"
+      ]
+    end
+  end
+
+  @doc """
+  Returns EXTM3U playlist for the given manifest
+  """
   @impl true
   def serialize(%Manifest{} = manifest) do
     tracks_by_content = manifest.tracks |> Map.values() |> Enum.group_by(& &1.content_type)
@@ -64,15 +83,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     use Ratio
     time = Ratio.to_float(segment.duration / Time.second())
 
-    Enum.flat_map(segment.attributes, &serialize_segment_attribute/1) ++
+    Enum.flat_map(segment.attributes, &SegmentAttribute.serialize/1) ++
       ["#EXTINF:#{time},", segment.name]
-  end
-
-  defp serialize_segment_attribute({:discontinuity, header_name, number}) do
-    [
-      "#EXT-X-DISCONTINUITY-SEQUENCE:#{number}",
-      "#EXT-X-DISCONTINUITY",
-      "#EXT-X-MAP:URI=#{header_name}"
-    ]
   end
 end
