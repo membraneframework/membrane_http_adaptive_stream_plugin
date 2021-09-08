@@ -1,6 +1,6 @@
 defmodule Membrane.HTTPAdaptiveStream.HLS do
   @moduledoc """
-  `Membrane.HTTPAdaptiveStream.Manifest` implementation for HLS.
+  `Membrane.HTTPAdaptiveStream.Manifest` implementation for HTTP Live Streaming.
 
   Currently supports up to one audio and video stream.
   """
@@ -23,7 +23,9 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   """
 
   defmodule SegmentAttribute do
-    @moduledoc false
+    @moduledoc """
+    Implementation of `Membrane.HTTPAdaptiveStream.Manifest.SegmentAttribute` behaviour for HTTP Live Streaming
+    """
     @behaviour Membrane.HTTPAdaptiveStream.Manifest.SegmentAttribute
     import Membrane.HTTPAdaptiveStream.Manifest.SegmentAttribute
 
@@ -38,7 +40,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   end
 
   @doc """
-  Returns EXTM3U playlist for the given manifest
+  Generates EXTM3U playlist for the given manifest
   """
   @impl true
   def serialize(%Manifest{} = manifest) do

@@ -119,9 +119,15 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     |> Map.merge(Map.from_struct(config))
   end
 
+  @doc """
+  Add a segment of given duration to the track.
+  It is recommended not to pass discontinuity attribute manually and use `discontinue/1` function instead.
+  """
   @spec add_segment(t, segment_duration_t, list(Manifest.SegmentAttribute.t())) ::
           {{to_add_name :: String.t(), to_remove_names :: to_remove_names_t()}, t}
-  def add_segment(%__MODULE__{finished?: false} = track, duration, attributes \\ []) do
+  def add_segment(track, duration, attributes \\ [])
+
+  def add_segment(%__MODULE__{finished?: false} = track, duration, attributes) do
     use Ratio, comparison: true
 
     name =
@@ -166,6 +172,14 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
      %__MODULE__{track | stale_segments: stale_segments, stale_headers: stale_headers}}
   end
 
+  def add_segment(%__MODULE__{finished?: true} = _track, _duration, _attributes),
+    do: raise("Cannot add new segments to finished track")
+
+  @doc """
+  Discontinue the track, indicating that parameters of the stream have changed.
+  New header has to be stored under the returned filename.
+  For details on discontinuity, please refer to RFC 8216.
+  """
   @spec discontinue(t()) :: {header_name :: String.t(), t()}
   def discontinue(%__MODULE__{finished?: false, discontinuities_counter: counter} = track) do
     header = header_name(track, counter + 1)
@@ -179,7 +193,6 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     {header, track}
   end
 
-  # This function clause provides a little more descriptive error than no matching function clause
   def discontinue(%__MODULE__{finished?: true}), do: raise("Cannot discontinue finished track")
 
   defp header_name(%{} = config, counter) do
@@ -188,11 +201,18 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     "#{config.content_type}_header_#{id_string}_part#{counter}_#{config.header_extension}"
   end
 
+  @doc """
+  Marks the track as finished. After this action, it won't be possible to add any new segments to the track.
+  """
   @spec finish(t) :: t
   def finish(track) do
     %__MODULE__{track | finished?: true}
   end
 
+  @doc """
+  Return new track with all stale segments restored, resulting in playback of historic data.
+  Only works with persisted tracks.
+  """
   @spec from_beginning(t) :: t
   def from_beginning(%__MODULE__{persist?: true} = track) do
     %__MODULE__{
@@ -205,6 +225,9 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   def from_beginning(%__MODULE__{persist?: false} = _track),
     do: raise("Cannot play the track from the beginning as it wasn't persisted")
 
+  @doc """
+  Returns all segments present in the track, including stale segments.
+  """
   @spec all_segments(t) :: [segment_name :: String.t()]
   def all_segments(%__MODULE__{} = track) do
     Qex.join(track.stale_segments, track.segments) |> Enum.map(& &1.name)
