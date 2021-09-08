@@ -128,6 +128,11 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       "#{track.content_type}_segment_#{track.current_seq_num}_" <>
         "#{track.id_string}#{track.segment_extension}"
 
+    attributes =
+      if is_nil(track.awaiting_discontinuity),
+        do: attributes,
+        else: [track.awaiting_discontinuity | attributes]
+
     {stale_segments, stale_headers, track} =
       track
       |> Map.update!(
@@ -137,6 +142,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       |> Map.update!(:current_seq_num, &(&1 + 1))
       |> Map.update!(:window_duration, &(&1 + duration))
       |> Map.update!(:target_segment_duration, &if(&1 > duration, do: &1, else: duration))
+      |> Map.put(:awaiting_discontinuity, nil)
       |> pop_stale_segments_and_headers()
 
     {to_remove_segment_names, to_remove_header_names, stale_segments, stale_headers} =
@@ -160,12 +166,17 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
      %__MODULE__{track | stale_segments: stale_segments, stale_headers: stale_headers}}
   end
 
-  @spec discontinue(t()) ::
-          {{header_name :: String.t(), discontinuity_seq_num :: non_neg_integer()}, t()}
+  @spec discontinue(t()) :: {header_name :: String.t(), t()}
   def discontinue(%__MODULE__{finished?: false, discontinuities_counter: counter} = track) do
     header = header_name(track, counter + 1)
+    discontinuity = Manifest.SegmentAttribute.discontinuity(header, counter + 1)
 
-    {{header, counter + 1}, %__MODULE__{track | discontinuities_counter: counter + 1}}
+    track =
+      track
+      |> Map.update!(:discontinuities_counter, &(&1 + 1))
+      |> Map.put(:awaiting_discontinuity, discontinuity)
+
+    {header, track}
   end
 
   # This function clause provides a little more descriptive error than no matching function clause

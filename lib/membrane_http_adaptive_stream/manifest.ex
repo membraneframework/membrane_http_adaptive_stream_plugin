@@ -56,13 +56,11 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
   This will inform the player that eg. the parameters of the encoder changed and allow you to provide a new MP4 header.
   For details on discontinuities refer to RFC 8216.
   """
-  @spec discontinue_track(t(), Track.id_t()) ::
-          {{new_header_name :: String.t(), discontinuity_seq :: non_neg_integer()}, t()}
+  @spec discontinue_track(t(), Track.id_t()) :: {header_name :: String.t(), t()}
   def discontinue_track(%__MODULE__{} = manifest, track_id) do
     get_and_update_in(
       manifest,
       [:tracks, track_id],
-      # TODO: this is one hell of a weird API. I would expect it to handle creating a discontinuity inside the Track module
       &Track.discontinue/1
     )
   end
