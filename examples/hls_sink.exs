@@ -6,6 +6,49 @@ Mix.install([
   :membrane_hackney_plugin
 ])
 
+defmodule MyBin do
+  use Membrane.Bin
+
+  def_input_pad :input, demand_unit: :buffers, caps: :any
+  # def_output_pad :output, demand_unit: :buffers, caps: :any
+  def_options segment_duration: [type: :integer]
+
+  @impl true
+  def handle_init(opts) do
+    children = [
+      payloader: Membrane.MP4.Payloader.H264,
+      cmaf_muxer: %Membrane.MP4.CMAF.Muxer{
+        segment_duration: opts.segment_duration |> Membrane.Time.seconds()
+      },
+      sink: %Membrane.HTTPAdaptiveStream.Sink{
+        manifest_module: Membrane.HTTPAdaptiveStream.HLS,
+        target_window_duration: 30 |> Membrane.Time.seconds(),
+        target_segment_duration: 2 |> Membrane.Time.seconds(),
+        persist?: false,
+        storage: %Membrane.HTTPAdaptiveStream.Storages.FileStorage{directory: __DIR__}
+      }
+    ]
+
+    links = [
+      link_bin_input()
+      |> to(:payloader)
+      |> to(:cmaf_muxer)
+      |> to(:sink)
+    ]
+
+    {{:ok, spec: %ParentSpec{children: children, links: links}}, %{}}
+  end
+
+  @impl true
+  def handle_element_end_of_stream({:sink, _}, _ctx, state) do
+    {{:ok, notify: :end_of_stream}, state}
+  end
+
+  def handle_element_end_of_stream(_element, _ctx, state) do
+    {:ok, state}
+  end
+end
+
 defmodule Example do
   @moduledoc """
   An example pipeline showing how to use `Membrane.HTTPAdaptiveStream.Sink` element.
@@ -50,37 +93,27 @@ defmodule Example do
         alignment: :au,
         attach_nalus?: true
       },
-      payloader: Membrane.MP4.Payloader.H264,
-      cmaf_muxer: %Membrane.MP4.CMAF.Muxer{
-        segment_duration: 2 |> Membrane.Time.seconds()
-      },
-      sink: %Membrane.HTTPAdaptiveStream.Sink{
-        manifest_module: Membrane.HTTPAdaptiveStream.HLS,
-        target_window_duration: 30 |> Membrane.Time.seconds(),
-        target_segment_duration: 2 |> Membrane.Time.seconds(),
-        persist?: false,
-        storage: %Membrane.HTTPAdaptiveStream.Storages.FileStorage{directory: System.get_env("HLS_OUTPUT_DIR", "output")}
+      bin: %MyBin{
+        segment_duration: 2
       }
     ]
 
     links = [
       link(:source)
       |> to(:parser)
-      |> to(:payloader)
-      |> to(:cmaf_muxer)
-      |> to(:sink)
+      |> to(:bin)
     ]
 
     {{:ok, spec: %ParentSpec{children: children, links: links}}, %{}}
   end
 
   @impl true
-  def handle_element_end_of_stream({:sink, _}, _ctx, state) do
+  def handle_notification(:end_of_stream, :bin, _context, state) do
     Membrane.Pipeline.stop_and_terminate(self())
     {:ok, state}
   end
 
-  def handle_element_end_of_stream(_element, _ctx, state) do
+  def handle_notification(_notification, _element, _context, state) do
     {:ok, state}
   end
 end
