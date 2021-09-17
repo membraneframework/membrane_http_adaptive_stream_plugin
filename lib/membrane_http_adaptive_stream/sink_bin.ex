@@ -12,6 +12,8 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   """
   use Membrane.Bin
 
+  @payloaders %{H264: MP4.Payloader.H264, AAC: MP4.Payloader.AAC}
+
   alias Membrane.{ParentSpec, Time, MP4}
   alias Membrane.HTTPAdaptiveStream.{Sink, Storage}
 
@@ -98,14 +100,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   def handle_pad_added(Pad.ref(:input, ref) = pad, context, state) do
     muxer = %MP4.CMAF.Muxer{segment_duration: state.muxer_segment_duration}
 
-    payloader =
-      case context.options[:encoding] do
-        :H264 ->
-          MP4.Payloader.H264
-
-        :AAC ->
-          MP4.Payloader.AAC
-      end
+    payloader = Map.fetch!(@payloaders, context.options[:encoding])
 
     links = [
       link_bin_input(pad)
