@@ -5,7 +5,6 @@ defmodule Membrane.HTTPAdaptiveStream.StreamSinkBin do
   The bin payloads and muxes the incoming stream to the CMAF format and dumps it to an HLS playlist.
 
   # Input streams
-  ! can this bin handle multiple streams??
   The bin expects parsed H264 or AAC video streams to be connected via `:input` pads.
   The type of video stream has to be specified via the `:encoding` option.
 
@@ -13,7 +12,6 @@ defmodule Membrane.HTTPAdaptiveStream.StreamSinkBin do
   Specify one of `Membrane.HTTPAdaptiveStream.Storages` as `:storage` to configure the sink.
 
 
-  #! generalnie to nie wiem jak pisać dokumentację
   """
   use Membrane.Bin
 
@@ -21,17 +19,15 @@ defmodule Membrane.HTTPAdaptiveStream.StreamSinkBin do
   alias Membrane.HTTPAdaptiveStream.{Sink, Storage}
 
   def_options muxer_segment_duration: [
-                type: :time,
+                spec: pos_integer,
                 default: 2 |> Time.seconds()
               ],
               manifest_name: [
-                type: :string,
                 spec: String.t(),
                 default: "index",
                 description: "Name of the main manifest file"
               ],
               manifest_module: [
-                type: :atom,
                 spec: module,
                 description: """
                 Implementation of the `Membrane.HTTPAdaptiveStream.Manifest`
@@ -39,7 +35,6 @@ defmodule Membrane.HTTPAdaptiveStream.StreamSinkBin do
                 """
               ],
               storage: [
-                type: :struct,
                 spec: Storage.config_t(),
                 description: """
                 Storage configuration. May be one of `Membrane.HTTPAdaptiveStream.Storages.*`.
@@ -48,7 +43,6 @@ defmodule Membrane.HTTPAdaptiveStream.StreamSinkBin do
               ],
               target_window_duration: [
                 spec: pos_integer | :infinity,
-                type: :time,
                 default: Time.seconds(40),
                 description: """
                 Manifest duration is keept above that time, while the oldest segments
@@ -56,7 +50,7 @@ defmodule Membrane.HTTPAdaptiveStream.StreamSinkBin do
                 """
               ],
               persist?: [
-                type: :bool,
+                spec: boolean,
                 default: false,
                 description: """
                 If true, stale segments are removed from the manifest only. Once
@@ -64,7 +58,7 @@ defmodule Membrane.HTTPAdaptiveStream.StreamSinkBin do
                 """
               ],
               target_segment_duration: [
-                type: :time,
+                spec: pos_integer,
                 default: 0,
                 description: """
                 Expected length of each segment. Setting it is not necessary, but
@@ -80,7 +74,7 @@ defmodule Membrane.HTTPAdaptiveStream.StreamSinkBin do
       encoding: [
         spec: :H264 | :AAC,
         description: """
-        Encoding atom determining which payloader will be used.
+        Encoding type determining which payloader will be used for the given stream.
         """
       ]
     ]
@@ -98,15 +92,16 @@ defmodule Membrane.HTTPAdaptiveStream.StreamSinkBin do
       }
     ]
 
-    {{:ok, spec: %ParentSpec{children: children, links: []}},
-     %{muxer_segment_duration: opts.muxer_segment_duration}}
+    state = %{muxer_segment_duration: opts.muxer_segment_duration}
+
+    {{:ok, spec: %ParentSpec{children: children}}, state}
   end
 
   @impl true
   def handle_pad_added(Pad.ref(:input, ref) = pad, context, state) do
-    muxer_module = %MP4.CMAF.Muxer{segment_duration: state.muxer_segment_duration}
+    muxer = %MP4.CMAF.Muxer{segment_duration: state.muxer_segment_duration}
 
-    payloader_module =
+    payloader =
       case context.options[:encoding] do
         :H264 ->
           MP4.Payloader.H264
@@ -117,12 +112,12 @@ defmodule Membrane.HTTPAdaptiveStream.StreamSinkBin do
 
     links = [
       link_bin_input(pad)
-      |> to({:payloader, ref}, payloader_module)
-      |> to({:cmaf_muxer, ref}, muxer_module)
+      |> to({:payloader, ref}, payloader)
+      |> to({:cmaf_muxer, ref}, muxer)
       |> to(:sink)
     ]
 
-    {{:ok, spec: %ParentSpec{links: links}}, %{}}
+    {{:ok, spec: %ParentSpec{links: links}}, state}
   end
 
   @impl true

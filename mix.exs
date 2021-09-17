@@ -62,7 +62,6 @@ defmodule Membrane.HTTPAdaptiveStream.MixProject do
       {:membrane_cmaf_format, "~> 0.3.0"},
       {:ex_doc, "~> 0.21", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.0.0-rc.7", only: [:dev, :test], runtime: false},
-      #! czy dla membrane_mp4_plugin dodać jakieś only: [:dev, :test] ? jest potrzebne tylko w moim binie
       {:membrane_mp4_plugin, "~> 0.7.0"}
     ]
   end
