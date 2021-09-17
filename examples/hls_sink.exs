@@ -58,7 +58,7 @@ defmodule Example do
         target_segment_duration: 2 |> Membrane.Time.seconds(),
         persist?: false,
         storage: %Membrane.HTTPAdaptiveStream.Storages.FileStorage{
-          directory: __DIR__
+          directory: System.get_env("HLS_OUTPUT_DIR", "output")
         }
       }
     ]
