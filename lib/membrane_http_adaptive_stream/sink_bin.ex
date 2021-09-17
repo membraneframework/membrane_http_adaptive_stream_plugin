@@ -12,10 +12,10 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   """
   use Membrane.Bin
 
-  @payloaders %{H264: MP4.Payloader.H264, AAC: MP4.Payloader.AAC}
-
   alias Membrane.{ParentSpec, Time, MP4}
   alias Membrane.HTTPAdaptiveStream.{Sink, Storage}
+
+  @payloaders %{H264: MP4.Payloader.H264, AAC: MP4.Payloader.AAC}
 
   def_options muxer_segment_duration: [
                 spec: pos_integer,
