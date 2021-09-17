@@ -51,7 +51,7 @@ defmodule Example do
         alignment: :au,
         attach_nalus?: true
       },
-      sink_stream: %Membrane.HTTPAdaptiveStream.StreamSinkBin{
+      sink_bin: %Membrane.HTTPAdaptiveStream.SinkBin{
         muxer_segment_duration: 2 |> Membrane.Time.seconds(),
         manifest_module: Membrane.HTTPAdaptiveStream.HLS,
         target_window_duration: 30 |> Membrane.Time.seconds(),
@@ -67,14 +67,14 @@ defmodule Example do
       link(:source)
       |> to(:parser)
       |> via_in(:input, options: [encoding: :H264])
-      |> to(:sink_stream)
+      |> to(:sink_bin)
     ]
 
     {{:ok, spec: %ParentSpec{children: children, links: links}}, %{}}
   end
 
   @impl true
-  def handle_notification(:end_of_stream, :sink_stream, _context, state) do
+  def handle_notification(:end_of_stream, :sink_bin, _context, state) do
     Membrane.Pipeline.stop_and_terminate(self())
     {:ok, state}
   end
