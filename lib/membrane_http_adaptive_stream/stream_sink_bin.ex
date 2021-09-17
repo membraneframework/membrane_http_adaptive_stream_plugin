@@ -1,6 +1,7 @@
 defmodule Membrane.HTTPAdaptiveStream.StreamSinkBin do
   @moduledoc """
-  This bin takes a parsed video or a parsed audio stream or both and produces an HLS playlist.
+  Bin responsible for receiving audio and video streams, performing payloading and CMAF muxing 
+  to eventually store them using provided storage configuration.
 
   The bin payloads and muxes the incoming streams to the CMAF format and dumps an HLS playlist produced from it to storage.
 
