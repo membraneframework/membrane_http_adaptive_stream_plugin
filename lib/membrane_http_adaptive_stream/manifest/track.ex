@@ -4,6 +4,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   on it.
   """
   alias Membrane.HTTPAdaptiveStream.Manifest
+
   require Manifest.SegmentAttribute
 
   defmodule Config do
@@ -121,7 +122,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
 
   @doc """
   Add a segment of given duration to the track.
-  It is recommended not to pass discontinuity attribute manually and use `discontinue/1` function instead.
+  It is recommended not to pass discontinuity attribute manually but use `discontinue/1` function instead.
   """
   @spec add_segment(t, segment_duration_t, list(Manifest.SegmentAttribute.t())) ::
           {{to_add_name :: String.t(), to_remove_names :: to_remove_names_t()}, t}
@@ -178,7 +179,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   @doc """
   Discontinue the track, indicating that parameters of the stream have changed.
   New header has to be stored under the returned filename.
-  For details on discontinuity, please refer to RFC 8216.
+  For details on discontinuity, please refer to [RFC 8216](https://datatracker.ietf.org/doc/html/rfc8216).
   """
   @spec discontinue(t()) :: {header_name :: String.t(), t()}
   def discontinue(%__MODULE__{finished?: false, discontinuities_counter: counter} = track) do
@@ -211,9 +212,9 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
 
   @doc """
   Return new track with all stale segments restored, resulting in playback of historic data.
-  Only works with persisted tracks.
+  Only works with 'persist?' option enabled
   """
-  @spec from_beginning(t) :: t
+  @spec from_beginning(t()) :: t()
   def from_beginning(%__MODULE__{persist?: true} = track) do
     %__MODULE__{
       track
@@ -291,7 +292,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
         {:discontinuity, {new_header, seq_number}} ->
           {new_header, seq_number}
 
-        _otherwise ->
+        nil ->
           header
       end
 

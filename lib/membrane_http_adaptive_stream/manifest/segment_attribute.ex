@@ -4,8 +4,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.SegmentAttribute do
   This module should also contain macros for generating different types of attributes
   """
 
-  @typep segment_type_t() :: :discontinuity
-  @type t() :: {type :: segment_type_t(), arguments :: any()}
+  @type segment_type_t :: :discontinuity
+  @type t :: {type :: segment_type_t(), arguments :: any()}
 
   @doc """
   Callback for serializing a segment attribute to a string. It is required for each implementation of this behavior.

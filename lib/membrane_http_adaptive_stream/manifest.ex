@@ -53,8 +53,9 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
 
   @doc """
   Append a discontinuity to the track.
+
   This will inform the player that eg. the parameters of the encoder changed and allow you to provide a new MP4 header.
-  For details on discontinuities refer to RFC 8216.
+  For details on discontinuities refer to [RFC 8216](https://datatracker.ietf.org/doc/html/rfc8216).
   """
   @spec discontinue_track(t(), Track.id_t()) :: {header_name :: String.t(), t()}
   def discontinue_track(%__MODULE__{} = manifest, track_id) do
@@ -73,9 +74,9 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
   @doc """
   Restores all the stale segments in all tracks.
 
-  All the tracks must be configured to be 'persist'ed, otherwise this function will raise
+  All the tracks must be configured to be persisted beforehand, otherwise this function will raise
   """
-  @spec from_beginning(t) :: t
+  @spec from_beginning(t()) :: t
   def from_beginning(%__MODULE__{} = manifest) do
     tracks = Bunch.Map.map_values(manifest.tracks, &Track.from_beginning/1)
     %__MODULE__{manifest | tracks: tracks}

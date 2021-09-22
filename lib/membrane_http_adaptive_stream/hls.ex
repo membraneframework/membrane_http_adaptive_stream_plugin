@@ -27,6 +27,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     Implementation of `Membrane.HTTPAdaptiveStream.Manifest.SegmentAttribute` behaviour for HTTP Live Streaming
     """
     @behaviour Membrane.HTTPAdaptiveStream.Manifest.SegmentAttribute
+
     import Membrane.HTTPAdaptiveStream.Manifest.SegmentAttribute
 
     @impl true
