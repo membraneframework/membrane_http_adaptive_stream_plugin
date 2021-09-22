@@ -42,7 +42,8 @@ defmodule Example do
   def handle_init(_) do
     children = [
       source: %Membrane.Hackney.Source{
-        location: "https://raw.githubusercontent.com/membraneframework/static/gh-pages/video-samples/test-video.h264",
+        location:
+          "https://raw.githubusercontent.com/membraneframework/static/gh-pages/video-samples/test-video.h264",
         hackney_opts: [follow_redirect: true]
       },
       parser: %Membrane.H264.FFmpeg.Parser{
@@ -50,37 +51,35 @@ defmodule Example do
         alignment: :au,
         attach_nalus?: true
       },
-      payloader: Membrane.MP4.Payloader.H264,
-      cmaf_muxer: %Membrane.MP4.CMAF.Muxer{
-        segment_duration: 2 |> Membrane.Time.seconds()
-      },
-      sink: %Membrane.HTTPAdaptiveStream.Sink{
+      sink_bin: %Membrane.HTTPAdaptiveStream.SinkBin{
+        muxer_segment_duration: 2 |> Membrane.Time.seconds(),
         manifest_module: Membrane.HTTPAdaptiveStream.HLS,
         target_window_duration: 30 |> Membrane.Time.seconds(),
         target_segment_duration: 2 |> Membrane.Time.seconds(),
         persist?: false,
-        storage: %Membrane.HTTPAdaptiveStream.Storages.FileStorage{directory: System.get_env("HLS_OUTPUT_DIR", "output")}
+        storage: %Membrane.HTTPAdaptiveStream.Storages.FileStorage{
+          directory: System.get_env("HLS_OUTPUT_DIR", "output")
+        }
       }
     ]
 
     links = [
       link(:source)
       |> to(:parser)
-      |> to(:payloader)
-      |> to(:cmaf_muxer)
-      |> to(:sink)
+      |> via_in(:input, options: [encoding: :H264])
+      |> to(:sink_bin)
     ]
 
     {{:ok, spec: %ParentSpec{children: children, links: links}}, %{}}
   end
 
   @impl true
-  def handle_element_end_of_stream({:sink, _}, _ctx, state) do
+  def handle_notification(:end_of_stream, :sink_bin, _context, state) do
     Membrane.Pipeline.stop_and_terminate(self())
     {:ok, state}
   end
 
-  def handle_element_end_of_stream(_element, _ctx, state) do
+  def handle_notification(_notification, _element, _context, state) do
     {:ok, state}
   end
 end
