@@ -17,9 +17,9 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   #EXTM3U
   #EXT-X-VERSION:#{@version}
   #EXT-X-INDEPENDENT-SEGMENTS
+  #EXT-X-MEDIA:TYPE=AUDIO,NAME="a",GROUP-ID="a",AUTOSELECT=YES,DEFAULT=YES,URI="audio.m3u8"
   #EXT-X-STREAM-INF:BANDWIDTH=2560000,CODECS="avc1.42e00a",AUDIO="a"
   video.m3u8
-  #EXT-X-MEDIA:TYPE=AUDIO,NAME="a",GROUP-ID="a",AUTOSELECT=YES,DEFAULT=YES,URI="audio.m3u8"
   """
 
   defmodule SegmentAttribute do
