@@ -1,10 +1,10 @@
 defmodule Membrane.HTTPAdaptiveStream.SinkTest do
   use ExUnit.Case, async: true
   import Membrane.Testing.Assertions
-  require Membrane.Pad
   alias Membrane.{Buffer, Pad, Testing, Time}
   alias Membrane.HTTPAdaptiveStream.Sink
   alias Membrane.HTTPAdaptiveStream.Storages.SendStorage
+  require Membrane.Pad
 
   defmodule Source do
     use Membrane.Source

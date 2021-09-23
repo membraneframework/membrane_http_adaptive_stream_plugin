@@ -3,6 +3,10 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   Struct representing a state of a single manifest track and functions to operate
   on it.
   """
+  alias Membrane.HTTPAdaptiveStream.Manifest
+
+  require Manifest.SegmentAttribute
+
   defmodule Config do
     @moduledoc """
     Track configuration.
@@ -57,7 +61,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
                 stale_headers: Qex.new(),
                 finished?: false,
                 window_duration: 0,
-                discontinuities_counter: 0
+                discontinuities_counter: 0,
+                awaiting_discontinuity: nil
               ]
 
   @typedoc """
@@ -98,9 +103,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
           Qex.t(%{
             name: String.t(),
             duration: segment_duration_t(),
-            attributes: list(segment_attribute_t())
+            attributes: list(Manifest.SegmentAttribute.t())
           })
-  @type segment_attribute_t :: any()
   @type segment_duration_t :: Membrane.Time.t() | Ratio.t()
 
   @type to_remove_names_t :: [segment_names: [String.t()], header_names: [String.t()]]
@@ -116,14 +120,25 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     |> Map.merge(Map.from_struct(config))
   end
 
-  @spec add_segment(t, segment_duration_t, list(segment_attribute_t())) ::
+  @doc """
+  Add a segment of given duration to the track.
+  It is recommended not to pass discontinuity attribute manually but use `discontinue/1` function instead.
+  """
+  @spec add_segment(t, segment_duration_t, list(Manifest.SegmentAttribute.t())) ::
           {{to_add_name :: String.t(), to_remove_names :: to_remove_names_t()}, t}
-  def add_segment(%__MODULE__{finished?: false} = track, duration, attributes \\ []) do
+  def add_segment(track, duration, attributes \\ [])
+
+  def add_segment(%__MODULE__{finished?: false} = track, duration, attributes) do
     use Ratio, comparison: true
 
     name =
       "#{track.content_type}_segment_#{track.current_seq_num}_" <>
         "#{track.id_string}#{track.segment_extension}"
+
+    attributes =
+      if is_nil(track.awaiting_discontinuity),
+        do: attributes,
+        else: [track.awaiting_discontinuity | attributes]
 
     {stale_segments, stale_headers, track} =
       track
@@ -134,6 +149,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       |> Map.update!(:current_seq_num, &(&1 + 1))
       |> Map.update!(:window_duration, &(&1 + duration))
       |> Map.update!(:target_segment_duration, &if(&1 > duration, do: &1, else: duration))
+      |> Map.put(:awaiting_discontinuity, nil)
       |> pop_stale_segments_and_headers()
 
     {to_remove_segment_names, to_remove_header_names, stale_segments, stale_headers} =
@@ -157,13 +173,28 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
      %__MODULE__{track | stale_segments: stale_segments, stale_headers: stale_headers}}
   end
 
-  @spec discontinue(t()) ::
-          {{header_name :: String.t(), discontinuity_seq_num :: non_neg_integer()}, t()}
+  def add_segment(%__MODULE__{finished?: true} = _track, _duration, _attributes),
+    do: raise("Cannot add new segments to finished track")
+
+  @doc """
+  Discontinue the track, indicating that parameters of the stream have changed.
+  New header has to be stored under the returned filename.
+  For details on discontinuity, please refer to [RFC 8216](https://datatracker.ietf.org/doc/html/rfc8216).
+  """
+  @spec discontinue(t()) :: {header_name :: String.t(), t()}
   def discontinue(%__MODULE__{finished?: false, discontinuities_counter: counter} = track) do
     header = header_name(track, counter + 1)
+    discontinuity = Manifest.SegmentAttribute.discontinuity(header, counter + 1)
 
-    {{header, counter + 1}, %__MODULE__{track | discontinuities_counter: counter + 1}}
+    track =
+      track
+      |> Map.update!(:discontinuities_counter, &(&1 + 1))
+      |> Map.put(:awaiting_discontinuity, discontinuity)
+
+    {header, track}
   end
+
+  def discontinue(%__MODULE__{finished?: true}), do: raise("Cannot discontinue finished track")
 
   defp header_name(%{} = config, counter) do
     id_string = config.id |> :erlang.term_to_binary() |> Base.url_encode64(padding: false)
@@ -171,12 +202,19 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     "#{config.content_type}_header_#{id_string}_part#{counter}_#{config.header_extension}"
   end
 
+  @doc """
+  Marks the track as finished. After this action, it won't be possible to add any new segments to the track.
+  """
   @spec finish(t) :: t
   def finish(track) do
     %__MODULE__{track | finished?: true}
   end
 
-  @spec from_beginning(t) :: t
+  @doc """
+  Return new track with all stale segments restored, resulting in playback of historic data.
+  Only works with 'persist?' option enabled
+  """
+  @spec from_beginning(t()) :: t()
   def from_beginning(%__MODULE__{persist?: true} = track) do
     %__MODULE__{
       track
@@ -185,6 +223,12 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     }
   end
 
+  def from_beginning(%__MODULE__{persist?: false} = _track),
+    do: raise("Cannot play the track from the beginning as it wasn't persisted")
+
+  @doc """
+  Returns all segments present in the track, including stale segments.
+  """
   @spec all_segments(t) :: [segment_name :: String.t()]
   def all_segments(%__MODULE__{} = track) do
     Qex.join(track.stale_segments, track.segments) |> Enum.map(& &1.name)
@@ -244,11 +288,11 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     new_window_duration = window_duration - segment.duration
 
     new_header =
-      case segment.attributes |> Enum.find(&match?({:discontinuity, _, _}, &1)) do
-        {:discontinuity, new_header, seq_number} ->
+      case segment.attributes |> Enum.find(&match?({:discontinuity, {_, _}}, &1)) do
+        {:discontinuity, {new_header, seq_number}} ->
           {new_header, seq_number}
 
-        _ ->
+        nil ->
           header
       end
 
