@@ -111,14 +111,22 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   end
 
   @impl true
-  def handle_caps(Pad.ref(:input, track_id) = pad_ref, %CMAF.Track{} = caps, ctx, state) do
+  def handle_caps(Pad.ref(:input, track_id) = pad, %CMAF.Track{} = caps, ctx, state) do
     {header_name, manifest} =
       if Manifest.has_track?(state.manifest, track_id) do
+        manifest =
+          ctx.pads
+          |> Enum.filter(fn {key, value} -> key != pad && value.direction == :input end)
+          |> then(&[state.manifest | &1])
+          |> Enum.reduce(fn {Pad.ref(:input, track_id), _value}, manifest ->
+            Manifest.discontinue_track_without_params_change(manifest, track_id)
+          end)
+
         # Arrival of new caps for an already existing track indicate that stream parameters have changed.
         # According to section 4.3.2.3 of RFC 8216, discontinuity needs to be signaled and new header supplied.
-        Manifest.discontinue_track(state.manifest, track_id)
+        Manifest.discontinue_track(manifest, track_id)
       else
-        track_name = parse_track_name(ctx.pads[pad_ref].options[:track_name] || track_id)
+        track_name = parse_track_name(ctx.pads[pad].options[:track_name] || track_id)
 
         Manifest.add_track(
           state.manifest,

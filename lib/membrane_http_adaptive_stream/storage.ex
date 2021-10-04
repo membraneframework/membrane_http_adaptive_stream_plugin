@@ -128,8 +128,10 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
            ),
          :ok <- storage_impl.store(to_add, payload, %{mode: :binary, type: :segment}, impl_state) do
       :ok
+    else
+      error -> error
     end
-    ~> {&1, storage}
+    |> then(&{&1, storage})
   end
 
   @doc """

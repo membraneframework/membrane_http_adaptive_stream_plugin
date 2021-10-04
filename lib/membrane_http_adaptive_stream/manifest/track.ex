@@ -207,6 +207,23 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
 
   def discontinue(%__MODULE__{finished?: true}), do: raise("Cannot discontinue finished track")
 
+  @spec discontinue_without_params_change(t()) :: t()
+  def discontinue_without_params_change(
+        %__MODULE__{finished?: false, header_name: header} = track
+      ) do
+    discontinuity =
+      Manifest.SegmentAttribute.discontinuity(header, track.discontinuities_counter + 1)
+
+    track =
+      track
+      |> Map.update!(:discontinuities_counter, &(&1 + 1))
+      |> Map.put(:awaiting_discontinuity, discontinuity)
+
+    track
+  end
+
+  def discontinue_without_params_change(_finished), do: raise("Cannot discontinue finished track")
+
   defp header_name(%{} = config, counter) do
     "#{config.content_type}_header_#{config.track_name}_part#{counter}_#{config.header_extension}"
   end

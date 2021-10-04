@@ -67,6 +67,16 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
     )
   end
 
+  @spec discontinue_track_without_params_change(t(), Track.id_t()) ::
+          {header_name :: String.t(), t()}
+  def discontinue_track_without_params_change(%__MODULE__{} = manifest, track_id) do
+    update_in(
+      manifest,
+      [:tracks, track_id],
+      &Track.discontinue_without_params_change/1
+    )
+  end
+
   @spec finish(t, Track.id_t()) :: t
   def finish(%__MODULE__{} = manifest, track_id) do
     update_in(manifest, [:tracks, track_id], &Track.finish/1)

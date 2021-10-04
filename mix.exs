@@ -62,13 +62,14 @@ defmodule Membrane.HTTPAdaptiveStream.MixProject do
     [
       {:membrane_core, "~> 0.8.0"},
       {:membrane_cmaf_format, "~> 0.4.0"},
-      {:credo, "~> 1.5.6"},
+      {:credo, "~> 1.6.1"},
       {:ex_doc, "~> 0.25", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.1", only: [:dev, :test], runtime: false},
       {:membrane_mp4_plugin, "~> 0.9.0"},
       {:membrane_hackney_plugin, "~> 0.6.0", only: [:test]},
       {:membrane_h264_ffmpeg_plugin, "~> 0.14.0", only: [:test]},
-      {:membrane_aac_plugin, "~> 0.9.0", only: [:test]}
+      {:membrane_aac_plugin, "~> 0.9.0", only: [:test]},
+      {:bunch, "~> 1.3"}
     ]
   end
 end
