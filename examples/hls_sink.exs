@@ -1,6 +1,6 @@
 Mix.install([
   :membrane_core,
-  {:membrane_http_adaptive_stream_plugin, path: Path.expand("../"), override: true},
+  {:membrane_http_adaptive_stream_plugin, path: __DIR__ |> Path.join("..") |> Path.expand()},
   :membrane_h264_ffmpeg_plugin,
   :membrane_mp4_plugin,
   :membrane_hackney_plugin
