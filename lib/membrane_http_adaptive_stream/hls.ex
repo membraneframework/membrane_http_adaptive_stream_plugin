@@ -4,6 +4,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
 
   Currently supports up to one audio and video stream.
   """
+  use Ratio
 
   @behaviour Membrane.HTTPAdaptiveStream.Manifest
 
@@ -13,13 +14,10 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
 
   @version 7
 
-  @av_manifest """
+  @master_playlist_header"""
   #EXTM3U
   #EXT-X-VERSION:#{@version}
   #EXT-X-INDEPENDENT-SEGMENTS
-  #EXT-X-MEDIA:TYPE=AUDIO,NAME="a",GROUP-ID="a",AUTOSELECT=YES,DEFAULT=YES,URI="audio.m3u8"
-  #EXT-X-STREAM-INF:BANDWIDTH=2560000,CODECS="avc1.42e00a",AUDIO="a"
-  video.m3u8
   """
 
   defmodule SegmentAttribute do
@@ -49,18 +47,56 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     main_manifest_name = "#{manifest.name}.m3u8"
 
     case {tracks_by_content[:audio], tracks_by_content[:video]} do
-      {[audio], [video]} ->
-        [
-          {main_manifest_name, @av_manifest},
-          {"audio.m3u8", serialize_track(audio)},
-          {"video.m3u8", serialize_track(video)}
-        ]
-
       {[audio], nil} ->
-        [{main_manifest_name, serialize_track(audio)}]
+        [{main_manifest_name, build_master_playlist([audio], nil)}, {"audio.m3u8", serialize_track(audio)}]
+      {nil, videos} -> [
+          {main_manifest_name, build_master_playlist(nil, videos)} |
+          videos |> Enum.map(& {"#{&1.header_name |> String.split(".") |> List.first()}.m3u8", serialize_track(&1)})
+        ]
+      {[audio], videos} -> List.flatten([
+          {main_manifest_name, build_master_playlist([audio], videos)},
+          {"audio.m3u8", serialize_track(audio)},
+          videos |> Enum.map(& {"#{&1.header_name |> String.split(".") |> List.first()}.m3u8", serialize_track(&1)})
+        ])
+    end
+  end
 
-      {nil, [video]} ->
-        [{main_manifest_name, serialize_track(video)}]
+  defp calculate_bandwith(%Track{content_type: :video} = track) do
+    total_size = Enum.map(track.segments, fn(segment) -> segment.bits end) |> Enum.sum()
+    total_duration = track.segments |> Enum.map(& Ratio.to_float(&1.duration / Time.second())) |> Enum.sum()
+    trunc(total_size / total_duration)
+  end
+
+  defp build_media_playlist_tag(%Track{content_type: :audio} = _)do
+    """
+    #EXT-X-MEDIA:TYPE=AUDIO,NAME="a",GROUP-ID="a",AUTOSELECT=YES,DEFAULT=YES,URI="audio.m3u8"
+    """
+  end
+
+  defp build_media_playlist_tag(%Track{content_type: :video} = track) do
+    """
+    #EXT-X-STREAM-INF:CODECS="avc1.42e00a",BANDWIDTH=#{calculate_bandwith(track)}
+    """
+  end
+
+  defp build_media_playlist_tag(%Track{content_type: :video} = track, audio_id) do
+    """
+    #EXT-X-STREAM-INF:CODECS="avc1.42e00a",BANDWIDTH=#{calculate_bandwith(track)},AUDIO=#{audio_id}
+    """
+  end
+
+  defp build_master_playlist(audios, videos) do
+    case {audios, videos} do
+      {[audio], nil} ->
+        "#{@master_playlist_header}" <> build_media_playlist_tag(audio)
+      {nil, videos} -> [
+          "#{@master_playlist_header}" |
+          videos |> Enum.map(& build_media_playlist_tag(&1) <> "#{&1.header_name |> String.split(".") |> List.first()}.m3u8\n")
+        ]|> Enum.join("")
+      {[audio], videos} -> [
+          "#{@master_playlist_header}" <> build_media_playlist_tag(audio) |
+          videos |> Enum.map(& build_media_playlist_tag(&1, "a") <> "#{&1.header_name |> String.split(".") |> List.first()}.m3u8\n")
+        ]|> Enum.join("")
     end
   end
 
@@ -83,7 +119,6 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   end
 
   defp serialize_segment(segment) do
-    use Ratio
     time = Ratio.to_float(segment.duration / Time.second())
 
     Enum.flat_map(segment.attributes, &SegmentAttribute.serialize/1) ++
