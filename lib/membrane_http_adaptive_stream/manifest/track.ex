@@ -107,6 +107,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
           })
   @type segment_duration_t :: Membrane.Time.t() | Ratio.t()
 
+  @type segment_bits_t :: Integer.t()
+
   @type to_remove_names_t :: [segment_names: [String.t()], header_names: [String.t()]]
 
   @spec new(Config.t()) :: t
@@ -124,11 +126,11 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   Add a segment of given duration to the track.
   It is recommended not to pass discontinuity attribute manually but use `discontinue/1` function instead.
   """
-  @spec add_segment(t, segment_duration_t, list(Manifest.SegmentAttribute.t())) ::
+  @spec add_segment(t, segment_duration_t, segment_bits_t, list(Manifest.SegmentAttribute.t())) ::
           {{to_add_name :: String.t(), to_remove_names :: to_remove_names_t()}, t}
-  def add_segment(track, duration, attributes \\ [])
+  def add_segment(track, duration, bits, attributes \\ [])
 
-  def add_segment(%__MODULE__{finished?: false} = track, duration, attributes) do
+  def add_segment(%__MODULE__{finished?: false} = track, bits, duration, attributes) do
     use Ratio, comparison: true
 
     name =
@@ -144,7 +146,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       track
       |> Map.update!(
         :segments,
-        &Qex.push(&1, %{name: name, duration: duration, attributes: attributes})
+        &Qex.push(&1, %{name: name, duration: duration, bits: bits, attributes: attributes})
       )
       |> Map.update!(:current_seq_num, &(&1 + 1))
       |> Map.update!(:window_duration, &(&1 + duration))
@@ -173,7 +175,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
      %__MODULE__{track | stale_segments: stale_segments, stale_headers: stale_headers}}
   end
 
-  def add_segment(%__MODULE__{finished?: true} = _track, _duration, _attributes),
+  def add_segment(%__MODULE__{finished?: true} = _track, _duration, _bits, _attributes),
     do: raise("Cannot add new segments to finished track")
 
   @doc """
