@@ -4,21 +4,24 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
 
   Currently supports up to one audio and video stream.
   """
-  use Ratio
-
   @behaviour Membrane.HTTPAdaptiveStream.Manifest
+
+  use Ratio
 
   alias Membrane.HTTPAdaptiveStream.Manifest
   alias Membrane.HTTPAdaptiveStream.Manifest.Track
+  alias Membrane.HTTPAdaptiveStream.BandwidthCalculator
   alias Membrane.Time
 
   @version 7
 
-  @master_playlist_header"""
+  @master_playlist_header """
   #EXTM3U
   #EXT-X-VERSION:#{@version}
   #EXT-X-INDEPENDENT-SEGMENTS
   """
+
+  @empty_segments Qex.new()
 
   defmodule SegmentAttribute do
     @moduledoc """
@@ -48,61 +51,85 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
 
     case {tracks_by_content[:audio], tracks_by_content[:video]} do
       {[audio], nil} ->
-        [{main_manifest_name, build_master_playlist([audio], nil)}, {"audio.m3u8", serialize_track(audio)}]
-      {nil, videos} -> [
-          {main_manifest_name, build_master_playlist(nil, videos)} |
-          videos |> Enum.map(& {"#{&1.header_name |> String.split(".") |> List.first()}.m3u8", serialize_track(&1)})
+        [
+          {main_manifest_name, build_master_playlist([audio], nil)},
+          {"audio.m3u8", serialize_track(audio)}
         ]
-      {[audio], videos} -> List.flatten([
+
+      {nil, videos} ->
+        [
+          {main_manifest_name, build_master_playlist(nil, videos)}
+          | videos
+            |> Enum.map(
+              &{"#{&1.header_name |> String.split(".") |> List.first()}.m3u8",
+               serialize_track(&1)}
+            )
+        ]
+
+      {[audio], videos} ->
+        List.flatten([
           {main_manifest_name, build_master_playlist([audio], videos)},
           {"audio.m3u8", serialize_track(audio)},
-          videos |> Enum.map(& {"#{&1.header_name |> String.split(".") |> List.first()}.m3u8", serialize_track(&1)})
+          videos
+          |> Enum.map(
+            &{"#{&1.header_name |> String.split(".") |> List.first()}.m3u8", serialize_track(&1)}
+          )
         ])
     end
   end
 
-  defp calculate_bandwith(%Track{content_type: :video} = track) do
-    total_size = Enum.map(track.segments, fn(segment) -> segment.bits end) |> Enum.sum()
-    total_duration = track.segments |> Enum.map(& Ratio.to_float(&1.duration / Time.second())) |> Enum.sum()
-    trunc(total_size / total_duration)
-  end
+  defp build_media_playlist_tag(%Track{} = track, audio_id \\ nil) do
+    case {track, audio_id} do
+      {%Track{segments: @empty_segments}, _} ->
+        ""
 
-  defp build_media_playlist_tag(%Track{content_type: :audio} = _)do
-    """
-    #EXT-X-MEDIA:TYPE=AUDIO,NAME="a",GROUP-ID="a",AUTOSELECT=YES,DEFAULT=YES,URI="audio.m3u8"
-    """
-  end
+      {%Track{content_type: :audio}, _} ->
+        """
+        #EXT-X-MEDIA:TYPE=AUDIO,NAME="a",GROUP-ID="a",AUTOSELECT=YES,DEFAULT=YES,URI="audio.m3u8"
+        """
 
-  defp build_media_playlist_tag(%Track{content_type: :video} = track) do
-    """
-    #EXT-X-STREAM-INF:CODECS="avc1.42e00a",BANDWIDTH=#{calculate_bandwith(track)}
-    """
-  end
+      {%Track{content_type: :video} = track, nil} ->
+        """
+        #EXT-X-STREAM-INF:BANDWIDTH=#{BandwidthCalculator.calculate_bandwidth(track)},CODECS="avc1.42e00a",
+        """
 
-  defp build_media_playlist_tag(%Track{content_type: :video} = track, audio_id) do
-    """
-    #EXT-X-STREAM-INF:CODECS="avc1.42e00a",BANDWIDTH=#{calculate_bandwith(track)},AUDIO=#{audio_id}
-    """
+      {%Track{content_type: :video} = track, _} ->
+        """
+        #EXT-X-STREAM-INF:BANDWIDTH=#{BandwidthCalculator.calculate_bandwidth(track)},CODECS="avc1.42e00a",AUDIO=#{audio_id}
+        """
+    end
   end
 
   defp build_master_playlist(audios, videos) do
     case {audios, videos} do
       {[audio], nil} ->
         "#{@master_playlist_header}" <> build_media_playlist_tag(audio)
-      {nil, videos} -> [
-          "#{@master_playlist_header}" |
-          videos |> Enum.map(& build_media_playlist_tag(&1) <> "#{&1.header_name |> String.split(".") |> List.first()}.m3u8\n")
-        ]|> Enum.join("")
-      {[audio], videos} -> [
-          "#{@master_playlist_header}" <> build_media_playlist_tag(audio) |
-          videos |> Enum.map(& build_media_playlist_tag(&1, "a") <> "#{&1.header_name |> String.split(".") |> List.first()}.m3u8\n")
-        ]|> Enum.join("")
+
+      {nil, videos} ->
+        [
+          "#{@master_playlist_header}"
+          | videos
+            |> Enum.map(
+              &(build_media_playlist_tag(&1) <>
+                  "#{&1.header_name |> String.split(".") |> List.first()}.m3u8\n")
+            )
+        ]
+        |> Enum.join("")
+
+      {[audio], videos} ->
+        [
+          "#{@master_playlist_header}" <> build_media_playlist_tag(audio)
+          | videos
+            |> Enum.map(
+              &(build_media_playlist_tag(&1, "a") <>
+                  "#{&1.header_name |> String.split(".") |> List.first()}.m3u8\n")
+            )
+        ]
+        |> Enum.join("")
     end
   end
 
   defp serialize_track(%Track{} = track) do
-    use Ratio
-
     target_duration = Ratio.ceil(track.target_segment_duration / Time.second()) |> trunc()
     media_sequence = track.current_seq_num - Enum.count(track.segments)
 

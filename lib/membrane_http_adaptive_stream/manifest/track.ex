@@ -103,11 +103,12 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
           Qex.t(%{
             name: String.t(),
             duration: segment_duration_t(),
+            bits: segment_bits_t(),
             attributes: list(Manifest.SegmentAttribute.t())
           })
   @type segment_duration_t :: Membrane.Time.t() | Ratio.t()
 
-  @type segment_bits_t :: Integer.t()
+  @type segment_bits_t :: non_neg_integer()
 
   @type to_remove_names_t :: [segment_names: [String.t()], header_names: [String.t()]]
 
