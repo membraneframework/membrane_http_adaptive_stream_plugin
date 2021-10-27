@@ -20,6 +20,8 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   """
 
   @empty_segments Qex.new()
+  @default_audio_track_id "audio_default_id"
+  @default_audio_track_name "audio_default_name"
 
   defmodule SegmentAttribute do
     @moduledoc """
@@ -47,77 +49,83 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     tracks_by_content = manifest.tracks |> Map.values() |> Enum.group_by(& &1.content_type)
     main_manifest_name = "#{manifest.name}.m3u8"
 
+    if length(Map.get(tracks_by_content, :audio, [])) > 1 do
+      raise ArgumentError, message: "Multiple audio tracks are not currently supported."
+    end
+
     case {tracks_by_content[:audio], tracks_by_content[:video]} do
       {[audio], nil} ->
         [
-          {main_manifest_name, build_master_playlist([audio], nil)},
+          {main_manifest_name, build_master_playlist(audio, nil)},
           {"audio.m3u8", serialize_track(audio)}
         ]
 
       {nil, videos} ->
         List.flatten([
           {main_manifest_name, build_master_playlist(nil, videos)},
-          Enum.map(
-            videos,
-            &{"#{&1.header_name |> String.split(".") |> List.first()}.m3u8", serialize_track(&1)}
-          )
+          videos
+          |> Enum.filter(&(&1.segments != @empty_segments))
+          |> Enum.map(&{build_media_playlist_path(&1), serialize_track(&1)})
         ])
 
       {[audio], videos} ->
         List.flatten([
-          {main_manifest_name, build_master_playlist([audio], videos)},
+          {main_manifest_name, build_master_playlist(audio, videos)},
           {"audio.m3u8", serialize_track(audio)},
-          Enum.map(
-            videos,
-            &{"#{&1.header_name |> String.split(".") |> List.first()}.m3u8", serialize_track(&1)}
-          )
+          videos
+          |> Enum.filter(&(&1.segments != @empty_segments))
+          |> Enum.map(&{build_media_playlist_path(&1), serialize_track(&1)})
         ])
     end
   end
 
-  defp build_media_playlist_tag(%Manifest.Track{} = track, audio_id \\ nil) do
-    case {track, audio_id} do
-      {%Manifest.Track{segments: @empty_segments}, _} ->
-        ""
+  defp build_media_playlist_path(%Manifest.Track{} = track) do
+    [track.content_type, "_", track.id_string, ".m3u8"] |> Enum.join("")
+  end
 
-      {%Manifest.Track{content_type: :audio}, _} ->
-        """
-        #EXT-X-MEDIA:TYPE=AUDIO,NAME="a",GROUP-ID="a",AUTOSELECT=YES,DEFAULT=YES,URI="audio.m3u8"
-        """
+  defp build_media_playlist_tag(%Manifest.Track{} = track) do
+    case track do
+      %Manifest.Track{content_type: :audio} ->
+        "#EXT-X-MEDIA:TYPE=AUDIO,NAME=\"#{@default_audio_track_name}\",GROUP-ID=\"#{@default_audio_track_id}\",AUTOSELECT=YES,DEFAULT=YES,URI=\"audio.m3u8\""
 
-      {%Manifest.Track{content_type: :video} = track, nil} ->
-        """
-        #EXT-X-STREAM-INF:BANDWIDTH=#{BandwidthCalculator.calculate_bandwidth(track)},CODECS="avc1.42e00a",
-        """
-
-      {%Manifest.Track{content_type: :video} = track, _} ->
-        """
-        #EXT-X-STREAM-INF:BANDWIDTH=#{BandwidthCalculator.calculate_bandwidth(track)},CODECS="avc1.42e00a",AUDIO=#{audio_id}
-        """
+      %Manifest.Track{content_type: :video} ->
+        "#EXT-X-STREAM-INF:BANDWIDTH=#{BandwidthCalculator.calculate_bandwidth(track)},CODECS=\"avc1.42e00a\""
     end
   end
 
-  defp build_master_playlist(audios, videos) do
-    case {audios, videos} do
-      {[audio | _], nil} ->
-        @master_playlist_header <> build_media_playlist_tag(audio)
+  defp build_master_playlist(audio, videos) do
+    case {audio, videos} do
+      {_audio, nil} ->
+        [@master_playlist_header |> String.trim(), build_media_playlist_tag(audio)]
+        |> Enum.join("")
 
-      {nil, videos} ->
-        @master_playlist_header <>
-          Enum.reduce(videos, "", fn video, video_tags ->
-            video_tags <>
-              build_media_playlist_tag(video) <>
-              "#{video.header_name |> String.split(".") |> List.first()}.m3u8\n"
-          end)
+      {nil, _videos} ->
+        [
+          @master_playlist_header |> String.trim()
+          | videos
+            |> Enum.filter(&(&1.segments != @empty_segments))
+            |> Enum.flat_map(&[build_media_playlist_tag(&1), build_media_playlist_path(&1)])
+        ]
+        |> Enum.join("\n")
 
-      {[audio | _], videos} ->
-        @master_playlist_header <>
-          build_media_playlist_tag(audio) <>
-          Enum.reduce(videos, "", fn video, video_tags ->
-            video_tags <>
-              build_media_playlist_tag(video, "audio") <>
-              "#{video.header_name |> String.split(".") |> List.first()}.m3u8\n"
-          end)
+      _tracks ->
+        video_tracks =
+          videos
+          |> Enum.filter(&(&1.segments != @empty_segments))
+          |> Enum.flat_map(
+            &[
+              "#{build_media_playlist_tag(&1)},AUDIO=\"#{@default_audio_track_id}\"",
+              build_media_playlist_path(&1)
+            ]
+          )
+
+        [
+          @master_playlist_header |> String.trim(),
+          build_media_playlist_tag(audio),
+          video_tracks
+        ]
+        |> List.flatten()
+        |> Enum.join("\n")
     end
   end
 

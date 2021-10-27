@@ -103,12 +103,12 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
           Qex.t(%{
             name: String.t(),
             duration: segment_duration_t(),
-            byte_size: segment_byte_size_t(),
+            bytes_size: segment_bytes_size_t(),
             attributes: list(Manifest.SegmentAttribute.t())
           })
   @type segment_duration_t :: Membrane.Time.t() | Ratio.t()
 
-  @type segment_byte_size_t :: non_neg_integer()
+  @type segment_bytes_size_t :: non_neg_integer()
 
   @type to_remove_names_t :: [segment_names: [String.t()], header_names: [String.t()]]
 
@@ -130,13 +130,13 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   @spec add_segment(
           t,
           segment_duration_t,
-          segment_byte_size_t,
+          segment_bytes_size_t,
           list(Manifest.SegmentAttribute.t())
         ) ::
           {{to_add_name :: String.t(), to_remove_names :: to_remove_names_t()}, t}
-  def add_segment(track, duration, bits, attributes \\ [])
+  def add_segment(track, duration, bytes_size, attributes \\ [])
 
-  def add_segment(%__MODULE__{finished?: false} = track, byte_size, duration, attributes) do
+  def add_segment(%__MODULE__{finished?: false} = track, bytes_size, duration, attributes) do
     use Ratio, comparison: true
 
     name =
@@ -155,7 +155,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
         &Qex.push(&1, %{
           name: name,
           duration: duration,
-          byte_size: byte_size,
+          bytes_size: bytes_size,
           attributes: attributes
         })
       )
@@ -186,7 +186,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
      %__MODULE__{track | stale_segments: stale_segments, stale_headers: stale_headers}}
   end
 
-  def add_segment(%__MODULE__{finished?: true} = _track, _duration, _bits, _attributes),
+  def add_segment(%__MODULE__{finished?: true} = _track, _duration, _bytes_size, _attributes),
     do: raise("Cannot add new segments to finished track")
 
   @doc """
