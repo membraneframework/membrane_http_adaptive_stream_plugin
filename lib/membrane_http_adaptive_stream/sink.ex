@@ -155,7 +155,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     duration = buffer.metadata.duration
 
     {changeset, manifest} =
-      Manifest.add_segment(manifest, id, 8 * byte_size(buffer.payload), duration)
+      Manifest.add_segment(manifest, id, byte_size(buffer.payload), duration)
 
     state = %{state | manifest: manifest}
 

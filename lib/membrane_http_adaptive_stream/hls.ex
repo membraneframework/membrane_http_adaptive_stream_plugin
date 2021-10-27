@@ -8,9 +8,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
 
   use Ratio
 
-  alias Membrane.HTTPAdaptiveStream.Manifest
-  alias Membrane.HTTPAdaptiveStream.Manifest.Track
-  alias Membrane.HTTPAdaptiveStream.BandwidthCalculator
+  alias Membrane.HTTPAdaptiveStream.{BandwidthCalculator, Manifest}
   alias Membrane.Time
 
   @version 7
@@ -57,43 +55,42 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
         ]
 
       {nil, videos} ->
-        [
-          {main_manifest_name, build_master_playlist(nil, videos)}
-          | videos
-            |> Enum.map(
-              &{"#{&1.header_name |> String.split(".") |> List.first()}.m3u8",
-               serialize_track(&1)}
-            )
-        ]
+        List.flatten([
+          {main_manifest_name, build_master_playlist(nil, videos)},
+          Enum.map(
+            videos,
+            &{"#{&1.header_name |> String.split(".") |> List.first()}.m3u8", serialize_track(&1)}
+          )
+        ])
 
       {[audio], videos} ->
         List.flatten([
           {main_manifest_name, build_master_playlist([audio], videos)},
           {"audio.m3u8", serialize_track(audio)},
-          videos
-          |> Enum.map(
+          Enum.map(
+            videos,
             &{"#{&1.header_name |> String.split(".") |> List.first()}.m3u8", serialize_track(&1)}
           )
         ])
     end
   end
 
-  defp build_media_playlist_tag(%Track{} = track, audio_id \\ nil) do
+  defp build_media_playlist_tag(%Manifest.Track{} = track, audio_id \\ nil) do
     case {track, audio_id} do
-      {%Track{segments: @empty_segments}, _} ->
+      {%Manifest.Track{segments: @empty_segments}, _} ->
         ""
 
-      {%Track{content_type: :audio}, _} ->
+      {%Manifest.Track{content_type: :audio}, _} ->
         """
         #EXT-X-MEDIA:TYPE=AUDIO,NAME="a",GROUP-ID="a",AUTOSELECT=YES,DEFAULT=YES,URI="audio.m3u8"
         """
 
-      {%Track{content_type: :video} = track, nil} ->
+      {%Manifest.Track{content_type: :video} = track, nil} ->
         """
         #EXT-X-STREAM-INF:BANDWIDTH=#{BandwidthCalculator.calculate_bandwidth(track)},CODECS="avc1.42e00a",
         """
 
-      {%Track{content_type: :video} = track, _} ->
+      {%Manifest.Track{content_type: :video} = track, _} ->
         """
         #EXT-X-STREAM-INF:BANDWIDTH=#{BandwidthCalculator.calculate_bandwidth(track)},CODECS="avc1.42e00a",AUDIO=#{audio_id}
         """
@@ -102,34 +99,29 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
 
   defp build_master_playlist(audios, videos) do
     case {audios, videos} do
-      {[audio], nil} ->
-        "#{@master_playlist_header}" <> build_media_playlist_tag(audio)
+      {[audio | _], nil} ->
+        @master_playlist_header <> build_media_playlist_tag(audio)
 
       {nil, videos} ->
-        [
-          "#{@master_playlist_header}"
-          | videos
-            |> Enum.map(
-              &(build_media_playlist_tag(&1) <>
-                  "#{&1.header_name |> String.split(".") |> List.first()}.m3u8\n")
-            )
-        ]
-        |> Enum.join("")
+        @master_playlist_header <>
+          Enum.reduce(videos, "", fn video, video_tags ->
+            video_tags <>
+              build_media_playlist_tag(video) <>
+              "#{video.header_name |> String.split(".") |> List.first()}.m3u8\n"
+          end)
 
-      {[audio], videos} ->
-        [
-          "#{@master_playlist_header}" <> build_media_playlist_tag(audio)
-          | videos
-            |> Enum.map(
-              &(build_media_playlist_tag(&1, "a") <>
-                  "#{&1.header_name |> String.split(".") |> List.first()}.m3u8\n")
-            )
-        ]
-        |> Enum.join("")
+      {[audio | _], videos} ->
+        @master_playlist_header <>
+          build_media_playlist_tag(audio) <>
+          Enum.reduce(videos, "", fn video, video_tags ->
+            video_tags <>
+              build_media_playlist_tag(video, "audio") <>
+              "#{video.header_name |> String.split(".") |> List.first()}.m3u8\n"
+          end)
     end
   end
 
-  defp serialize_track(%Track{} = track) do
+  defp serialize_track(%Manifest.Track{} = track) do
     target_duration = Ratio.ceil(track.target_segment_duration / Time.second()) |> trunc()
     media_sequence = track.current_seq_num - Enum.count(track.segments)
 

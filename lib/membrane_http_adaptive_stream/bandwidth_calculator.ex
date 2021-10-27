@@ -16,35 +16,29 @@ defmodule Membrane.HTTPAdaptiveStream.BandwidthCalculator do
     segments_meta =
       segments_sequences
       |> Enum.map(
-        &[
-          Enum.map(&1, fn sg -> sg.bits end) |> Enum.sum(),
+        &{
+          Enum.map(&1, fn sg -> 8 * sg.byte_size end) |> Enum.sum(),
           Enum.map(&1, fn sg -> Ratio.to_float(sg.duration / Time.second()) end) |> Enum.sum()
-        ]
+        }
       )
 
-    Enum.filter(segments_meta, fn [_bits, duration] ->
-      duration >= 0.5 * target_duration and duration <= 1.5 * target_duration
-    end)
-    |> Enum.map(&(List.first(&1) / List.last(&1)))
+    # According to HLS rfc only segment subsequences with duration between 0.5 and 1.5 of target duration should be
+    # considered
+    valid_segments_meta =
+      Enum.filter(segments_meta, fn {_bits_size, duration} ->
+        duration >= 0.5 * target_duration and duration <= 1.5 * target_duration
+      end)
+
+    Enum.map(valid_segments_meta, fn {bits_size, duration} -> bits_size / duration end)
     |> Enum.max()
     |> trunc()
   end
 
-  defp generate_prefixes(sequence) do
-    Enum.reduce(sequence, [], fn x, acc ->
-      case acc do
-        [] -> [[x]]
-        _ -> [[x | List.first(acc)] | acc]
-      end
-    end)
-  end
-
+  # Generates all contiguous subsequences of a list. This is needed because rfc defines bandwidth
+  # in HLS as the highest size to duration ratio of all contiguous subsequences of media track segments.
   defp generate_subsequences(sequence) do
-    Enum.reduce(sequence, [], fn x, acc ->
-      case acc do
-        [] -> [[x]]
-        _ -> generate_prefixes([x | List.first(acc)]) ++ acc
-      end
-    end)
+    n = length(sequence)
+    subsequence_ranges = for(i <- 0..(n - 1), do: for(j <- 0..i, do: {j, i})) |> List.flatten()
+    Enum.map(subsequence_ranges, fn {i, j} -> Enum.slice(sequence, i..j) end)
   end
 end
