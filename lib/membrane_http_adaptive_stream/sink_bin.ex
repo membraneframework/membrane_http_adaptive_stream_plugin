@@ -75,6 +75,14 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
         description: """
         Encoding type determining which payloader will be used for the given stream.
         """
+      ],
+      track_name: [
+        spec: String.t() | nil,
+        default: nil,
+        description: """
+        Name that will be used to name the media playlist for the given track, as well as its header and segments files.
+        It must not contain any URI reserved characters
+        """
       ]
     ]
 
@@ -101,11 +109,13 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
     muxer = %MP4.CMAF.Muxer{segment_duration: state.muxer_segment_duration}
 
     payloader = Map.fetch!(@payloaders, context.options[:encoding])
+    track_name = context.options[:track_name]
 
     links = [
       link_bin_input(pad)
       |> to({:payloader, ref}, payloader)
       |> to({:cmaf_muxer, ref}, muxer)
+      |> via_in(:input, options: [track_name: track_name])
       |> to(:sink)
     ]
 
