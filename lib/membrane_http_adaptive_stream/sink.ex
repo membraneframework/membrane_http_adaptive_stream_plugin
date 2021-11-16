@@ -36,7 +36,17 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   def_input_pad :input,
     availability: :on_request,
     demand_unit: :buffers,
-    caps: CMAF.Track
+    caps: CMAF.Track,
+    options: [
+      track_name: [
+        spec: String.t() | nil,
+        default: nil,
+        description: """
+        Name that will be used to name the media playlist for the given track, as well as its header and segments files.
+        It must not contain any URI reserved characters
+        """
+      ]
+    ]
 
   def_options manifest_name: [
                 type: :string,
@@ -101,17 +111,20 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   end
 
   @impl true
-  def handle_caps(Pad.ref(:input, track_id), %CMAF.Track{} = caps, _ctx, state) do
+  def handle_caps(Pad.ref(:input, track_id) = pad_ref, %CMAF.Track{} = caps, ctx, state) do
     {header_name, manifest} =
       if Manifest.has_track?(state.manifest, track_id) do
         # Arrival of new caps for an already existing track indicate that stream parameters have changed.
         # According to section 4.3.2.3 of RFC 8216, discontinuity needs to be signaled and new header supplied.
         Manifest.discontinue_track(state.manifest, track_id)
       else
+        track_name = parse_track_name(ctx.pads[pad_ref].options[:track_name] || track_id)
+
         Manifest.add_track(
           state.manifest,
           %Manifest.Track.Config{
             id: track_id,
+            track_name: track_name,
             content_type: caps.content_type,
             header_extension: ".mp4",
             segment_extension: ".m4s",
@@ -154,7 +167,8 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     %{storage: storage, manifest: manifest} = state
     duration = buffer.metadata.duration
 
-    {changeset, manifest} = Manifest.add_segment(manifest, id, duration)
+    {changeset, manifest} =
+      Manifest.add_segment(manifest, id, byte_size(buffer.payload), duration)
 
     state = %{state | manifest: manifest}
 
@@ -205,6 +219,21 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     with {:ok, state} <- result do
       {{:ok, notify: {:cleanup, cleanup}}, state}
     end
+  end
+
+  defp parse_track_name(track_id) when is_binary(track_id) do
+    valid_filename_regex = ~r/^[^\/:*?"<>|]+$/
+
+    if String.match?(track_id, valid_filename_regex) do
+      track_id
+    else
+      raise ArgumentError,
+        message: "Manually defined track identifiers should be valid file names."
+    end
+  end
+
+  defp parse_track_name(track_id) do
+    track_id |> :erlang.term_to_binary() |> Base.url_encode64(padding: false)
   end
 
   defp maybe_notify_playable(id, %{awaiting_first_segment: awaiting_first_segment} = state) do

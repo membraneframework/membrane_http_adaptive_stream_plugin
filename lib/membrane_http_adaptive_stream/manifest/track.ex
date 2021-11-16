@@ -16,6 +16,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
 
     @enforce_keys [
       :id,
+      :track_name,
       :content_type,
       :header_extension,
       :segment_extension,
@@ -40,6 +41,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     """
     @type t :: %__MODULE__{
             id: Track.id_t(),
+            track_name: String.t(),
             content_type: :audio | :video,
             header_extension: String.t(),
             segment_extension: String.t(),
@@ -52,7 +54,6 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   @config_keys Config.__struct__() |> Map.from_struct() |> Map.keys()
   defstruct @config_keys ++
               [
-                :id_string,
                 :header_name,
                 current_seq_num: 0,
                 current_discontinuity_seq_num: 0,
@@ -87,7 +88,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
           target_segment_duration: segment_duration_t,
           target_window_duration: Membrane.Time.t() | Ratio.t(),
           persist?: boolean,
-          id_string: String.t(),
+          track_name: String.t(),
           header_name: String.t(),
           current_seq_num: non_neg_integer,
           current_discontinuity_seq_num: non_neg_integer,
@@ -103,19 +104,19 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
           Qex.t(%{
             name: String.t(),
             duration: segment_duration_t(),
+            bytes_size: segment_bytes_size_t(),
             attributes: list(Manifest.SegmentAttribute.t())
           })
   @type segment_duration_t :: Membrane.Time.t() | Ratio.t()
+
+  @type segment_bytes_size_t :: non_neg_integer()
 
   @type to_remove_names_t :: [segment_names: [String.t()], header_names: [String.t()]]
 
   @spec new(Config.t()) :: t
   def new(%Config{} = config) do
-    id_string = config.id |> :erlang.term_to_binary() |> Base.url_encode64(padding: false)
-
     %__MODULE__{
-      header_name: header_name(config, 0),
-      id_string: id_string
+      header_name: header_name(config, 0)
     }
     |> Map.merge(Map.from_struct(config))
   end
@@ -124,16 +125,21 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   Add a segment of given duration to the track.
   It is recommended not to pass discontinuity attribute manually but use `discontinue/1` function instead.
   """
-  @spec add_segment(t, segment_duration_t, list(Manifest.SegmentAttribute.t())) ::
+  @spec add_segment(
+          t,
+          segment_duration_t,
+          segment_bytes_size_t,
+          list(Manifest.SegmentAttribute.t())
+        ) ::
           {{to_add_name :: String.t(), to_remove_names :: to_remove_names_t()}, t}
-  def add_segment(track, duration, attributes \\ [])
+  def add_segment(track, duration, bytes_size, attributes \\ [])
 
-  def add_segment(%__MODULE__{finished?: false} = track, duration, attributes) do
+  def add_segment(%__MODULE__{finished?: false} = track, bytes_size, duration, attributes) do
     use Ratio, comparison: true
 
     name =
       "#{track.content_type}_segment_#{track.current_seq_num}_" <>
-        "#{track.id_string}#{track.segment_extension}"
+        "#{track.track_name}#{track.segment_extension}"
 
     attributes =
       if is_nil(track.awaiting_discontinuity),
@@ -144,7 +150,12 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       track
       |> Map.update!(
         :segments,
-        &Qex.push(&1, %{name: name, duration: duration, attributes: attributes})
+        &Qex.push(&1, %{
+          name: name,
+          duration: duration,
+          bytes_size: bytes_size,
+          attributes: attributes
+        })
       )
       |> Map.update!(:current_seq_num, &(&1 + 1))
       |> Map.update!(:window_duration, &(&1 + duration))
@@ -173,7 +184,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
      %__MODULE__{track | stale_segments: stale_segments, stale_headers: stale_headers}}
   end
 
-  def add_segment(%__MODULE__{finished?: true} = _track, _duration, _attributes),
+  def add_segment(%__MODULE__{finished?: true} = _track, _duration, _bytes_size, _attributes),
     do: raise("Cannot add new segments to finished track")
 
   @doc """
@@ -197,9 +208,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   def discontinue(%__MODULE__{finished?: true}), do: raise("Cannot discontinue finished track")
 
   defp header_name(%{} = config, counter) do
-    id_string = config.id |> :erlang.term_to_binary() |> Base.url_encode64(padding: false)
-
-    "#{config.content_type}_header_#{id_string}_part#{counter}_#{config.header_extension}"
+    "#{config.content_type}_header_#{config.track_name}_part#{counter}_#{config.header_extension}"
   end
 
   @doc """

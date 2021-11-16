@@ -66,7 +66,7 @@ defmodule Example do
     links = [
       link(:source)
       |> to(:parser)
-      |> via_in(:input, options: [encoding: :H264])
+      |> via_in(:input, options: [encoding: :H264, track_name: "example"])
       |> to(:sink_bin)
     ]
 
