@@ -16,6 +16,12 @@ Add the following line to your `deps` in `mix.exs`. Run `mix deps.get`.
 {:membrane_http_adaptive_stream_plugin, "~> 0.3.0"}
 ```
 
+## Usage Example
+See `examples/hls_sink.exs` pipeline for details on how to use HLS plugin. The example can be run with the following command:
+```shell
+elixir examples/hls_sink.exs
+```
+Master and media playlists with related multimedia content will be stored in `output` directory. To specify another location set environmental variable `HLS_OUTPUT_DIR`.
 ## Copyright and License
 
 Copyright 2019, [Software Mansion](https://swmansion.com/?utm_source=git&utm_medium=readme&utm_campaign=membrane_http_adaptive_stream_plugin)
