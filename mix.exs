@@ -27,8 +27,10 @@ defmodule Membrane.HTTPAdaptiveStream.MixProject do
     ]
   end
 
-  defp elixirc_paths(:test), do: ["lib", "test/support"]
-  defp elixirc_paths(_), do: ["lib"]
+  defp elixirc_paths(:test),
+    do: ["lib", "test/support", "reference_playlist_generation/reference_playlist_generator"]
+
+  defp elixirc_paths(_), do: ["lib", "reference_playlist_generation/reference_playlist_generator"]
 
   defp docs do
     [
@@ -63,7 +65,9 @@ defmodule Membrane.HTTPAdaptiveStream.MixProject do
       {:credo, "~> 1.5.6"},
       {:ex_doc, "~> 0.25", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.1", only: [:dev, :test], runtime: false},
-      {:membrane_mp4_plugin, "~> 0.7.0"}
+      {:membrane_mp4_plugin, "~> 0.7.0"},
+      {:membrane_hackney_plugin, "~> 0.5.0"},
+      {:membrane_h264_ffmpeg_plugin, "~> 0.13.0"}
     ]
   end
 end
