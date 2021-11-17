@@ -115,7 +115,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
       link_bin_input(pad)
       |> to({:payloader, ref}, payloader)
       |> to({:cmaf_muxer, ref}, muxer)
-      |> via_in(:input, options: [track_name: track_name])
+      |> via_in(pad, options: [track_name: track_name])
       |> to(:sink)
     ]
 
