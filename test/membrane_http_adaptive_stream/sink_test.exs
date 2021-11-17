@@ -38,7 +38,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
     assert_receive {SendStorage, :store, %{type: :manifest, name: "index.m3u8"}}
     assert_receive {SendStorage, :store, %{type: :manifest, name: "audio.m3u8"}}
     assert_receive {SendStorage, :store, %{name: "audio_segment_0_" <> _}}
-    assert_pipeline_notified(pipeline, :sink, {:track_playable, _pad_ref})
+    assert_pipeline_notified(pipeline, :sink, {:track_playable, "audio_track"})
 
     send_buf(pipeline, "audio_track", 4)
     assert_receive {SendStorage, :store, %{type: :manifest, name: "audio.m3u8"}}
@@ -72,13 +72,13 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
     assert_receive {SendStorage, :store, %{type: :manifest, name: "index.m3u8"}}
     assert_receive {SendStorage, :store, %{type: :manifest, name: "audio.m3u8"}}
     assert_receive {SendStorage, :store, %{name: "audio_segment_0_" <> _}}
-    assert_pipeline_notified(pipeline, :sink, {:track_playable, _pad_ref})
+    assert_pipeline_notified(pipeline, :sink, {:track_playable, "audio_track"})
 
     send_buf(pipeline, "video_track", 3)
     assert_receive {SendStorage, :store, %{type: :manifest, name: "index.m3u8"}}
     assert_receive {SendStorage, :store, %{type: :manifest, name: "video_" <> _}}
     assert_receive {SendStorage, :store, %{name: "video_segment_0_" <> _}}
-    assert_pipeline_notified(pipeline, :sink, {:track_playable, _pad_ref})
+    assert_pipeline_notified(pipeline, :sink, {:track_playable, "video_track"})
 
     send_buf(pipeline, "audio_track", 4)
     assert_receive {SendStorage, :store, %{type: :manifest, name: "audio.m3u8"}}
@@ -136,14 +136,14 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
     assert_receive {SendStorage, :store, %{type: :manifest, name: "audio.m3u8"}}
     assert_receive {SendStorage, :store, %{name: "audio_segment_0_" <> _}}
     refute_receive {SendStorage, _, _}
-    assert_pipeline_notified(pipeline, :sink, {:track_playable, _pad_ref})
+    assert_pipeline_notified(pipeline, :sink, {:track_playable, "audio"})
 
     send_buf(pipeline, "track_1", 3)
     assert_receive {SendStorage, :store, %{type: :manifest, name: "index.m3u8"}}
     assert_receive {SendStorage, :store, %{type: :manifest, name: "video_track_1" <> _}}
     assert_receive {SendStorage, :store, %{name: "video_segment_0_track_1" <> _}}
     refute_receive {SendStorage, _, _}
-    assert_pipeline_notified(pipeline, :sink, {:track_playable, _pad_ref})
+    assert_pipeline_notified(pipeline, :sink, {:track_playable, "track_1"})
 
     send_buf(pipeline, "audio", 4)
     assert_receive {SendStorage, :store, %{type: :manifest, name: "audio.m3u8"}}
@@ -155,7 +155,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
     assert_receive {SendStorage, :store, %{type: :manifest, name: "video_track_2" <> _}}
     assert_receive {SendStorage, :store, %{name: "video_segment_0_track_2" <> _}}
     refute_receive {SendStorage, _, _}
-    assert_pipeline_notified(pipeline, :sink, {:track_playable, _pad_ref})
+    assert_pipeline_notified(pipeline, :sink, {:track_playable, "track_2"})
 
     send_buf(pipeline, "track_2", 6)
     assert_receive {SendStorage, :store, %{type: :manifest, name: "index.m3u8"}}
@@ -169,7 +169,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
     assert_receive {SendStorage, :store, %{type: :manifest, name: "video_track_0" <> _}}
     assert_receive {SendStorage, :store, %{name: "video_segment_0_track_0" <> _}}
     refute_receive {SendStorage, _, _}
-    assert_pipeline_notified(pipeline, :sink, {:track_playable, _pad_ref})
+    assert_pipeline_notified(pipeline, :sink, {:track_playable, "track_0"})
 
     send_buf(pipeline, "track_1", 5)
     assert_receive {SendStorage, :store, %{type: :manifest, name: "index.m3u8"}}
@@ -203,7 +203,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
     links =
       Enum.map(sources, fn {{:source, source_id}, _config} ->
         link({:source, source_id})
-        |> via_in(:input, options: [track_name: source_id])
+        |> via_in(Pad.ref(:input, source_id), options: [track_name: source_id])
         |> to(:sink)
       end)
 
