@@ -192,20 +192,38 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   New header has to be stored under the returned filename.
   For details on discontinuity, please refer to [RFC 8216](https://datatracker.ietf.org/doc/html/rfc8216).
   """
-  @spec discontinue(t()) :: {header_name :: String.t(), t()}
-  def discontinue(%__MODULE__{finished?: false, discontinuities_counter: counter} = track) do
-    header = header_name(track, counter + 1)
-    discontinuity = Manifest.SegmentAttribute.discontinuity(header, counter + 1)
+  @spec discontinue(t(), keyword()) :: {header_name :: String.t(), t()}
+  def discontinue(track, options \\ [])
+
+  def discontinue(
+        %__MODULE__{finished?: false} = track,
+        options
+      ) do
+    counter =
+      if is_nil(track.awaiting_discontinuity) do
+        track.discontinuities_counter + 1
+      else
+        Manifest.SegmentAttribute.discontinuity(_header, counter) = track.awaiting_discontinuity
+        counter
+      end
+
+    header =
+      if Keyword.get(options, :generate_new_header?, true),
+        do: header_name(track, counter),
+        else: track.header_name
+
+    discontinuity = Manifest.SegmentAttribute.discontinuity(header, counter)
 
     track =
       track
-      |> Map.update!(:discontinuities_counter, &(&1 + 1))
+      |> Map.update!(:discontinuities_counter, counter)
       |> Map.put(:awaiting_discontinuity, discontinuity)
 
     {header, track}
   end
 
-  def discontinue(%__MODULE__{finished?: true}), do: raise("Cannot discontinue finished track")
+  def discontinue(%__MODULE__{finished?: true}, _options),
+    do: raise("Cannot discontinue finished track")
 
   defp header_name(%{} = config, counter) do
     "#{config.content_type}_header_#{config.track_name}_part#{counter}_#{config.header_extension}"

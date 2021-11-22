@@ -116,7 +116,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
       if Manifest.has_track?(state.manifest, track_id) do
         # Arrival of new caps for an already existing track indicate that stream parameters have changed.
         # According to section 4.3.2.3 of RFC 8216, discontinuity needs to be signaled and new header supplied.
-        Manifest.discontinue_track(state.manifest, track_id)
+        Manifest.discontinue_all_tracks(state.manifest, track_id)
       else
         track_name = parse_track_name(ctx.pads[pad_ref].options[:track_name] || track_id)
 

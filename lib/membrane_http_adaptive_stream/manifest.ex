@@ -58,13 +58,29 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
   This will inform the player that eg. the parameters of the encoder changed and allow you to provide a new MP4 header.
   For details on discontinuities refer to [RFC 8216](https://datatracker.ietf.org/doc/html/rfc8216).
   """
-  @spec discontinue_track(t(), Track.id_t()) :: {header_name :: String.t(), t()}
-  def discontinue_track(%__MODULE__{} = manifest, track_id) do
+  @spec discontinue_track(t(), Track.id_t(), keyword()) :: {header_name :: String.t(), t()}
+  def discontinue_track(%__MODULE__{} = manifest, track_id, options \\ []) do
     get_and_update_in(
       manifest,
       [:tracks, track_id],
-      &Track.discontinue/1
+      &Track.discontinue(&1, options)
     )
+  end
+
+  @spec discontinue_all_tracks(t(), Track.id_t()) :: {header_name :: String.t(), t()}
+  def discontinue_all_tracks(%__MODULE__{} = manifest, leader_track_id) do
+    # properly discontinue triggering track
+    {header, manifest} = discontinue_track(manifest, leader_track_id, generate_new_header?: true)
+
+    # discontinue all other tracks, but without creating new headers for them
+    manifest =
+      Map.drop(manifest.tracks, [leader_track_id])
+      |> Enum.map(&Bunch.key/1)
+      |> Enum.reduce(manifest, fn track, manifest ->
+        discontinue_track(manifest, track, generate_new_header?: false) |> elem(1)
+      end)
+
+    {header, manifest}
   end
 
   @spec finish(t, Track.id_t()) :: t
