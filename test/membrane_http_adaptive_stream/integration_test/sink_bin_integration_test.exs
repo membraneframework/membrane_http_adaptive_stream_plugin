@@ -1,5 +1,5 @@
 defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
   import Membrane.Testing.Assertions
   alias Membrane.{Testing}
@@ -10,12 +10,52 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
   @single_video_track_source [
     {%Source{
        location:
-         "https://raw.githubusercontent.com/membraneframework/static/gh-pages/video-samples/test-video.h264",
+         "https://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/ffmpeg-testsrc.h264",
        hackney_opts: [follow_redirect: true]
      }, :H264, "single_video_track"}
   ]
   @single_video_track_ref_path "./test/membrane_http_adaptive_stream/integration_test/reference_playlists/single_video_track/"
   @single_video_track_test_path "./test/membrane_http_adaptive_stream/integration_test/test_playlists/single_video_track/"
+
+  @audio_video_tracks_sources [
+    {%Source{
+       location:
+         "https://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/test-audio.aac",
+       hackney_opts: [follow_redirect: true]
+     }, :AAC, "audio_track"},
+    {%Source{
+       location:
+         "https://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/ffmpeg-testsrc.h264",
+       hackney_opts: [follow_redirect: true]
+     }, :H264, "video_track"}
+  ]
+  @audio_video_tracks_ref_path "./test/membrane_http_adaptive_stream/integration_test/reference_playlists/audio_video_tracks/"
+  @audio_video_tracks_test_path "./test/membrane_http_adaptive_stream/integration_test/test_playlists/audio_video_tracks/"
+
+  @audio_multiple_video_tracks_sources [
+    {%Source{
+       location:
+         "https://raw.githubusercontent.com/membraneframework/static/big_buck_bunny_samples/samples/big-buck-bunny/bun33s.aac",
+       hackney_opts: [follow_redirect: true]
+     }, :AAC, "audio_track"},
+    {%Source{
+       location:
+         "https://raw.githubusercontent.com/membraneframework/static/big_buck_bunny_samples/samples/big-buck-bunny/bun33s_480x270.h264",
+       hackney_opts: [follow_redirect: true]
+     }, :H264, "video_480x270"},
+    {%Source{
+       location:
+         "https://raw.githubusercontent.com/membraneframework/static/big_buck_bunny_samples/samples/big-buck-bunny/bun33s_540x360.h264",
+       hackney_opts: [follow_redirect: true]
+     }, :H264, "video_540x360"},
+    {%Source{
+       location:
+         "https://raw.githubusercontent.com/membraneframework/static/big_buck_bunny_samples/samples/big-buck-bunny/bun33s_720x480.h264",
+       hackney_opts: [follow_redirect: true]
+     }, :H264, "video_720x480"}
+  ]
+  @audio_multiple_video_tracks_ref_path "./test/membrane_http_adaptive_stream/integration_test/reference_playlists/audio_multiple_video_tracks/"
+  @audio_multiple_video_tracks_test_path "./test/membrane_http_adaptive_stream/integration_test/test_playlists/audio_multiple_video_tracks/"
 
   defmodule TestPipeline do
     use Membrane.Pipeline
@@ -73,7 +113,9 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
           }
 
         :AAC ->
-          %AAC_Parser{}
+          %AAC_Parser{
+            out_encapsulation: :none
+          }
       end
     end
   end
@@ -83,6 +125,22 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
       @single_video_track_source,
       @single_video_track_ref_path,
       @single_video_track_test_path
+    )
+  end
+
+  test "audio video tracks" do
+    test_pipeline(
+      @audio_video_tracks_sources,
+      @audio_video_tracks_ref_path,
+      @audio_video_tracks_test_path
+    )
+  end
+
+  test "audio multiple video tracks" do
+    test_pipeline(
+      @audio_multiple_video_tracks_sources,
+      @audio_multiple_video_tracks_ref_path,
+      @audio_multiple_video_tracks_test_path
     )
   end
 
@@ -100,11 +158,8 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
     Testing.Pipeline.play(pipeline)
     assert_pipeline_playback_changed(pipeline, _, :playing)
 
-    # For every input track pipeline receives two :end_of_stream notifications,
-    # one from :sink_bin, and the other from :sink - :sink_bin inner child
     for _source <- sources,
-        _end_of_stream_notification_count <- 1..2,
-        do: assert_end_of_stream(pipeline, :sink_bin)
+        do: assert_end_of_stream(pipeline, :sink_bin, {Membrane.Pad, :input, _source})
 
     Testing.Pipeline.stop_and_terminate(pipeline, blocking?: true)
     assert_pipeline_playback_changed(pipeline, _, :stopped)
@@ -114,6 +169,13 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
     if @create_references_mode do
       run_pipeline(sources, reference_directory)
     end
+
+    on_exit(fn ->
+      {:ok, test_playlist_content} = File.ls(test_directory)
+
+      for file_name <- test_playlist_content |> Enum.filter(&(!String.starts_with?(&1, "."))),
+          do: File.rm!(test_directory <> file_name)
+    end)
 
     run_pipeline(sources, test_directory)
 
@@ -125,10 +187,5 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
             File.read!(reference_directory <> file_name) ==
               File.read!(test_directory <> file_name)
           )
-
-    {:ok, test_playlist_content} = File.ls(test_directory)
-
-    for file_name <- test_playlist_content |> Enum.filter(&(!String.starts_with?(&1, "."))),
-        do: File.rm!(test_directory <> file_name)
   end
 end
