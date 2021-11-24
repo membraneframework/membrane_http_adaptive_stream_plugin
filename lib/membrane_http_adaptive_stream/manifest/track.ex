@@ -3,9 +3,9 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   Struct representing a state of a single manifest track and functions to operate
   on it.
   """
-  alias Membrane.HTTPAdaptiveStream.Manifest
 
-  require Manifest.SegmentAttribute
+  import Membrane.HTTPAdaptiveStream.Manifest.SegmentAttribute
+  alias Membrane.HTTPAdaptiveStream.Manifest
 
   defmodule Config do
     @moduledoc """
@@ -195,24 +195,21 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   @spec discontinue(t(), keyword()) :: {header_name :: String.t(), t()}
   def discontinue(track, options \\ [])
 
-  def discontinue(
-        %__MODULE__{finished?: false} = track,
-        options
-      ) do
-    counter =
+  def discontinue(%__MODULE__{finished?: false} = track, options) do
+    {counter, header} =
       if is_nil(track.awaiting_discontinuity) do
-        track.discontinuities_counter + 1
+        {track.discontinuities_counter + 1, track.header_name}
       else
-        Manifest.SegmentAttribute.discontinuity(_header, counter) = track.awaiting_discontinuity
-        counter
+        discontinuity(header, counter) = track.awaiting_discontinuity
+        {counter, header}
       end
 
     header =
       if Keyword.get(options, :generate_new_header?, true),
         do: header_name(track, counter),
-        else: track.header_name
+        else: header
 
-    discontinuity = Manifest.SegmentAttribute.discontinuity(header, counter)
+    discontinuity = discontinuity(header, counter)
 
     track =
       track
@@ -315,8 +312,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     new_window_duration = window_duration - segment.duration
 
     new_header =
-      case segment.attributes |> Enum.find(&match?({:discontinuity, {_, _}}, &1)) do
-        {:discontinuity, {new_header, seq_number}} ->
+      case segment.attributes |> Enum.find(&match?(discontinuity(_, _), &1)) do
+        discontinuity(new_header, seq_number) ->
           {new_header, seq_number}
 
         nil ->
