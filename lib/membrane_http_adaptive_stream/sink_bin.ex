@@ -106,7 +106,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
   @impl true
   def handle_pad_added(Pad.ref(:input, ref) = pad, context, state) do
-    muxer = %MP4.CMAF.Muxer{segment_duration: state.muxer_segment_duration}
+    muxer = %MP4.Muxer.CMAF{segment_duration: state.muxer_segment_duration}
 
     payloader = Map.fetch!(@payloaders, context.options[:encoding])
     track_name = context.options[:track_name]
