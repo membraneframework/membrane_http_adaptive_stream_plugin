@@ -28,9 +28,9 @@ defmodule Membrane.HTTPAdaptiveStream.MixProject do
   end
 
   defp elixirc_paths(:test),
-    do: ["lib", "test/support", "playlist_generation/playlist_generator"]
+    do: ["lib", "test/support"]
 
-  defp elixirc_paths(_), do: ["lib", "playlist_generation/playlist_generator"]
+  defp elixirc_paths(_), do: ["lib"]
 
   defp docs do
     [

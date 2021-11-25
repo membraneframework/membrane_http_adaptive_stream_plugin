@@ -29,13 +29,13 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
   @audio_video_tracks_test_path "./test/membrane_http_adaptive_stream/integration_test/tmp/audio_video_tracks/"
 
   @audio_multiple_video_tracks_sources [
-    {"https://raw.githubusercontent.com/membraneframework/static/big_buck_bunny_samples/samples/big-buck-bunny/bun33s.aac",
+    {"https://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s.aac",
      :AAC, "audio_track"},
-    {"https://raw.githubusercontent.com/membraneframework/static/big_buck_bunny_samples/samples/big-buck-bunny/bun33s_480x270.h264",
+    {"https://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s_480x270.h264",
      :H264, "video_480x270"},
-    {"https://raw.githubusercontent.com/membraneframework/static/big_buck_bunny_samples/samples/big-buck-bunny/bun33s_540x360.h264",
+    {"https://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s_540x360.h264",
      :H264, "video_540x360"},
-    {"https://raw.githubusercontent.com/membraneframework/static/big_buck_bunny_samples/samples/big-buck-bunny/bun33s_720x480.h264",
+    {"https://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s_720x480.h264",
      :H264, "video_720x480"}
   ]
   @audio_multiple_video_tracks_ref_path "./test/membrane_http_adaptive_stream/integration_test/fixtures/audio_multiple_video_tracks/"
