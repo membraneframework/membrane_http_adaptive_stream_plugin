@@ -19,7 +19,13 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
   def_options muxer_segment_duration: [
                 spec: pos_integer,
-                default: 2 |> Time.seconds()
+                default: 2 |> Time.seconds(),
+                description: """
+                Desired duration of each segment.
+
+                In case of H264, this value has to be a multiply of the duration between two consecutive I-frames.
+                If this condition is not fulfilled, it might result in loss of synchronization between audio and video streams and cause playback issues with some players.
+                """
               ],
               manifest_name: [
                 spec: String.t(),
@@ -44,7 +50,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
                 spec: pos_integer | :infinity,
                 default: Time.seconds(40),
                 description: """
-                Manifest duration is keept above that time, while the oldest segments
+                Manifest duration is kept above that time, while the oldest segments
                 are removed whenever possible.
                 """
               ],
