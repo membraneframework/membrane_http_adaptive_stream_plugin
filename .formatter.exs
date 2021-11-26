@@ -1,6 +1,6 @@
 [
   inputs: [
-    "{lib,examples,test,config,playlist_generation}/**/*.{ex,exs}",
+    "{lib,examples,test,config}/**/*.{ex,exs}",
     ".formatter.exs",
     "*.exs"
   ],

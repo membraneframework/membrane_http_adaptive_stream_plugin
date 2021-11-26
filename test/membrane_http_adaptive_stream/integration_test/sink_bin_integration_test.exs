@@ -4,20 +4,13 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
   import Membrane.Testing.Assertions
   alias Membrane.Testing
 
-  @doc """
-  The boolean flag below controls whether reference HLS content in fixtures directory will be created simultaneously with test content.
-  It should be set only when developing new HLS features that are expected to introduce changes to reference HLS files. Nevertheless it should
-  be done only locally to create and push new reference HLS files and this flag must not be set in remote repository. There is unit test in code below
-  that will cause CI to fail if this flag happens to be set on remote repository.
-  """
-  @create_fixtures false
+  # The boolean flag below controls whether reference HLS content in fixtures directory will be created simultaneously with test content.
+  # It should be set only when developing new HLS features that are expected to introduce changes to reference HLS files. Nevertheless it should
+  # be done only locally to create and push new reference HLS files and this flag must not be set in remote repository. There is unit test in code below
+  # that will cause CI to fail if this flag happens to be set on remote repository. Every new version of reference HSL content must
+  # be manually verified by its creator by using some player e.g. ffplay command.
 
-  @single_video_track_source [
-    {"https://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/ffmpeg-testsrc.h264",
-     :H264, "single_video_track"}
-  ]
-  @single_video_track_ref_path "./test/membrane_http_adaptive_stream/integration_test/fixtures/single_video_track/"
-  @single_video_track_test_path "./test/membrane_http_adaptive_stream/integration_test/tmp/single_video_track/"
+  @create_fixtures false
 
   @audio_video_tracks_sources [
     {"https://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/test-audio.aac",
@@ -26,7 +19,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
      :H264, "video_track"}
   ]
   @audio_video_tracks_ref_path "./test/membrane_http_adaptive_stream/integration_test/fixtures/audio_video_tracks/"
-  @audio_video_tracks_test_path "./test/membrane_http_adaptive_stream/integration_test/tmp/audio_video_tracks/"
+  @audio_video_tracks_test_path "/tmp/membrane_http_adaptive_stream_audio_video_test/"
 
   @audio_multiple_video_tracks_sources [
     {"https://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s.aac",
@@ -39,18 +32,18 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
      :H264, "video_720x480"}
   ]
   @audio_multiple_video_tracks_ref_path "./test/membrane_http_adaptive_stream/integration_test/fixtures/audio_multiple_video_tracks/"
-  @audio_multiple_video_tracks_test_path "./test/membrane_http_adaptive_stream/integration_test/tmp/audio_multiple_video_tracks/"
+  @audio_multiple_video_tracks_test_path "/tmp/membrane_http_adaptive_stream_audio_multiple_video_test/"
 
   defmodule TestPipeline do
     use Membrane.Pipeline
-    alias Membrane.HTTPAdaptiveStream.{SinkBin, HLS}
+    alias Membrane.HTTPAdaptiveStream
     alias Membrane.HTTPAdaptiveStream.Storages.FileStorage
 
     @impl true
-    def handle_init(%{:sources => sources, :output_dir => output_dir}) do
-      sink_bin = %SinkBin{
+    def handle_init(%{sources: sources, output_dir: output_dir}) do
+      sink_bin = %HTTPAdaptiveStream.SinkBin{
         muxer_segment_duration: 2 |> Membrane.Time.seconds(),
-        manifest_module: HLS,
+        manifest_module: HTTPAdaptiveStream.HLS,
         target_window_duration: 30 |> Membrane.Time.seconds(),
         target_segment_duration: 2 |> Membrane.Time.seconds(),
         persist?: false,
@@ -79,7 +72,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
 
           [
             {{:source, track_name}, source},
-            {{:parser, encoding, track_name}, parser}
+            {{:parser, track_name}, parser}
           ]
         end)
         |> then(&[{:sink_bin, sink_bin} | &1])
@@ -88,7 +81,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
         sources
         |> Enum.map(fn {_source, encoding, track_name} ->
           link({:source, track_name})
-          |> to({:parser, encoding, track_name})
+          |> to({:parser, track_name})
           |> via_in(Pad.ref(:input, track_name),
             options: [encoding: encoding, track_name: track_name]
           )
@@ -99,23 +92,17 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
     end
   end
 
-  describe "Reference HLS content creation should only take place locally." do
-    test "check if fixture creation is unset" do
-      assert not @create_fixtures
-    end
+  test "check if fixture creation is disabled" do
+    assert not @create_fixtures
   end
 
-  describe "Testing HLS content creation for single media track." do
-    test "single video track" do
-      test_pipeline(
-        @single_video_track_source,
-        @single_video_track_ref_path,
-        @single_video_track_test_path
-      )
+  describe "Test HLS content creation for " do
+    setup %{test_directory: test_directory} do
+      File.mkdir_p!(test_directory)
+      :ok
     end
-  end
 
-  describe "Testing HLS content creation for single audio and single video tracks." do
+    @tag test_directory: @audio_video_tracks_test_path
     test "audio and video tracks" do
       test_pipeline(
         @audio_video_tracks_sources,
@@ -123,9 +110,8 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
         @audio_video_tracks_test_path
       )
     end
-  end
 
-  describe "Testing HLS content creation for single audio and multiple video of various quality tracks." do
+    @tag test_directory: @audio_multiple_video_tracks_test_path
     test "audio and multiple video tracks" do
       test_pipeline(
         @audio_multiple_video_tracks_sources,
@@ -164,26 +150,23 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
          encoding, name}
       end)
 
-    if @create_fixtures do
-      run_pipeline(hackney_sources, reference_directory)
-    end
-
     on_exit(fn ->
-      {:ok, test_playlist_content} = File.ls(test_directory)
-
-      for file_name <- test_playlist_content |> Enum.filter(&(!String.starts_with?(&1, "."))),
-          do: File.rm!(test_directory <> file_name)
+      File.rm_rf!(test_directory)
     end)
 
-    run_pipeline(hackney_sources, test_directory)
+    if @create_fixtures do
+      run_pipeline(hackney_sources, reference_directory)
+    else
+      run_pipeline(hackney_sources, test_directory)
 
-    {:ok, reference_playlist_content} = File.ls(reference_directory)
+      {:ok, reference_playlist_content} = File.ls(reference_directory)
 
-    for file_name <- reference_playlist_content,
-        do:
-          assert(
-            File.read!(reference_directory <> file_name) ==
-              File.read!(test_directory <> file_name)
-          )
+      for file_name <- reference_playlist_content,
+          do:
+            assert(
+              File.read!(reference_directory <> file_name) ==
+                File.read!(test_directory <> file_name)
+            )
+    end
   end
 end
