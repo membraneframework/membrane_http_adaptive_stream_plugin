@@ -17,8 +17,10 @@ Add the following line to your `deps` in `mix.exs`. Run `mix deps.get`.
 ```
 
 ## Usage Example
+
 See `test/membrane_http_adaptive_stream/integration_test/sink_bin_integration_test.exs` pipeline for details on how to use HLS plugin and generate HLS playlists for example media tracks.
 Master and media playlists with related multimedia content that were generated via this pipeline are stored in `test/membrane_http_adaptive_stream/integration_test/fixtures` directory.
+
 ## Copyright and License
 
 Copyright 2019, [Software Mansion](https://swmansion.com/?utm_source=git&utm_medium=readme&utm_campaign=membrane_http_adaptive_stream_plugin)
