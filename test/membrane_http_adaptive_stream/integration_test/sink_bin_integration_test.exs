@@ -40,7 +40,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
     {"https://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/ffmpeg-variable-resolution-testsrc.h264",
      :H264, "video_track"}
   ]
-  @audio_video_discontinuity_tracks_test_path "/tmp/membrane_http_adaptive_stream_audio_video_test/"
+  @audio_video_discontinuity_tracks_test_path "/tmp/membrane_http_adaptive_stream_audio_video_discontinuity_test/"
   @audio_video_discontinuity_tracks_ref_path "./test/membrane_http_adaptive_stream/integration_test/fixtures/audio_video_discontinuity_tracks/"
 
   defmodule TestPipeline do
@@ -168,9 +168,9 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
          encoding, name}
       end)
 
-    on_exit(fn ->
-      File.rm_rf!(test_directory)
-    end)
+    # on_exit(fn ->
+    #   File.rm_rf!(test_directory)
+    # end)
 
     if @create_fixtures do
       run_pipeline(hackney_sources, reference_directory)
@@ -183,7 +183,8 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
           do:
             assert(
               File.read!(reference_directory <> file_name) ==
-                File.read!(test_directory <> file_name)
+                File.read!(test_directory <> file_name),
+              "File `#{file_name}` differs between result and reference"
             )
     end
   end

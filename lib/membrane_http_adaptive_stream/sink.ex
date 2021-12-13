@@ -105,7 +105,8 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     |> Map.merge(%{
       storage: Storage.new(options.storage),
       manifest: %Manifest{name: options.manifest_name, module: options.manifest_module},
-      awaiting_first_segment: MapSet.new()
+      awaiting_first_segment: MapSet.new(),
+      tracks_end_timestamps: %{}
     })
     ~> {:ok, &1}
   end
@@ -135,6 +136,11 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
         )
       end
 
+    state =
+      if Manifest.has_track?(state.manifest, track_id),
+        do: state,
+        else: put_in(state, [:tracks_end_timestamps, pad_ref], 0)
+
     {result, storage} = Storage.store_header(state.storage, header_name, caps.header)
 
     {result, %{state | storage: storage, manifest: manifest}}
@@ -142,17 +148,30 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
 
   @impl true
   def handle_prepared_to_playing(ctx, state) do
-    demands = ctx.pads |> Map.keys() |> Enum.map(&{:demand, &1})
+    demands = ctx.pads |> Map.keys() |> Enum.take(1) |> Enum.map(&{:demand, &1})
+
     {{:ok, demands}, state}
   end
 
   @impl true
-  def handle_pad_added(pad, %{playback_state: :playing}, state) do
-    {{:ok, demand: pad}, state}
+  def handle_pad_added(pad, %{playback_state: :playing} = ctx, state) do
+    state = put_in(state, [:tracks_end_timestamps, pad], 0)
+
+    should_demand? =
+      not Enum.any?(ctx.pads, fn {_key, value} ->
+        not value.end_of_stream? and value.demand > 0
+      end)
+
+    if should_demand? do
+      {{:ok, demand: pad}, state}
+    else
+      {:ok, state}
+    end
   end
 
   @impl true
-  def handle_pad_added(_pad, _ctx, state) do
+  def handle_pad_added(pad, _ctx, state) do
+    state = put_in(state, [:tracks_end_timestamps, pad], 0)
     {:ok, state}
   end
 
@@ -164,31 +183,62 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
 
   @impl true
   def handle_write(Pad.ref(:input, id) = pad, buffer, _ctx, state) do
+    use Ratio
+    end_timestamp = buffer.metadata.timestamp + buffer.metadata.duration
+
     %{storage: storage, manifest: manifest} = state
     duration = buffer.metadata.duration
 
     {changeset, manifest} =
       Manifest.add_segment(manifest, id, byte_size(buffer.payload), duration)
 
-    state = %{state | manifest: manifest}
+    state =
+      state
+      |> Map.put(:manifest, manifest)
+      |> put_in([:tracks_end_timestamps, pad], end_timestamp)
 
     with {:ok, storage} <- Storage.apply_segment_changeset(storage, changeset, buffer.payload),
          {:ok, storage} <- serialize_and_store_manifest(manifest, storage) do
       {notify, state} = maybe_notify_playable(id, state)
-      {{:ok, notify ++ [demand: pad]}, %{state | storage: storage}}
+
+      demand_pad =
+        Enum.min_by(state.tracks_end_timestamps, &Ratio.to_float(Bunch.value(&1))) |> Bunch.key()
+
+      {{:ok, notify ++ [demand: demand_pad]}, %{state | storage: storage}}
     else
       {error, storage} -> {error, %{state | storage: storage}}
     end
   end
 
   @impl true
-  def handle_end_of_stream(Pad.ref(:input, id), _ctx, state) do
+  def handle_end_of_stream(Pad.ref(:input, id) = pad, ctx, state) do
     %{manifest: manifest, storage: storage} = state
     manifest = Manifest.finish(manifest, id)
-    {store_result, storage} = serialize_and_store_manifest(manifest, storage)
+    {:ok, storage} = serialize_and_store_manifest(manifest, storage)
     storage = Storage.clear_cache(storage)
-    state = %{state | storage: storage, manifest: manifest}
-    {store_result, state}
+
+    state =
+      state
+      |> Map.put(:storage, storage)
+      |> Map.put(:manifest, manifest)
+      |> Map.update!(:tracks_end_timestamps, &Map.delete(&1, pad))
+
+    should_demand? =
+      not Enum.any?(ctx.pads, fn {_key, value} ->
+        not value.end_of_stream? and value.demand > 0
+      end)
+
+    if should_demand? do
+      {pad, _pad_data} =
+        Enum.reject(ctx.pads, fn {_key, value} ->
+          not value.end_of_stream? and value.demand > 0
+        end)
+        |> hd()
+
+      {{:ok, demand: pad}, state}
+    else
+      {:ok, state}
+    end
   end
 
   @impl true
