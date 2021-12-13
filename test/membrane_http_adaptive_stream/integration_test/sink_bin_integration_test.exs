@@ -168,9 +168,9 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
          encoding, name}
       end)
 
-    # on_exit(fn ->
-    #   File.rm_rf!(test_directory)
-    # end)
+    on_exit(fn ->
+      File.rm_rf!(test_directory)
+    end)
 
     if @create_fixtures do
       run_pipeline(hackney_sources, reference_directory)
