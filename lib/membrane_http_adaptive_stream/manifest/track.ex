@@ -213,7 +213,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
 
     track =
       track
-      |> Map.update!(:discontinuities_counter, counter)
+      |> Map.put(:discontinuities_counter, counter)
       |> Map.put(:awaiting_discontinuity, discontinuity)
 
     {header, track}

@@ -34,6 +34,15 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
   @audio_multiple_video_tracks_ref_path "./test/membrane_http_adaptive_stream/integration_test/fixtures/audio_multiple_video_tracks/"
   @audio_multiple_video_tracks_test_path "/tmp/membrane_http_adaptive_stream_audio_multiple_video_test/"
 
+  @audio_video_discontinuity_tracks_sources [
+    {"https://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/test-audio.aac",
+     :AAC, "audio_track"},
+    {"https://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/ffmpeg-variable-resolution-testsrc.h264",
+     :H264, "video_track"}
+  ]
+  @audio_video_discontinuity_tracks_test_path "/tmp/membrane_http_adaptive_stream_audio_video_test/"
+  @audio_video_discontinuity_tracks_ref_path "./test/membrane_http_adaptive_stream/integration_test/fixtures/audio_video_discontinuity_tracks/"
+
   defmodule TestPipeline do
     use Membrane.Pipeline
     alias Membrane.HTTPAdaptiveStream
@@ -108,6 +117,15 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
         @audio_video_tracks_sources,
         @audio_video_tracks_ref_path,
         @audio_video_tracks_test_path
+      )
+    end
+
+    @tag test_directory: @audio_video_discontinuity_tracks_test_path
+    test "audio and video with discontinuity tracks" do
+      test_pipeline(
+        @audio_video_discontinuity_tracks_sources,
+        @audio_video_discontinuity_tracks_ref_path,
+        @audio_video_discontinuity_tracks_test_path
       )
     end
 
