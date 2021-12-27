@@ -3,7 +3,7 @@ defmodule Membrane.HTTPAdaptiveStream.BandwidthCalculator do
   Functions to calculate multimedia track bandwidth according to: https://datatracker.ietf.org/doc/html/rfc8216#section-4.3.4.2
   """
 
-  use Ratio
+  use Ratio, comparison: true
 
   alias Membrane.HTTPAdaptiveStream.Manifest.Track
   alias Membrane.Time
@@ -15,7 +15,7 @@ defmodule Membrane.HTTPAdaptiveStream.BandwidthCalculator do
 
   @spec calculate_bandwidth(Track.t()) :: integer()
   def calculate_bandwidth(track) do
-    target_duration = Ratio.ceil(track.target_segment_duration / Time.second()) |> trunc()
+    target_duration = track.target_segment_duration / Time.second()
     segments_sequences = generate_subsequences(track.segments |> Enum.to_list())
 
     segments_meta =
@@ -23,7 +23,8 @@ defmodule Membrane.HTTPAdaptiveStream.BandwidthCalculator do
       |> Enum.map(
         &{
           Enum.map(&1, fn sg -> 8 * sg.bytes_size end) |> Enum.sum(),
-          Enum.map(&1, fn sg -> Ratio.to_float(sg.duration / Time.second()) end) |> Enum.sum()
+          Enum.map(&1, fn sg -> sg.duration / Time.second() end)
+          |> Enum.reduce(fn acc, x -> acc + x end)
         }
       )
       |> Enum.filter(fn {_bits_size, duration} -> duration != 0.0 end)
@@ -43,9 +44,14 @@ defmodule Membrane.HTTPAdaptiveStream.BandwidthCalculator do
       validated_segments_meta |> Enum.map(fn {bits_size, duration} -> bits_size / duration end)
 
     cond do
-      segments_meta |> Enum.empty?() -> @default_bandwidth
-      validated_segments_meta |> Enum.empty?() -> segments_bitrates |> Enum.max() |> trunc()
-      true -> validated_segments_bitrates |> Enum.max() |> trunc()
+      segments_meta |> Enum.empty?() ->
+        @default_bandwidth
+
+      validated_segments_meta |> Enum.empty?() ->
+        segments_bitrates |> Enum.max(&Ratio.>=/2) |> Ratio.floor()
+
+      true ->
+        validated_segments_bitrates |> Enum.max(&Ratio.>=/2) |> Ratio.floor()
     end
   end
 

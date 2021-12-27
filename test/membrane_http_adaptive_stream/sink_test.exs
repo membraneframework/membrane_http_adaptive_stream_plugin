@@ -183,37 +183,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
     Testing.Pipeline.stop_and_terminate(pipeline, blocking?: true)
   end
 
-  test "handle bandwidth calculation inability" do
-    pipeline = mk_pipeline([{:video, "track"}])
-    assert_receive {SendStorage, :store, %{type: :header}}
-
-    send_buf(pipeline, "track", 0)
-    assert_receive {SendStorage, :store, %{type: :manifest, name: "index.m3u8"}}
-    assert_receive {SendStorage, :store, %{type: :manifest, name: "video_track.m3u8"}}
-    assert_receive {SendStorage, :store, %{name: "video_segment_0" <> _}}
-    assert_pipeline_notified(pipeline, :sink, {:track_playable, "track"})
-
-    send_buf(pipeline, "track", 1)
-    assert_receive {SendStorage, :store, %{type: :manifest, name: "index.m3u8"}}
-    assert_receive {SendStorage, :store, %{type: :manifest, name: "video_track.m3u8"}}
-    assert_receive {SendStorage, :store, %{name: "video_segment_1" <> _}}
-
-    :ok = Testing.Pipeline.stop(pipeline)
-    assert_pipeline_playback_changed(pipeline, _, :stopped)
-    assert_receive {SendStorage, :store, %{type: :manifest, name: "video_track.m3u8"}}
-    assert_pipeline_notified(pipeline, :sink, {:cleanup, cleanup_fun})
-
-    assert :ok = cleanup_fun.()
-
-    assert_receive {SendStorage, :remove, %{type: :manifest, name: "index.m3u8"}}
-    assert_receive {SendStorage, :remove, %{type: :manifest, name: "video_track.m3u8"}}
-    assert_receive {SendStorage, :remove, %{name: "video_segment_0" <> _}}
-    assert_receive {SendStorage, :remove, %{name: "video_segment_1" <> _}}
-    refute_receive {SendStorage, _, _}
-
-    Testing.Pipeline.stop_and_terminate(pipeline, blocking?: true)
-  end
-
   defp mk_pipeline(sources) do
     import Membrane.ParentSpec
 
