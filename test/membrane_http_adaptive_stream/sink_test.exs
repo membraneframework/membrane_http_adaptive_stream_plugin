@@ -196,7 +196,8 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
         sink: %Sink{
           manifest_module: Membrane.HTTPAdaptiveStream.HLS,
           storage: %SendStorage{destination: self()},
-          target_window_duration: Time.seconds(5)
+          target_window_duration: Time.seconds(5),
+          target_segment_duration: Time.seconds(5)
         }
       ] ++ sources
 
