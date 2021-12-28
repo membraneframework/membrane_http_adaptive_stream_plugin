@@ -44,10 +44,10 @@ defmodule Membrane.HTTPAdaptiveStream.BandwidthCalculator do
       validated_segments_meta |> Enum.map(fn {bits_size, duration} -> bits_size / duration end)
 
     cond do
-      segments_meta |> Enum.empty?() ->
+      Enum.empty?(segments_meta) ->
         @default_bandwidth
 
-      validated_segments_meta |> Enum.empty?() ->
+      Enum.empty?(validated_segments_meta) ->
         segments_bitrates |> Enum.max(&Ratio.>=/2) |> Ratio.floor()
 
       true ->
