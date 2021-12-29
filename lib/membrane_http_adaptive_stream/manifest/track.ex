@@ -63,7 +63,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
                 finished?: false,
                 window_duration: 0,
                 discontinuities_counter: 0,
-                awaiting_discontinuity: nil
+                awaiting_discontinuity: nil,
+                tail_timestamp: 0
               ]
 
   @typedoc """
@@ -96,7 +97,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
           stale_segments: segments_t,
           finished?: boolean,
           window_duration: non_neg_integer,
-          discontinuities_counter: non_neg_integer
+          discontinuities_counter: non_neg_integer,
+          tail_timestamp: non_neg_integer
         }
 
   @type id_t :: any
@@ -141,10 +143,21 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       "#{track.content_type}_segment_#{track.current_seq_num}_" <>
         "#{track.track_name}#{track.segment_extension}"
 
-    attributes =
-      if is_nil(track.awaiting_discontinuity),
-        do: attributes,
-        else: [track.awaiting_discontinuity | attributes]
+    require Membrane.Logger
+
+    if track.content_type == :audio,
+      do:
+        inspect(track, limit: :infinity, pretty: true)
+        |> then(&Membrane.Logger.debug("Duration: #{inspect(duration)}\nTrack: #{&1}"))
+
+    {attributes, track} =
+      if is_nil(track.awaiting_discontinuity) or
+           (elem(track.awaiting_discontinuity, 0) >= track.tail_timestamp and
+              elem(track.awaiting_discontinuity, 0) < track.tail_timestamp + duration),
+         do: {attributes, track},
+         else:
+           {[elem(track.awaiting_discontinuity, 1) | attributes],
+            Map.put(track, :awaiting_discontinuity, nil)}
 
     {stale_segments, stale_headers, track} =
       track
@@ -159,8 +172,9 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       )
       |> Map.update!(:current_seq_num, &(&1 + 1))
       |> Map.update!(:window_duration, &(&1 + duration))
+      # TODO: (fixme) I think this is a potential bug. According to RFC, target segment duration CANNOT change
       |> Map.update!(:target_segment_duration, &if(&1 > duration, do: &1, else: duration))
-      |> Map.put(:awaiting_discontinuity, nil)
+      |> Map.update!(:tail_timestamp, &(&1 + duration))
       |> pop_stale_segments_and_headers()
 
     {to_remove_segment_names, to_remove_header_names, stale_segments, stale_headers} =
@@ -196,11 +210,17 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   def discontinue(track, options \\ [])
 
   def discontinue(%__MODULE__{finished?: false} = track, options) do
+    timestamp = Keyword.get(options, :target_timestamp, track.tail_timestamp)
+
+    if timestamp < track.tail_timestamp, do: raise "Pojebało Cię, nie wolno robić discontinuity w przeszłości"
+
     {counter, header} =
       if is_nil(track.awaiting_discontinuity) do
         {track.discontinuities_counter + 1, track.header_name}
       else
-        discontinuity(header, counter) = track.awaiting_discontinuity
+        # The following line will not match if already existing discontinuity can't be overwritten
+        # TODO: consider better error message than `pattern doesn't match`
+        {^timestamp, discontinuity(header, counter)} = track.awaiting_discontinuity
         {counter, header}
       end
 
@@ -209,7 +229,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
         do: header_name(track, counter),
         else: header
 
-    discontinuity = discontinuity(header, counter)
+    discontinuity = {timestamp, discontinuity(header, counter)}
 
     track =
       track
@@ -284,9 +304,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
 
     # filter out `new_header_name` as it could have been carried by some segment
     # that is about to be deleted but the header has become the main track header
-    headers_to_remove =
-      headers_to_remove
-      |> Enum.filter(&(&1 != new_header_name))
+    headers_to_remove = Enum.filter(headers_to_remove, &(&1 != new_header_name))
 
     track = %__MODULE__{
       track

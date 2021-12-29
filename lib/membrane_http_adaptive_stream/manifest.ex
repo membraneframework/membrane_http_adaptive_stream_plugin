@@ -67,17 +67,23 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
     )
   end
 
-  @spec discontinue_all_tracks(t(), Track.id_t()) :: {header_name :: String.t(), t()}
-  def discontinue_all_tracks(%__MODULE__{} = manifest, leader_track_id) do
+  @spec discontinue_all_tracks(t(), Track.id_t(), Membrane.Time.t()) ::
+          {header_name :: String.t(), t()}
+  def discontinue_all_tracks(%__MODULE__{} = manifest, leader_track_id, discontinuity_timestamp) do
     # properly discontinue triggering track
     {header, manifest} = discontinue_track(manifest, leader_track_id, generate_new_header?: true)
 
-    # discontinue all other tracks, but without creating new headers for them
+    # discontinue all other tracks, but without creating new headers for them as they are not necessary
+    # However, if they change their parameters, this discontinuity will be overwritten
     manifest =
-      Map.drop(manifest.tracks, [leader_track_id])
+      Map.delete(manifest.tracks, leader_track_id)
       |> Enum.map(&Bunch.key/1)
       |> Enum.reduce(manifest, fn track, manifest ->
-        discontinue_track(manifest, track, generate_new_header?: false) |> elem(1)
+        discontinue_track(manifest, track,
+          generate_new_header?: false,
+          target_timestamp: discontinuity_timestamp
+        )
+        |> elem(1)
       end)
 
     {header, manifest}
