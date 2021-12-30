@@ -54,25 +54,40 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
       raise ArgumentError, message: "Multiple audio tracks are not currently supported."
     end
 
-    case {tracks_by_content[:audio], tracks_by_content[:video]} do
-      {[audio], nil} ->
-        [
-          {main_manifest_name, build_master_playlist({audio, nil})},
-          {"audio.m3u8", serialize_track(audio)}
-        ]
+    case tracks_by_content do
+      %{muxed_audio_video: muxed_tracks} ->
+        if Map.keys(tracks_by_content) |> length() > 1,
+          do:
+            raise(ArgumentError,
+              message:
+                "HLS does not support mixing muxed tracks with separate audio and video tracks"
+            )
 
-      {nil, videos} ->
         List.flatten([
-          {main_manifest_name, build_master_playlist({nil, videos})},
+          {main_manifest_name, build_master_playlist({nil, muxed_tracks})},
+          muxed_tracks
+          |> Enum.filter(&(&1.segments != @empty_segments))
+          |> Enum.map(&{build_media_playlist_path(&1), serialize_track(&1)})
+        ])
+
+      %{audio: [audio], video: videos} ->
+        List.flatten([
+          {main_manifest_name, build_master_playlist({audio, videos})},
+          {"audio.m3u8", serialize_track(audio)},
           videos
           |> Enum.filter(&(&1.segments != @empty_segments))
           |> Enum.map(&{build_media_playlist_path(&1), serialize_track(&1)})
         ])
 
-      {[audio], videos} ->
+      %{audio: [audio]} ->
+        [
+          {main_manifest_name, build_master_playlist({audio, nil})},
+          {"audio.m3u8", serialize_track(audio)}
+        ]
+
+      %{video: videos} ->
         List.flatten([
-          {main_manifest_name, build_master_playlist({audio, videos})},
-          {"audio.m3u8", serialize_track(audio)},
+          {main_manifest_name, build_master_playlist({nil, videos})},
           videos
           |> Enum.filter(&(&1.segments != @empty_segments))
           |> Enum.map(&{build_media_playlist_path(&1), serialize_track(&1)})
@@ -92,7 +107,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
         """
         |> String.trim()
 
-      %Manifest.Track{content_type: :video} ->
+      %Manifest.Track{content_type: type} when type in [:video, :muxed_audio_video] ->
         """
         #EXT-X-STREAM-INF:BANDWIDTH=#{BandwidthCalculator.calculate_bandwidth(track)},CODECS="avc1.42e00a"
         """

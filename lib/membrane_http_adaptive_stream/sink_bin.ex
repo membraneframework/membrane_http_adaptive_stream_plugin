@@ -44,7 +44,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
                 spec: pos_integer | :infinity,
                 default: Time.seconds(40),
                 description: """
-                Manifest duration is keept above that time, while the oldest segments
+                Manifest duration is kept above that time, while the oldest segments
                 are removed whenever possible.
                 """
               ],
@@ -96,7 +96,8 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
         target_window_duration: opts.target_window_duration,
         persist?: opts.persist?,
         target_segment_duration: opts.target_segment_duration
-      }
+      },
+      audio_tee: Membrane.Element.Tee.Parallel
     ]
 
     state = %{muxer_segment_duration: opts.muxer_segment_duration}
@@ -108,16 +109,31 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   def handle_pad_added(Pad.ref(:input, ref) = pad, context, state) do
     muxer = %MP4.Muxer.CMAF{segment_duration: state.muxer_segment_duration}
 
-    payloader = Map.fetch!(@payloaders, context.options[:encoding])
+    encoding = context.options[:encoding]
+    payloader = Map.fetch!(@payloaders, encoding)
     track_name = context.options[:track_name]
 
-    links = [
-      link_bin_input(pad)
-      |> to({:payloader, ref}, payloader)
-      |> to({:cmaf_muxer, ref}, muxer)
-      |> via_in(pad, options: [track_name: track_name])
-      |> to(:sink)
-    ]
+    links =
+      case encoding do
+        :H264 ->
+          [
+            link_bin_input(pad)
+            |> to({:payloader, ref}, payloader)
+            |> to({:cmaf_muxer, ref}, muxer),
+            link(:audio_tee)
+            |> to({:cmaf_muxer, ref}),
+            link({:cmaf_muxer, ref})
+            |> via_in(pad, options: [track_name: track_name])
+            |> to(:sink)
+          ]
+
+        :AAC ->
+          [
+            link_bin_input(pad)
+            |> to({:payloader, ref}, payloader)
+            |> to(:audio_tee)
+          ]
+      end
 
     {{:ok, spec: %ParentSpec{links: links}}, state}
   end

@@ -62,6 +62,7 @@ defmodule Membrane.HTTPAdaptiveStream.MixProject do
     [
       {:membrane_core, "~> 0.8.0"},
       {:membrane_cmaf_format, "~> 0.4.0"},
+      {:membrane_element_tee, "~> 0.6.0"},
       {:credo, "~> 1.5.6"},
       {:ex_doc, "~> 0.25", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.1", only: [:dev, :test], runtime: false},
