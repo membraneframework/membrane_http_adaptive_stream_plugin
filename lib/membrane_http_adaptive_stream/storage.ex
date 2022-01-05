@@ -125,11 +125,10 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
            Bunch.Enum.try_each(
              to_remove[:header_names],
              &storage_impl.remove(&1, %{type: :header}, impl_state)
-           ),
-         :ok <- storage_impl.store(to_add, payload, %{mode: :binary, type: :segment}, impl_state) do
-      :ok
+           ) do
+      storage_impl.store(to_add, payload, %{mode: :binary, type: :segment}, impl_state)
     end
-    ~> {&1, storage}
+    |> then(&{&1, storage})
   end
 
   @doc """

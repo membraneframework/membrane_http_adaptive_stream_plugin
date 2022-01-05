@@ -99,34 +99,22 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
   @impl true
   def handle_init(opts) do
+    children =
+      [
+        sink: %Sink{
+          manifest_name: opts.manifest_name,
+          manifest_module: opts.manifest_module,
+          storage: opts.storage,
+          target_window_duration: opts.target_window_duration,
+          persist?: opts.persist?,
+          target_segment_duration: opts.target_segment_duration
+        }
+      ] ++
+        if(opts.hls_mode == :muxed_av, do: [audio_tee: Membrane.Tee.Parallel], else: [])
+
     state = %{muxer_segment_duration: opts.muxer_segment_duration, mode: opts.hls_mode}
-    {{:ok, spec: %ParentSpec{children: get_initial_children(opts)}}, state}
+    {{:ok, spec: %ParentSpec{children: children}}, state}
   end
-
-  defp get_initial_children(%__MODULE__{hls_mode: :separate_av} = opts),
-    do: [
-      sink: %Sink{
-        manifest_name: opts.manifest_name,
-        manifest_module: opts.manifest_module,
-        storage: opts.storage,
-        target_window_duration: opts.target_window_duration,
-        persist?: opts.persist?,
-        target_segment_duration: opts.target_segment_duration
-      }
-    ]
-
-  defp get_initial_children(%__MODULE__{hls_mode: :muxed_av} = opts),
-    do: [
-      sink: %Sink{
-        manifest_name: opts.manifest_name,
-        manifest_module: opts.manifest_module,
-        storage: opts.storage,
-        target_window_duration: opts.target_window_duration,
-        persist?: opts.persist?,
-        target_segment_duration: opts.target_segment_duration
-      },
-      audio_tee: Membrane.Element.Tee.Parallel
-    ]
 
   @impl true
   def handle_pad_added(Pad.ref(:input, ref) = pad, context, state) do
