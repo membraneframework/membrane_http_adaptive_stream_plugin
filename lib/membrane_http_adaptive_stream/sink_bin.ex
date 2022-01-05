@@ -63,6 +63,17 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
                 Expected length of each segment. Setting it is not necessary, but
                 may help players achieve better UX.
                 """
+              ],
+              hls_mode: [
+                type: :atom,
+                spec: :muxed_av | :separate_av,
+                default: :separate_av,
+                description: """
+                Option defining how the incoming tracks will be handled and how CMAF will be muxed.
+
+                - In `:muxed_av` audio will be added to each video rendition, creating CMAF segments that contain both audio and video.
+                - In `:separate_av` audio and video tracks will be separate and synchronization will need to be sorted out by the player.
+                """
               ]
 
   def_input_pad :input,
@@ -88,7 +99,24 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
   @impl true
   def handle_init(opts) do
-    children = [
+    state = %{muxer_segment_duration: opts.muxer_segment_duration, mode: opts.hls_mode}
+    {{:ok, spec: %ParentSpec{children: get_initial_children(opts)}}, state}
+  end
+
+  defp get_initial_children(%__MODULE__{hls_mode: :separate_av} = opts),
+    do: [
+      sink: %Sink{
+        manifest_name: opts.manifest_name,
+        manifest_module: opts.manifest_module,
+        storage: opts.storage,
+        target_window_duration: opts.target_window_duration,
+        persist?: opts.persist?,
+        target_segment_duration: opts.target_segment_duration
+      }
+    ]
+
+  defp get_initial_children(%__MODULE__{hls_mode: :muxed_av} = opts),
+    do: [
       sink: %Sink{
         manifest_name: opts.manifest_name,
         manifest_module: opts.manifest_module,
@@ -100,11 +128,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
       audio_tee: Membrane.Element.Tee.Parallel
     ]
 
-    state = %{muxer_segment_duration: opts.muxer_segment_duration}
-
-    {{:ok, spec: %ParentSpec{children: children}}, state}
-  end
-
   @impl true
   def handle_pad_added(Pad.ref(:input, ref) = pad, context, state) do
     muxer = %MP4.Muxer.CMAF{segment_duration: state.muxer_segment_duration}
@@ -114,8 +137,17 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
     track_name = context.options[:track_name]
 
     links =
-      case encoding do
-        :H264 ->
+      cond do
+        state.mode == :separate_av ->
+          [
+            link_bin_input(pad)
+            |> to({:payloader, ref}, payloader)
+            |> to({:cmaf_muxer, ref}, muxer)
+            |> via_in(pad, options: [track_name: track_name])
+            |> to(:sink)
+          ]
+
+        state.mode == :muxed_av and encoding == :H264 ->
           [
             link_bin_input(pad)
             |> to({:payloader, ref}, payloader)
@@ -127,7 +159,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
             |> to(:sink)
           ]
 
-        :AAC ->
+        state.mode == :muxed_av and encoding == :AAC ->
           [
             link_bin_input(pad)
             |> to({:payloader, ref}, payloader)

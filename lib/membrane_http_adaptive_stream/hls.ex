@@ -47,22 +47,17 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   """
   @impl true
   def serialize(%Manifest{} = manifest) do
-    tracks_by_content = manifest.tracks |> Map.values() |> Enum.group_by(& &1.content_type)
+    tracks_by_content =
+      manifest.tracks |> Map.values() |> Enum.group_by(& &1.content_type) |> Enum.to_list()
+
     main_manifest_name = "#{manifest.name}.m3u8"
 
-    if length(Map.get(tracks_by_content, :audio, [])) > 1 do
+    if length(Keyword.get(tracks_by_content, :audio, [])) > 1 do
       raise ArgumentError, message: "Multiple audio tracks are not currently supported."
     end
 
     case tracks_by_content do
-      %{muxed_audio_video: muxed_tracks} ->
-        if Map.keys(tracks_by_content) |> length() > 1,
-          do:
-            raise(ArgumentError,
-              message:
-                "HLS does not support mixing muxed tracks with separate audio and video tracks"
-            )
-
+      [muxed_audio_video: muxed_tracks] ->
         List.flatten([
           {main_manifest_name, build_master_playlist({nil, muxed_tracks})},
           muxed_tracks
@@ -70,7 +65,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
           |> Enum.map(&{build_media_playlist_path(&1), serialize_track(&1)})
         ])
 
-      %{audio: [audio], video: videos} ->
+      [audio: [audio], video: videos] ->
         List.flatten([
           {main_manifest_name, build_master_playlist({audio, videos})},
           {"audio.m3u8", serialize_track(audio)},
@@ -79,13 +74,13 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
           |> Enum.map(&{build_media_playlist_path(&1), serialize_track(&1)})
         ])
 
-      %{audio: [audio]} ->
+      [audio: [audio]] ->
         [
           {main_manifest_name, build_master_playlist({audio, nil})},
           {"audio.m3u8", serialize_track(audio)}
         ]
 
-      %{video: videos} ->
+      [video: videos] ->
         List.flatten([
           {main_manifest_name, build_master_playlist({nil, videos})},
           videos
