@@ -148,7 +148,11 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
 
   defp serialize_track(%Manifest.Track{} = track) do
     target_duration = Ratio.ceil(track.target_segment_duration / Time.second()) |> trunc()
-    media_sequence = track.current_seq_num - Enum.count(track.segments)
+
+    media_sequence =
+      if track.persist? and track.finished?,
+        do: 0,
+        else: track.current_seq_num - Enum.count(track.segments)
 
     """
     #EXTM3U
