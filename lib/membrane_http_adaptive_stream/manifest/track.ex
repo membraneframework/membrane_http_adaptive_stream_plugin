@@ -82,7 +82,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   """
   @type t :: %__MODULE__{
           id: id_t,
-          content_type: :audio | :video,
+          content_type: :audio | :video | :muxed,
           header_extension: String.t(),
           segment_extension: String.t(),
           target_segment_duration: segment_duration_t,
@@ -115,10 +115,29 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
 
   @spec new(Config.t()) :: t
   def new(%Config{} = config) do
+    type =
+      case config.content_type do
+        list when is_list(list) ->
+          if list -- [:audio, :video] == [],
+            do: :muxed,
+            else:
+              raise(
+                "Attempted to create Track with unsupported `content_type: #{inspect(list)}`. Exactly one audio and one video is required"
+              )
+
+        type ->
+          type
+      end
+
+    config =
+      config
+      |> Map.from_struct()
+      |> Map.put(:content_type, type)
+
     %__MODULE__{
       header_name: header_name(config, 0)
     }
-    |> Map.merge(Map.from_struct(config))
+    |> Map.merge(config)
   end
 
   @doc """
