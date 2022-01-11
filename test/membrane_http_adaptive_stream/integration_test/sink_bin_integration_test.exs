@@ -161,7 +161,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
     assert_pipeline_playback_changed(pipeline, _, :playing)
 
     for _source <- sources,
-        do: assert_end_of_stream(pipeline, :sink_bin, {Membrane.Pad, :input, _source})
+        do: assert_end_of_stream(pipeline, :sink_bin, {Membrane.Pad, :input, _source}, 5_000)
 
     # Give some time to save all of the files to disk
     Process.sleep(1_000)
