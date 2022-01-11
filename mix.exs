@@ -66,8 +66,7 @@ defmodule Membrane.HTTPAdaptiveStream.MixProject do
       {:credo, "~> 1.6.1"},
       {:ex_doc, "~> 0.25", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.1", only: [:dev, :test], runtime: false},
-      {:membrane_mp4_plugin,
-       github: "membraneframework/membrane_mp4_plugin", branch: "cmaf-muxing"},
+      {:membrane_mp4_plugin, "~> 0.11.0"},
       {:membrane_hackney_plugin, "~> 0.6.0", only: [:test]},
       {:membrane_h264_ffmpeg_plugin, "~> 0.16.0", only: [:test]},
       {:membrane_aac_plugin, "~> 0.11.0", only: [:test]}

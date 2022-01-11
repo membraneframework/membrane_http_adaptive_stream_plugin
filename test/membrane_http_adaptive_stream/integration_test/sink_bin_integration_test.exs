@@ -1,5 +1,5 @@
 defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case
 
   import Membrane.Testing.Assertions
   alias Membrane.Testing
@@ -13,22 +13,22 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
   @create_fixtures false
 
   @audio_video_tracks_sources [
-    {"https://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/test-audio.aac",
+    {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/test-audio.aac",
      :AAC, "audio_track"},
-    {"https://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/ffmpeg-testsrc.h264",
+    {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/ffmpeg-testsrc.h264",
      :H264, "video_track"}
   ]
   @audio_video_tracks_ref_path "./test/membrane_http_adaptive_stream/integration_test/fixtures/audio_video_tracks/"
   @audio_video_tracks_test_path "/tmp/membrane_http_adaptive_stream_audio_video_test/"
 
   @audio_multiple_video_tracks_sources [
-    {"https://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s.aac",
+    {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s.aac",
      :AAC, "audio_track"},
-    {"https://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s_480x270.h264",
+    {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s_480x270.h264",
      :H264, "video_480x270"},
-    {"https://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s_540x360.h264",
+    {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s_540x360.h264",
      :H264, "video_540x360"},
-    {"https://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s_720x480.h264",
+    {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s_720x480.h264",
      :H264, "video_720x480"}
   ]
   @audio_multiple_video_tracks_ref_path "./test/membrane_http_adaptive_stream/integration_test/fixtures/audio_multiple_video_tracks/"
@@ -93,7 +93,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
   end
 
   test "check if fixture creation is disabled" do
-    assert not @create_fixtures
+    refute @create_fixtures
   end
 
   describe "Test HLS content creation for " do
@@ -138,6 +138,9 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
     for _source <- sources,
         do: assert_end_of_stream(pipeline, :sink_bin, {Membrane.Pad, :input, _source})
 
+    # Give some time to save all of the files to disk
+    Process.sleep(1_000)
+
     Testing.Pipeline.stop_and_terminate(pipeline, blocking?: true)
     assert_pipeline_playback_changed(pipeline, _, :stopped)
   end
@@ -155,6 +158,8 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
     end)
 
     if @create_fixtures do
+      File.rm_rf(reference_directory)
+      File.mkdir(reference_directory)
       run_pipeline(hackney_sources, reference_directory)
     else
       run_pipeline(hackney_sources, test_directory)
@@ -165,7 +170,8 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
           do:
             assert(
               File.read!(reference_directory <> file_name) ==
-                File.read!(test_directory <> file_name)
+                File.read!(test_directory <> file_name),
+              "Contents of file #{reference_directory <> file_name} differ from contents of file #{test_directory <> file_name}"
             )
     end
   end

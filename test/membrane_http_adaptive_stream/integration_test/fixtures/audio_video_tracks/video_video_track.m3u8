@@ -4,8 +4,8 @@
 #EXT-X-MEDIA-SEQUENCE:0
 #EXT-X-DISCONTINUITY-SEQUENCE:0
 #EXT-X-MAP:URI="video_header_video_track_part0_.mp4"
-#EXTINF:8.333333333333334,
+#EXTINF:8.333333333,
 video_segment_0_video_track.m4s
-#EXTINF:1.6333333333333333,
+#EXTINF:1.666666666,
 video_segment_1_video_track.m4s
 #EXT-X-ENDLIST
