@@ -124,46 +124,59 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
     payloader = Map.fetch!(@payloaders, encoding)
     track_name = context.options[:track_name]
 
-    links =
+    spec =
       cond do
         state.mode == :separate_av ->
-          [
-            link_bin_input(pad)
-            |> to({:payloader, ref}, payloader)
-            |> to({:cmaf_muxer, ref}, muxer)
-            |> via_in(pad, options: [track_name: track_name])
-            |> to(:sink)
-          ]
+          %ParentSpec{
+            links: [
+              link_bin_input(pad)
+              |> to({:payloader, ref}, payloader)
+              |> to({:cmaf_muxer, ref}, muxer)
+              |> via_in(pad, options: [track_name: track_name])
+              |> to(:sink)
+            ]
+          }
 
         state.mode == :muxed_av and encoding == :H264 ->
-          [
-            link_bin_input(pad)
-            |> to({:payloader, ref}, payloader)
-            |> to({:cmaf_muxer, ref}, muxer),
-            link(:audio_tee)
-            |> to({:cmaf_muxer, ref}),
-            link({:cmaf_muxer, ref})
-            |> via_in(pad, options: [track_name: track_name])
-            |> to(:sink)
-          ]
+          %ParentSpec{
+            children: %{
+              {:payloader, ref} => payloader,
+              {:cmaf_muxer, ref} => muxer
+            },
+            links: [
+              link_bin_input(pad)
+              |> to({:payloader, ref})
+              |> to({:cmaf_muxer, ref}),
+              link(:audio_tee)
+              |> to({:cmaf_muxer, ref}),
+              link({:cmaf_muxer, ref})
+              |> via_in(pad, options: [track_name: track_name])
+              |> to(:sink)
+            ]
+          }
 
         state.mode == :muxed_av and encoding == :AAC ->
-          [
-            link_bin_input(pad)
-            |> to({:payloader, ref}, payloader)
-            |> to(:audio_tee)
-          ]
+          %ParentSpec{
+            children: %{{:payloader, ref} => payloader},
+            links: [
+              link_bin_input(pad)
+              |> to({:payloader, ref})
+              |> to(:audio_tee)
+            ]
+          }
       end
 
-    {{:ok, spec: %ParentSpec{links: links}}, state}
+    {{:ok, spec: spec}, state}
   end
 
   @impl true
-  def handle_pad_removed(Pad.ref(:input, ref), _ctx, state) do
-    children = [
-      {:payloader, ref},
-      {:cmaf_muxer, ref}
-    ]
+  def handle_pad_removed(Pad.ref(:input, ref), ctx, state) do
+    children =
+      [
+        {:payloader, ref},
+        {:cmaf_muxer, ref}
+      ]
+      |> Enum.filter(&Map.has_key?(ctx.children, &1))
 
     {{:ok, remove_child: children}, state}
   end

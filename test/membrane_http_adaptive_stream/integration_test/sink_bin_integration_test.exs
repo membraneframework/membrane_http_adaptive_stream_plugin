@@ -34,13 +34,26 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
   @audio_multiple_video_tracks_ref_path "./test/membrane_http_adaptive_stream/integration_test/fixtures/audio_multiple_video_tracks/"
   @audio_multiple_video_tracks_test_path "/tmp/membrane_http_adaptive_stream_audio_multiple_video_test/"
 
+  @muxed_av_sources [
+    {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s.aac",
+     :AAC, "audio_track"},
+    {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s_480x270.h264",
+     :H264, "video_480x270"},
+    {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s_540x360.h264",
+     :H264, "video_540x360"},
+    {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s_720x480.h264",
+     :H264, "video_720x480"}
+  ]
+  @muxed_av_ref_path "./test/membrane_http_adaptive_stream/integration_test/fixtures/muxed_av/"
+  @muxed_av_test_path "/tmp/membrane_http_adaptive_stream_muxed_av_test/"
+
   defmodule TestPipeline do
     use Membrane.Pipeline
     alias Membrane.HTTPAdaptiveStream
     alias Membrane.HTTPAdaptiveStream.Storages.FileStorage
 
     @impl true
-    def handle_init(%{sources: sources, output_dir: output_dir}) do
+    def handle_init(%{sources: sources, output_dir: output_dir, hls_mode: hls_mode}) do
       sink_bin = %HTTPAdaptiveStream.SinkBin{
         muxer_segment_duration: 2 |> Membrane.Time.seconds(),
         manifest_module: HTTPAdaptiveStream.HLS,
@@ -49,7 +62,8 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
         persist?: false,
         storage: %FileStorage{
           directory: output_dir
-        }
+        },
+        hls_mode: hls_mode
       }
 
       children =
@@ -59,7 +73,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
             case encoding do
               :H264 ->
                 %Membrane.H264.FFmpeg.Parser{
-                  framerate: {30, 1},
+                  framerate: {25, 1},
                   alignment: :au,
                   attach_nalus?: true
                 }
@@ -119,15 +133,26 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
         @audio_multiple_video_tracks_test_path
       )
     end
+
+    @tag test_directory: @muxed_av_test_path
+    test "audio and multiple video tracks - muxed AV" do
+      test_pipeline(
+        @muxed_av_sources,
+        @muxed_av_ref_path,
+        @muxed_av_test_path,
+        :muxed_av
+      )
+    end
   end
 
-  defp run_pipeline(sources, result_directory) do
+  defp run_pipeline(sources, result_directory, hls_mode) do
     {:ok, pipeline} =
       %Testing.Pipeline.Options{
         module: TestPipeline,
         custom_args: %{
           sources: sources,
-          output_dir: result_directory
+          output_dir: result_directory,
+          hls_mode: hls_mode
         }
       }
       |> Testing.Pipeline.start_link()
@@ -145,7 +170,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
     assert_pipeline_playback_changed(pipeline, _, :stopped)
   end
 
-  defp test_pipeline(sources, reference_directory, test_directory) do
+  defp test_pipeline(sources, reference_directory, test_directory, hls_mode \\ :separate_av) do
     hackney_sources =
       sources
       |> Enum.map(fn {path, encoding, name} ->
@@ -160,9 +185,9 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
     if @create_fixtures do
       File.rm_rf(reference_directory)
       File.mkdir(reference_directory)
-      run_pipeline(hackney_sources, reference_directory)
+      run_pipeline(hackney_sources, reference_directory, hls_mode)
     else
-      run_pipeline(hackney_sources, test_directory)
+      run_pipeline(hackney_sources, test_directory, hls_mode)
 
       {:ok, reference_playlist_content} = File.ls(reference_directory)
 
