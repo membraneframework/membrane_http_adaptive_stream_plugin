@@ -63,7 +63,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
                 finished?: false,
                 window_duration: 0,
                 discontinuities_counter: 0,
-                awaiting_discontinuity: nil
+                awaiting_discontinuity: nil,
+                next_segment_id: 0
               ]
 
   @typedoc """
@@ -96,7 +97,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
           stale_segments: segments_t,
           finished?: boolean,
           window_duration: non_neg_integer,
-          discontinuities_counter: non_neg_integer
+          discontinuities_counter: non_neg_integer,
+          next_segment_id: non_neg_integer()
         }
 
   @type id_t :: any
@@ -157,7 +159,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     use Ratio, comparison: true
 
     name =
-      "#{track.content_type}_segment_#{track.current_seq_num}_" <>
+      "#{track.content_type}_segment_#{track.next_segment_id}_" <>
         "#{track.track_name}#{track.segment_extension}"
 
     attributes =
@@ -176,7 +178,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
           attributes: attributes
         })
       )
-      |> Map.update!(:current_seq_num, &(&1 + 1))
+      |> Map.update!(:next_segment_id, &(&1 + 1))
       |> Map.update!(:window_duration, &(&1 + duration))
       |> Map.update!(:target_segment_duration, &if(&1 > duration, do: &1, else: duration))
       |> Map.put(:awaiting_discontinuity, nil)
@@ -198,6 +200,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
           track.stale_headers
         }
       end
+
+    track = Map.update!(track, :current_seq_num, &(&1 + length(to_remove_segment_names)))
 
     {{name, [segment_names: to_remove_segment_names, header_names: to_remove_header_names]},
      %__MODULE__{track | stale_segments: stale_segments, stale_headers: stale_headers}}

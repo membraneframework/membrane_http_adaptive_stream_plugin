@@ -151,16 +151,11 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   defp serialize_track(%Manifest.Track{} = track) do
     target_duration = Ratio.ceil(track.target_segment_duration / Time.second()) |> trunc()
 
-    media_sequence =
-      if track.persist? and track.finished?,
-        do: 0,
-        else: track.current_seq_num - Enum.count(track.segments)
-
     """
     #EXTM3U
     #EXT-X-VERSION:#{@version}
     #EXT-X-TARGETDURATION:#{target_duration}
-    #EXT-X-MEDIA-SEQUENCE:#{media_sequence}
+    #EXT-X-MEDIA-SEQUENCE:#{track.current_seq_num}
     #EXT-X-DISCONTINUITY-SEQUENCE:#{track.current_discontinuity_seq_num}
     #EXT-X-MAP:URI="#{track.header_name}"
     #{track.segments |> Enum.flat_map(&serialize_segment/1) |> Enum.join("\n")}

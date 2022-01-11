@@ -1,5 +1,5 @@
 defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
   import Membrane.Testing.Assertions
   alias Membrane.Testing
