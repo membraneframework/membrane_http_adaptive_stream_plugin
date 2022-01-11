@@ -119,16 +119,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   def new(%Config{} = config) do
     type =
       case config.content_type do
-        list when is_list(list) ->
-          if list -- [:audio, :video] == [],
-            do: :muxed,
-            else:
-              raise(
-                "Attempted to create Track with unsupported `content_type: #{inspect(list)}`. Exactly one audio and one video is required"
-              )
-
-        type ->
-          type
+        list when is_list(list) -> :muxed
+        type -> type
       end
 
     config =

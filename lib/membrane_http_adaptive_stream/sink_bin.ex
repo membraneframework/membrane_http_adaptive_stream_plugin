@@ -156,6 +156,9 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
           }
 
         state.mode == :muxed_av and encoding == :AAC ->
+          if count_audio_tracks(context) > 1,
+            do: raise("In :muxed_av mode, only one audio input is accepted")
+
           %ParentSpec{
             children: %{{:payloader, ref} => payloader},
             links: [
@@ -170,13 +173,11 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   end
 
   @impl true
-  def handle_pad_removed(Pad.ref(:input, ref), ctx, state) do
+  def handle_pad_removed(Pad.ref(:input, ref), _ctx, state) do
     children =
       [
-        {:payloader, ref},
-        {:cmaf_muxer, ref}
-      ]
-      |> Enum.filter(&Map.has_key?(ctx.children, &1))
+        {:payloader, ref}
+      ] ++ if(state.mode != :muxed_av, do: [{:cmaf_muxer, ref}], else: [])
 
     {{:ok, remove_child: children}, state}
   end
@@ -186,7 +187,14 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
     {{:ok, notify: :end_of_stream}, state}
   end
 
+  @impl true
   def handle_element_end_of_stream(_element, _ctx, state) do
     {:ok, state}
   end
+
+  defp count_audio_tracks(context),
+    do:
+      Enum.count(context.pads, fn {_pad, metadata} ->
+        metadata.options.encoding == :AAC
+      end)
 end
