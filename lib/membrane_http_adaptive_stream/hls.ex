@@ -58,6 +58,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
       raise ArgumentError, message: "Multiple audio tracks are not currently supported."
     end
 
+    # Depending on tracks present in the manifest, generate master playlist and playlists for each track
     case tracks_by_content do
       %{muxed: muxed_tracks} ->
         List.flatten([

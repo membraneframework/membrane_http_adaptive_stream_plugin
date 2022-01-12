@@ -65,7 +65,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
                 """
               ],
               hls_mode: [
-                type: :atom,
                 spec: :muxed_av | :separate_av,
                 default: :separate_av,
                 description: """
