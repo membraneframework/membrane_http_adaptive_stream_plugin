@@ -47,32 +47,49 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   """
   @impl true
   def serialize(%Manifest{} = manifest) do
-    tracks_by_content = manifest.tracks |> Map.values() |> Enum.group_by(& &1.content_type)
+    tracks_by_content =
+      manifest.tracks
+      |> Map.values()
+      |> Enum.group_by(& &1.content_type)
+
     main_manifest_name = "#{manifest.name}.m3u8"
 
     if length(Map.get(tracks_by_content, :audio, [])) > 1 do
       raise ArgumentError, message: "Multiple audio tracks are not currently supported."
     end
 
-    case {tracks_by_content[:audio], tracks_by_content[:video]} do
-      {[audio], nil} ->
-        [
-          {main_manifest_name, build_master_playlist({audio, nil})},
-          {"audio.m3u8", serialize_track(audio)}
-        ]
-
-      {nil, videos} ->
+    # Depending on tracks present in the manifest, generate master playlist and playlists for each track
+    case tracks_by_content do
+      # Handling muxed content - where audio and video is contained in a single CMAF Track
+      %{muxed: muxed_tracks} ->
         List.flatten([
-          {main_manifest_name, build_master_playlist({nil, videos})},
+          {main_manifest_name, build_master_playlist({nil, muxed_tracks})},
+          muxed_tracks
+          |> Enum.filter(&(&1.segments != @empty_segments))
+          |> Enum.map(&{build_media_playlist_path(&1), serialize_track(&1)})
+        ])
+
+      # Handle audio track and multiple renditions of video
+      %{audio: [audio], video: videos} ->
+        List.flatten([
+          {main_manifest_name, build_master_playlist({audio, videos})},
+          {"audio.m3u8", serialize_track(audio)},
           videos
           |> Enum.filter(&(&1.segments != @empty_segments))
           |> Enum.map(&{build_media_playlist_path(&1), serialize_track(&1)})
         ])
 
-      {[audio], videos} ->
+      # Handle only audio, without any video tracks
+      %{audio: [audio]} ->
+        [
+          {main_manifest_name, build_master_playlist({audio, nil})},
+          {"audio.m3u8", serialize_track(audio)}
+        ]
+
+      # Handle video without audio
+      %{video: videos} ->
         List.flatten([
-          {main_manifest_name, build_master_playlist({audio, videos})},
-          {"audio.m3u8", serialize_track(audio)},
+          {main_manifest_name, build_master_playlist({nil, videos})},
           videos
           |> Enum.filter(&(&1.segments != @empty_segments))
           |> Enum.map(&{build_media_playlist_path(&1), serialize_track(&1)})
@@ -92,7 +109,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
         """
         |> String.trim()
 
-      %Manifest.Track{content_type: :video} ->
+      %Manifest.Track{content_type: type} when type in [:video, :muxed] ->
         """
         #EXT-X-STREAM-INF:BANDWIDTH=#{BandwidthCalculator.calculate_bandwidth(track)},CODECS="avc1.42e00a"
         """
@@ -138,13 +155,12 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
 
   defp serialize_track(%Manifest.Track{} = track) do
     target_duration = Ratio.ceil(track.target_segment_duration / Time.second()) |> trunc()
-    media_sequence = track.current_seq_num - Enum.count(track.segments)
 
     """
     #EXTM3U
     #EXT-X-VERSION:#{@version}
     #EXT-X-TARGETDURATION:#{target_duration}
-    #EXT-X-MEDIA-SEQUENCE:#{media_sequence}
+    #EXT-X-MEDIA-SEQUENCE:#{track.current_seq_num}
     #EXT-X-DISCONTINUITY-SEQUENCE:#{track.current_discontinuity_seq_num}
     #EXT-X-MAP:URI="#{track.header_name}"
     #{track.segments |> Enum.flat_map(&serialize_segment/1) |> Enum.join("\n")}

@@ -44,7 +44,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
                 spec: pos_integer | :infinity,
                 default: Time.seconds(40),
                 description: """
-                Manifest duration is keept above that time, while the oldest segments
+                Manifest duration is kept above that time, while the oldest segments
                 are removed whenever possible.
                 """
               ],
@@ -62,6 +62,16 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
                 description: """
                 Expected length of each segment. Setting it is not necessary, but
                 may help players achieve better UX.
+                """
+              ],
+              hls_mode: [
+                spec: :muxed_av | :separate_av,
+                default: :separate_av,
+                description: """
+                Option defining how the incoming tracks will be handled and how CMAF will be muxed.
+
+                - In `:muxed_av` audio will be added to each video rendition, creating CMAF segments that contain both audio and video.
+                - In `:separate_av` audio and video tracks will be separate and synchronization will need to be sorted out by the player.
                 """
               ]
 
@@ -88,19 +98,20 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
   @impl true
   def handle_init(opts) do
-    children = [
-      sink: %Sink{
-        manifest_name: opts.manifest_name,
-        manifest_module: opts.manifest_module,
-        storage: opts.storage,
-        target_window_duration: opts.target_window_duration,
-        persist?: opts.persist?,
-        target_segment_duration: opts.target_segment_duration
-      }
-    ]
+    children =
+      [
+        sink: %Sink{
+          manifest_name: opts.manifest_name,
+          manifest_module: opts.manifest_module,
+          storage: opts.storage,
+          target_window_duration: opts.target_window_duration,
+          persist?: opts.persist?,
+          target_segment_duration: opts.target_segment_duration
+        }
+      ] ++
+        if(opts.hls_mode == :muxed_av, do: [audio_tee: Membrane.Tee.Parallel], else: [])
 
-    state = %{muxer_segment_duration: opts.muxer_segment_duration}
-
+    state = %{muxer_segment_duration: opts.muxer_segment_duration, mode: opts.hls_mode}
     {{:ok, spec: %ParentSpec{children: children}}, state}
   end
 
@@ -108,26 +119,64 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   def handle_pad_added(Pad.ref(:input, ref) = pad, context, state) do
     muxer = %MP4.Muxer.CMAF{segment_duration: state.muxer_segment_duration}
 
-    payloader = Map.fetch!(@payloaders, context.options[:encoding])
+    encoding = context.options[:encoding]
+    payloader = Map.fetch!(@payloaders, encoding)
     track_name = context.options[:track_name]
 
-    links = [
-      link_bin_input(pad)
-      |> to({:payloader, ref}, payloader)
-      |> to({:cmaf_muxer, ref}, muxer)
-      |> via_in(pad, options: [track_name: track_name])
-      |> to(:sink)
-    ]
+    spec =
+      cond do
+        state.mode == :separate_av ->
+          %ParentSpec{
+            links: [
+              link_bin_input(pad)
+              |> to({:payloader, ref}, payloader)
+              |> to({:cmaf_muxer, ref}, muxer)
+              |> via_in(pad, options: [track_name: track_name])
+              |> to(:sink)
+            ]
+          }
 
-    {{:ok, spec: %ParentSpec{links: links}}, state}
+        state.mode == :muxed_av and encoding == :H264 ->
+          %ParentSpec{
+            children: %{
+              {:payloader, ref} => payloader,
+              {:cmaf_muxer, ref} => muxer
+            },
+            links: [
+              link_bin_input(pad)
+              |> to({:payloader, ref})
+              |> to({:cmaf_muxer, ref}),
+              link(:audio_tee)
+              |> to({:cmaf_muxer, ref}),
+              link({:cmaf_muxer, ref})
+              |> via_in(pad, options: [track_name: track_name])
+              |> to(:sink)
+            ]
+          }
+
+        state.mode == :muxed_av and encoding == :AAC ->
+          if count_audio_tracks(context) > 1,
+            do: raise("In :muxed_av mode, only one audio input is accepted")
+
+          %ParentSpec{
+            children: %{{:payloader, ref} => payloader},
+            links: [
+              link_bin_input(pad)
+              |> to({:payloader, ref})
+              |> to(:audio_tee)
+            ]
+          }
+      end
+
+    {{:ok, spec: spec}, state}
   end
 
   @impl true
   def handle_pad_removed(Pad.ref(:input, ref), _ctx, state) do
-    children = [
-      {:payloader, ref},
-      {:cmaf_muxer, ref}
-    ]
+    children =
+      [
+        {:payloader, ref}
+      ] ++ if(state.mode != :muxed_av, do: [{:cmaf_muxer, ref}], else: [])
 
     {{:ok, remove_child: children}, state}
   end
@@ -137,7 +186,14 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
     {{:ok, notify: :end_of_stream}, state}
   end
 
+  @impl true
   def handle_element_end_of_stream(_element, _ctx, state) do
     {:ok, state}
   end
+
+  defp count_audio_tracks(context),
+    do:
+      Enum.count(context.pads, fn {_pad, metadata} ->
+        metadata.options.encoding == :AAC
+      end)
 end
