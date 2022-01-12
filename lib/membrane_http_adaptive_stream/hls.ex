@@ -60,6 +60,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
 
     # Depending on tracks present in the manifest, generate master playlist and playlists for each track
     case tracks_by_content do
+      # Handling muxed content - where audio and video is contained in a single CMAF Track
       %{muxed: muxed_tracks} ->
         List.flatten([
           {main_manifest_name, build_master_playlist({nil, muxed_tracks})},
@@ -68,6 +69,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
           |> Enum.map(&{build_media_playlist_path(&1), serialize_track(&1)})
         ])
 
+      # Handle audio track and multiple renditions of video
       %{audio: [audio], video: videos} ->
         List.flatten([
           {main_manifest_name, build_master_playlist({audio, videos})},
@@ -77,12 +79,14 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
           |> Enum.map(&{build_media_playlist_path(&1), serialize_track(&1)})
         ])
 
+      # Handle only audio, without any video tracks
       %{audio: [audio]} ->
         [
           {main_manifest_name, build_master_playlist({audio, nil})},
           {"audio.m3u8", serialize_track(audio)}
         ]
 
+      # Handle video without audio
       %{video: videos} ->
         List.flatten([
           {main_manifest_name, build_master_playlist({nil, videos})},
