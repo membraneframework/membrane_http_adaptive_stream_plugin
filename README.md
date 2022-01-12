@@ -27,4 +27,4 @@ Copyright 2019, [Software Mansion](https://swmansion.com/?utm_source=git&utm_med
 
 [![Software Mansion](https://logo.swmansion.com/logo?color=white&variant=desktop&width=200&tag=membrane-github)](https://swmansion.com/?utm_source=git&utm_medium=readme&utm_campaign=membrane_http_adaptive_stream_plugin)
 
-Licensed under the [Apache License, Version 2.0](LICENSE)
+Licensed under the [Apache License, Version 2.0](LICENSE.md)

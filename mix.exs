@@ -35,7 +35,7 @@ defmodule Membrane.HTTPAdaptiveStream.MixProject do
   defp docs do
     [
       main: "readme",
-      extras: ["README.md"],
+      extras: ["README.md", "LICENSE.md"],
       source_ref: "v#{@version}",
       nest_modules_by_prefix: [Membrane.HTTPAdaptiveStream],
       groups_for_modules: [
