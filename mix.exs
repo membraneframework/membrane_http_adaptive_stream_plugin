@@ -60,16 +60,17 @@ defmodule Membrane.HTTPAdaptiveStream.MixProject do
 
   defp deps do
     [
-      {:membrane_core, "~> 0.8.0"},
-      {:membrane_cmaf_format, "~> 0.5.0"},
-      {:membrane_tee_plugin, "~> 0.7.0"},
-      {:credo, "~> 1.6.1"},
-      {:ex_doc, "~> 0.25", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.1", only: [:dev, :test], runtime: false},
-      {:membrane_mp4_plugin, "~> 0.11.0"},
-      {:membrane_hackney_plugin, "~> 0.6.0", only: [:test]},
-      {:membrane_h264_ffmpeg_plugin, "~> 0.16.0", only: [:test]},
-      {:membrane_aac_plugin, "~> 0.11.0", only: [:test]}
+      {:membrane_core, "~> 0.10.0"},
+      {:membrane_cmaf_format, "~> 0.6.0"},
+      {:membrane_tee_plugin, "~> 0.9.0"},
+      {:credo, "~> 1.6.1", only: [:dev, :test], runtime: false},
+      {:ex_doc, "~> 0.25", only: :dev, runtime: false},
+      {:dialyxir, "~> 1.1", only: :dev, runtime: false},
+      # {:membrane_mp4_plugin, "~> 0.13.0"},
+      {:membrane_mp4_plugin, github: "membraneframework/membrane_mp4_plugin", branch: "update-deps"},
+      {:membrane_hackney_plugin, "~> 0.8.0", only: [:test]},
+      {:membrane_h264_ffmpeg_plugin, "~> 0.20.0", only: [:test]},
+      {:membrane_aac_plugin, "~> 0.12.0", only: [:test]}
     ]
   end
 end
