@@ -60,7 +60,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
     assert_receive {SendStorage, :remove, %{name: "audio_segment_1_" <> _}}
     assert_receive {SendStorage, :remove, %{name: "audio_segment_2_" <> _}}
     refute_receive {SendStorage, _, _}
-    Testing.Pipeline.stop_and_terminate(pipeline, blocking?: true)
+    Testing.Pipeline.terminate(pipeline, blocking?: true)
   end
 
   test "video and audio track" do
@@ -113,7 +113,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
     assert_receive {SendStorage, :remove, %{name: "audio_segment_2_" <> _}}
     assert_receive {SendStorage, :remove, %{name: "video_segment_1_" <> _}}
     refute_receive {SendStorage, _, _}
-    Testing.Pipeline.stop_and_terminate(pipeline, blocking?: true)
+    Testing.Pipeline.terminate(pipeline, blocking?: true)
   end
 
   test "audio and multiple video tracks" do
@@ -180,7 +180,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
 
     :ok = Testing.Pipeline.stop(pipeline)
     assert_pipeline_playback_changed(pipeline, _, :stopped)
-    Testing.Pipeline.stop_and_terminate(pipeline, blocking?: true)
+    Testing.Pipeline.terminate(pipeline, blocking?: true)
   end
 
   defp mk_pipeline(sources) do
@@ -208,13 +208,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
         |> to(:sink)
       end)
 
-    assert {:ok, pipeline} =
-             Testing.Pipeline.start_link(%Testing.Pipeline.Options{
-               elements: children,
-               links: links
-             })
-
-    :ok = Testing.Pipeline.play(pipeline)
+    assert {:ok, pipeline} = Testing.Pipeline.start_link(children: children, links: links)
     assert_pipeline_playback_changed(pipeline, _, :playing)
     pipeline
   end
