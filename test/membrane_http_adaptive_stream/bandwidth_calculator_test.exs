@@ -2,8 +2,8 @@ defmodule Membrane.HTTPAdaptiveStream.BandwidthCalculatorTest do
   use ExUnit.Case
   use Ratio, comparison: true
 
-  alias Membrane.HTTPAdaptiveStream.Manifest.Track
   alias Membrane.HTTPAdaptiveStream.BandwidthCalculator
+  alias Membrane.HTTPAdaptiveStream.Manifest.Track
   alias Membrane.Time
 
   describe "Test bandwidth calculation for track with segment subsequences with duration " do

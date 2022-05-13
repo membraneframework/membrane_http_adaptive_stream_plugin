@@ -29,9 +29,9 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
 
   use Bunch
   use Membrane.Sink
+  require Membrane.HTTPAdaptiveStream.Manifest.SegmentAttribute
   alias Membrane.CMAF
   alias Membrane.HTTPAdaptiveStream.{Manifest, Storage}
-  require Manifest.SegmentAttribute
 
   def_input_pad :input,
     availability: :on_request,
