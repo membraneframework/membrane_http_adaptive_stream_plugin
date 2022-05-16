@@ -177,9 +177,9 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
       ([
          {:payloader, ref}
        ] ++ if(state.mode != :muxed_av, do: [{:cmaf_muxer, ref}], else: []))
-      |> Enum.reject(fn child_name ->
+      |> Enum.filter(fn child_name ->
         child_entry = Map.get(ctx.children, child_name)
-        is_nil(child_entry) or child_entry.terminating?
+        child_entry != nil and !child_entry.terminating?
       end)
 
     {{:ok, remove_child: children}, state}
