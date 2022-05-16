@@ -75,7 +75,8 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
                 %Membrane.H264.FFmpeg.Parser{
                   framerate: {25, 1},
                   alignment: :au,
-                  attach_nalus?: true
+                  attach_nalus?: true,
+                  skip_until_parameters?: false
                 }
 
               :AAC ->
@@ -102,7 +103,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
           |> to(:sink_bin)
         end)
 
-      {{:ok, spec: %ParentSpec{children: children, links: links}}, %{}}
+      {{:ok, spec: %ParentSpec{children: children, links: links}, playback: :playing}, %{}}
     end
   end
 
@@ -147,26 +148,24 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
 
   defp run_pipeline(sources, result_directory, hls_mode) do
     {:ok, pipeline} =
-      %Testing.Pipeline.Options{
+      [
         module: TestPipeline,
         custom_args: %{
           sources: sources,
           output_dir: result_directory,
           hls_mode: hls_mode
         }
-      }
+      ]
       |> Testing.Pipeline.start_link()
 
-    Testing.Pipeline.play(pipeline)
     assert_pipeline_playback_changed(pipeline, _, :playing)
 
-    for _source <- sources,
-        do: assert_end_of_stream(pipeline, :sink_bin, {Membrane.Pad, :input, _source}, 5_000)
+    assert_pipeline_notified(pipeline, :sink_bin, :end_of_stream, 5_000)
 
     # Give some time to save all of the files to disk
     Process.sleep(1_000)
 
-    Testing.Pipeline.stop_and_terminate(pipeline, blocking?: true)
+    Testing.Pipeline.terminate(pipeline, blocking?: true)
     assert_pipeline_playback_changed(pipeline, _, :stopped)
   end
 

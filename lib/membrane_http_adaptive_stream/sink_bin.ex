@@ -12,7 +12,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   """
   use Membrane.Bin
 
-  alias Membrane.{ParentSpec, Time, MP4}
+  alias Membrane.{MP4, ParentSpec, Time}
   alias Membrane.HTTPAdaptiveStream.{Sink, Storage}
 
   @payloaders %{H264: MP4.Payloader.H264, AAC: MP4.Payloader.AAC}
@@ -172,11 +172,15 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   end
 
   @impl true
-  def handle_pad_removed(Pad.ref(:input, ref), _ctx, state) do
+  def handle_pad_removed(Pad.ref(:input, ref), ctx, state) do
     children =
-      [
-        {:payloader, ref}
-      ] ++ if(state.mode != :muxed_av, do: [{:cmaf_muxer, ref}], else: [])
+      ([
+         {:payloader, ref}
+       ] ++ if(state.mode != :muxed_av, do: [{:cmaf_muxer, ref}], else: []))
+      |> Enum.filter(fn child_name ->
+        child_entry = Map.get(ctx.children, child_name)
+        child_entry != nil and !child_entry.terminating?
+      end)
 
     {{:ok, remove_child: children}, state}
   end
