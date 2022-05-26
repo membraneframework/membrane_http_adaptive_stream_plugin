@@ -15,6 +15,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   alias Membrane.{MP4, ParentSpec, Time}
   alias Membrane.HTTPAdaptiveStream.{Sink, Storage}
 
+  import Membrane.Caps.Matcher
   @payloaders %{H264: MP4.Payloader.H264, AAC: MP4.Payloader.AAC}
 
   def_options muxer_segment_duration: [
@@ -77,7 +78,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
   def_input_pad :input,
     demand_unit: :buffers,
-    caps: [Membrane.H264, Membrane.AAC],
+    caps: [{Membrane.H264, profile: one_of([:constrained_baseline, :baseline])}, Membrane.AAC],
     availability: :on_request,
     options: [
       encoding: [
