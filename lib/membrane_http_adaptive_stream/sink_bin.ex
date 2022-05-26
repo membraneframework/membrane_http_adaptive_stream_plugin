@@ -15,7 +15,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   alias Membrane.{MP4, ParentSpec, Time}
   alias Membrane.HTTPAdaptiveStream.{Sink, Storage}
 
-  import Membrane.Caps.Matcher
   @payloaders %{H264: MP4.Payloader.H264, AAC: MP4.Payloader.AAC}
 
   def_options muxer_segment_duration: [
