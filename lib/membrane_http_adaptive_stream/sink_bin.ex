@@ -77,7 +77,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
   def_input_pad :input,
     demand_unit: :buffers,
-    caps: [Membrane.H264, Membrane.AAC],
+    caps: [{Membrane.H264, profile: one_of([:constrained_baseline, :baseline])}, Membrane.AAC],
     availability: :on_request,
     options: [
       encoding: [
