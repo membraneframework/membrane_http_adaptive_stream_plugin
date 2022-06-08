@@ -193,9 +193,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
         }
       end
 
-    # FIXME
-    # track = Map.update!(track, :current_seq_num, &(&1 + length(to_remove_segment_names)))
-    track = Map.update!(track, :current_seq_num, &(&1 + 1))
+    track = %{track | current_seq_num: Enum.count(stale_segments)}
 
     {{name, [segment_names: to_remove_segment_names, header_names: to_remove_header_names]},
      %__MODULE__{track | stale_segments: stale_segments, stale_headers: stale_headers}}
