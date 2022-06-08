@@ -219,7 +219,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     any_track_persisted? = Enum.any?(track_ids, &Manifest.has_track?(manifest, &1))
 
     result =
-      if persist? and any_track_persisted?  do
+      if persist? and any_track_persisted? do
         {result, storage} =
           manifest |> Manifest.from_beginning() |> serialize_and_store_manifest(storage)
 
