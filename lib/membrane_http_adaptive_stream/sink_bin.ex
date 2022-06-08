@@ -191,6 +191,11 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   end
 
   @impl true
+  def handle_element_start_of_stream(_element, _ctx, state) do
+    {:ok, state}
+  end
+
+  @impl true
   def handle_element_end_of_stream({:sink, _}, _ctx, state) do
     {{:ok, notify: :end_of_stream}, state}
   end
