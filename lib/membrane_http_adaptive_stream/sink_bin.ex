@@ -199,6 +199,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
   @impl true
   def handle_element_end_of_stream({:sink, _}, _ctx, %{streams_counter: 1} = state) do
+    state = Map.update!(state, :streams_counter, &(&1 - 1))
     {{:ok, notify: :end_of_stream}, state}
   end
 
