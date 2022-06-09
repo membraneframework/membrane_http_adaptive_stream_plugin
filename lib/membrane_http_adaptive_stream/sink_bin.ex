@@ -219,6 +219,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   def handle_element_start_of_stream({:sink, _}, _ctx, state) do
     {:ok, Map.update!(state, :streams_to_start, &(&1 - 1))}
   end
+
   @impl true
   def handle_element_start_of_stream(_element, _ctx, state) do
     {:ok, state}
