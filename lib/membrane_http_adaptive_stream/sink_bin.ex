@@ -111,7 +111,12 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
       ] ++
         if(opts.hls_mode == :muxed_av, do: [audio_tee: Membrane.Tee.Parallel], else: [])
 
-    state = %{muxer_segment_duration: opts.muxer_segment_duration, mode: opts.hls_mode}
+    state = %{
+      muxer_segment_duration: opts.muxer_segment_duration,
+      mode: opts.hls_mode,
+      streams_counter: 0
+    }
+
     {{:ok, spec: %ParentSpec{children: children}}, state}
   end
 
@@ -168,6 +173,13 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
           }
       end
 
+    state =
+      Map.update!(
+        state,
+        :streams_counter,
+        &if(state.mode == :separate_av or encoding == :H264, do: &1 + 1, else: &1)
+      )
+
     {{:ok, spec: spec}, state}
   end
 
@@ -186,8 +198,15 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   end
 
   @impl true
-  def handle_element_end_of_stream({:sink, _}, _ctx, state) do
+  def handle_element_end_of_stream({:sink, _}, _ctx, %{streams_counter: 1} = state) do
+    state = Map.update!(state, :streams_counter, &(&1 - 1))
     {{:ok, notify: :end_of_stream}, state}
+  end
+
+  @impl true
+  def handle_element_end_of_stream({:sink, _}, _ctx, state) do
+    state = Map.update!(state, :streams_counter, &(&1 - 1))
+    {:ok, state}
   end
 
   @impl true
