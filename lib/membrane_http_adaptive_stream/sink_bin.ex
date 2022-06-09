@@ -77,7 +77,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
   def_input_pad :input,
     demand_unit: :buffers,
-    caps: [Membrane.H264, Membrane.AAC],
+    caps: [{Membrane.H264, profile: one_of([:constrained_baseline, :baseline])}, Membrane.AAC],
     availability: :on_request,
     options: [
       encoding: [
@@ -111,7 +111,15 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
       ] ++
         if(opts.hls_mode == :muxed_av, do: [audio_tee: Membrane.Tee.Parallel], else: [])
 
-    state = %{muxer_segment_duration: opts.muxer_segment_duration, mode: opts.hls_mode}
+    state = %{
+      muxer_segment_duration: opts.muxer_segment_duration,
+      mode: opts.hls_mode,
+      streams_to_start: 0,
+      started?: false,
+      streams_to_end: 0,
+      ended?: false
+    }
+
     {{:ok, spec: %ParentSpec{children: children}}, state}
   end
 
@@ -168,6 +176,19 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
           }
       end
 
+    update_streams_count = fn count ->
+      if state.mode == :separate_av or encoding == :H264 do
+        count + 1
+      else
+        count
+      end
+    end
+
+    state =
+      state
+      |> Map.update!(:streams_to_start, update_streams_count)
+      |> Map.update!(:streams_to_end, update_streams_count)
+
     {{:ok, spec: spec}, state}
   end
 
@@ -186,18 +207,30 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   end
 
   @impl true
-  def handle_element_start_of_stream({:sink, _}, _ctx, state) do
-    {{:ok, notify: :start_of_stream}, state}
+  def handle_element_start_of_stream(
+        {:sink, _},
+        _ctx,
+        %{streams_to_start: 1, started?: false} = state
+      ) do
+    {{:ok, notify: :start_of_stream}, %{state | streams_to_start: 0, started?: true}}
   end
 
+  @impl true
+  def handle_element_start_of_stream({:sink, _}, _ctx, state) do
+    {:ok, Map.update!(state, :streams_to_start, &(&1 - 1))}
+  end
   @impl true
   def handle_element_start_of_stream(_element, _ctx, state) do
     {:ok, state}
   end
 
+  def handle_element_end_of_stream({:sink, _}, _ctx, %{streams_to_end: 1, ended?: false} = state) do
+    {{:ok, notify: :end_of_stream}, %{state | streams_to_end: 0, ended?: true}}
+  end
+
   @impl true
   def handle_element_end_of_stream({:sink, _}, _ctx, state) do
-    {{:ok, notify: :end_of_stream}, state}
+    {:ok, Map.update!(state, :streams_to_end, &(&1 - 1))}
   end
 
   @impl true
