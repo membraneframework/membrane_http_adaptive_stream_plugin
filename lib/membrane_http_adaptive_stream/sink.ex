@@ -192,7 +192,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   end
 
   @impl true
-  def handle_playing_to_prepared(_ctx, state) do
+  def handle_playing_to_prepared(ctx, state) do
     %{
       manifest: manifest,
       storage: storage,
@@ -206,8 +206,20 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
       result
     end
 
+    track_ids =
+      ctx.pads
+      |> Map.keys()
+      |> Enum.map(fn
+        Pad.ref(:input, track_id) -> track_id
+      end)
+
+    # prevent storing empty manifest, such situation can happen
+    # when the sink goes from prepared -> playing -> prepared -> stopped
+    # and in the meantime no media has flown through input pads
+    any_track_persisted? = Enum.any?(track_ids, &Manifest.has_track?(manifest, &1))
+
     result =
-      if persist? do
+      if persist? and any_track_persisted? do
         {result, storage} =
           manifest |> Manifest.from_beginning() |> serialize_and_store_manifest(storage)
 

@@ -114,7 +114,8 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
     state = %{
       muxer_segment_duration: opts.muxer_segment_duration,
       mode: opts.hls_mode,
-      streams_counter: 0
+      streams_to_start: 0,
+      streams_to_end: 0
     }
 
     {{:ok, spec: %ParentSpec{children: children}}, state}
@@ -173,12 +174,18 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
           }
       end
 
+    update_streams_count = fn count ->
+      if state.mode == :separate_av or encoding == :H264 do
+        count + 1
+      else
+        count
+      end
+    end
+
     state =
-      Map.update!(
-        state,
-        :streams_counter,
-        &if(state.mode == :separate_av or encoding == :H264, do: &1 + 1, else: &1)
-      )
+      state
+      |> Map.update!(:streams_to_start, update_streams_count)
+      |> Map.update!(:streams_to_end, update_streams_count)
 
     {{:ok, spec: spec}, state}
   end
@@ -198,15 +205,31 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   end
 
   @impl true
-  def handle_element_end_of_stream({:sink, _}, _ctx, %{streams_counter: 1} = state) do
-    state = Map.update!(state, :streams_counter, &(&1 - 1))
-    {{:ok, notify: :end_of_stream}, state}
+  def handle_element_start_of_stream(
+        {:sink, _},
+        _ctx,
+        %{streams_to_start: 1} = state
+      ) do
+    {{:ok, notify: :start_of_stream}, %{state | streams_to_start: 0}}
+  end
+
+  @impl true
+  def handle_element_start_of_stream({:sink, _}, _ctx, state) do
+    {:ok, Map.update!(state, :streams_to_start, &(&1 - 1))}
+  end
+
+  @impl true
+  def handle_element_start_of_stream(_element, _ctx, state) do
+    {:ok, state}
+  end
+
+  def handle_element_end_of_stream({:sink, _}, _ctx, %{streams_to_end: 1} = state) do
+    {{:ok, notify: :end_of_stream}, %{state | streams_to_end: 0}}
   end
 
   @impl true
   def handle_element_end_of_stream({:sink, _}, _ctx, state) do
-    state = Map.update!(state, :streams_counter, &(&1 - 1))
-    {:ok, state}
+    {:ok, Map.update!(state, :streams_to_end, &(&1 - 1))}
   end
 
   @impl true
