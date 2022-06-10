@@ -115,9 +115,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
       muxer_segment_duration: opts.muxer_segment_duration,
       mode: opts.hls_mode,
       streams_to_start: 0,
-      started?: false,
-      streams_to_end: 0,
-      ended?: false
+      streams_to_end: 0
     }
 
     {{:ok, spec: %ParentSpec{children: children}}, state}
@@ -210,9 +208,9 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   def handle_element_start_of_stream(
         {:sink, _},
         _ctx,
-        %{streams_to_start: 1, started?: false} = state
+        %{streams_to_start: 1} = state
       ) do
-    {{:ok, notify: :start_of_stream}, %{state | streams_to_start: 0, started?: true}}
+    {{:ok, notify: :start_of_stream}, %{state | streams_to_start: 0}}
   end
 
   @impl true
@@ -225,8 +223,8 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
     {:ok, state}
   end
 
-  def handle_element_end_of_stream({:sink, _}, _ctx, %{streams_to_end: 1, ended?: false} = state) do
-    {{:ok, notify: :end_of_stream}, %{state | streams_to_end: 0, ended?: true}}
+  def handle_element_end_of_stream({:sink, _}, _ctx, %{streams_to_end: 1} = state) do
+    {{:ok, notify: :end_of_stream}, %{state | streams_to_end: 0}}
   end
 
   @impl true
