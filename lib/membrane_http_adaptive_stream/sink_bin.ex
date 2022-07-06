@@ -244,7 +244,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
         _ctx,
         state
       ) do
-    # notify about playable just when video becomes available
+    # notify about playable just when track becomes available
     {{:ok, notify: {:track_playable, track_info}}, state}
   end
 
