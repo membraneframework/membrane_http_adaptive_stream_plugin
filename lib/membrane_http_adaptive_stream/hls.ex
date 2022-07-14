@@ -179,7 +179,6 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
 
   defp sort_video_playlists_by_bandwidth(tracks) do
     tracks
-    |> IO.inspect
     |> Enum.map(& {&1, BandwidthCalculator.calculate_bandwidth(&1)})
     |> Enum.sort_by(fn {_el, bandwidth} -> bandwidth end, :desc)
     |> Enum.map(fn {el, _bandwidth} -> el end)
