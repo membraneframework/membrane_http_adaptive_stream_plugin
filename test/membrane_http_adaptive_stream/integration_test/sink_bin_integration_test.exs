@@ -190,13 +190,15 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
 
       {:ok, reference_playlist_content} = File.ls(reference_directory)
 
-      for file_name <- reference_playlist_content,
-          do:
+
+      for file_name <- reference_playlist_content do
+      File.write!(Path.join("/tmp/", file_name), File.read!(test_directory <> file_name))
             assert(
               File.read!(reference_directory <> file_name) ==
                 File.read!(test_directory <> file_name),
               "Contents of file #{reference_directory <> file_name} differ from contents of file #{test_directory <> file_name}"
             )
+      end
     end
   end
 end

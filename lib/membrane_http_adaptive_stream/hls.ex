@@ -128,6 +128,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
           @master_playlist_header
           | videos
             |> Enum.filter(&(&1.segments != @empty_segments))
+            |> sort_video_playlists_by_bandwidth()
             |> Enum.flat_map(&[build_media_playlist_tag(&1), build_media_playlist_path(&1)])
         ]
         |> Enum.join("\n")
@@ -136,6 +137,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
         video_tracks =
           videos
           |> Enum.filter(&(&1.segments != @empty_segments))
+          |> sort_video_playlists_by_bandwidth()
           |> Enum.flat_map(
             &[
               "#{build_media_playlist_tag(&1)},AUDIO=\"#{@default_audio_track_id}\"",
@@ -173,5 +175,13 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
 
     Enum.flat_map(segment.attributes, &SegmentAttribute.serialize/1) ++
       ["#EXTINF:#{time},", segment.name]
+  end
+
+  defp sort_video_playlists_by_bandwidth(tracks) do
+    tracks
+    |> IO.inspect
+    |> Enum.map(& {&1, BandwidthCalculator.calculate_bandwidth(&1)})
+    |> Enum.sort_by(fn {_el, bandwidth} -> bandwidth end, :desc)
+    |> Enum.map(fn {el, _bandwidth} -> el end)
   end
 end
