@@ -30,6 +30,30 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
     end
   end
 
+  defmodule StatefulStorage do
+    @moduledoc """
+    Trival storage implementation to test state preservation between calls
+    """
+
+    @behaviour Membrane.HTTPAdaptiveStream.Storage
+
+    defstruct [:destination, counter: 0]
+
+    @impl true
+    def init(%__MODULE__{} = config), do: config
+
+    @impl true
+    def store(_name, _contents, _context, state), do: send_and_increment(state)
+
+    @impl true
+    def remove(_name, _context, state), do: send_and_increment(state)
+
+    defp send_and_increment(%__MODULE__{destination: destination, counter: counter} = state) do
+      send(destination, {:counter, counter})
+      {:ok, %{state | counter: counter + 1}}
+    end
+  end
+
   test "single track" do
     pipeline = mk_pipeline([{:audio, "audio_track"}])
     assert_receive {SendStorage, :store, %{type: :header}}
@@ -183,7 +207,21 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
     Testing.Pipeline.terminate(pipeline, blocking?: true)
   end
 
-  defp mk_pipeline(sources) do
+  test "two tracks with a stateful storage" do
+    pipeline =
+      mk_pipeline(
+        [{:video, "track_0"}, {:audio, "audio"}],
+        %StatefulStorage{destination: self()}
+      )
+
+    assert_receive {:counter, 0}
+    assert_receive {:counter, 1}
+
+    refute_receive {:counter, _}
+    Testing.Pipeline.terminate(pipeline, blocking?: true)
+  end
+
+  defp mk_pipeline(sources, storage \\ %SendStorage{destination: self()}) do
     import Membrane.ParentSpec
 
     sources =
@@ -195,7 +233,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
       [
         sink: %Sink{
           manifest_module: Membrane.HTTPAdaptiveStream.HLS,
-          storage: %SendStorage{destination: self()},
+          storage: storage,
           target_window_duration: Time.seconds(5),
           target_segment_duration: Time.seconds(5)
         }
