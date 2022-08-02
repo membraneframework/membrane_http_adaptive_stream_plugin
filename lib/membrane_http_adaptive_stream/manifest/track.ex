@@ -156,7 +156,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
           {{to_add_name :: String.t(), to_remove_names :: to_remove_names_t()}, t}
   def add_segment(track, duration, bytes_size, attributes \\ [])
 
-  def add_segment(%__MODULE__{finished?: false} = track, bytes_size, duration, attributes) do
+  def add_segment(%__MODULE__{finished?: false} = track, duration, bytes_size, attributes) do
     use Ratio, comparison: true
 
     name = track.segment_naming_fun.(track) <> track.segment_extension
