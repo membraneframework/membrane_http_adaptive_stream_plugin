@@ -32,15 +32,15 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
           t,
           track_id :: Track.id_t(),
           Track.segment_duration_t(),
-          Track.segment_bytes_size_t(),
+          Track.segment_byte_size_t(),
           list(__MODULE__.SegmentAttribute.t())
         ) ::
           {{to_add_name :: String.t(), to_remove_names :: Track.to_remove_names_t()}, t}
-  def add_segment(%__MODULE__{} = manifest, track_id, duration, bytes_size, attributes \\ []) do
+  def add_segment(%__MODULE__{} = manifest, track_id, duration, byte_size, attributes \\ []) do
     get_and_update_in(
       manifest,
       [:tracks, track_id],
-      &Track.add_segment(&1, duration, bytes_size, attributes)
+      &Track.add_segment(&1, duration, byte_size, attributes)
     )
   end
 

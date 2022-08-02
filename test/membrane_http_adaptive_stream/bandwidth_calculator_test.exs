@@ -36,7 +36,7 @@ defmodule Membrane.HTTPAdaptiveStream.BandwidthCalculatorTest do
     %{
       name: "mock_segment",
       duration: duration,
-      bytes_size: byte_size,
+      byte_size: byte_size,
       attributes: []
     }
   end
