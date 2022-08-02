@@ -22,7 +22,7 @@ defmodule Membrane.HTTPAdaptiveStream.BandwidthCalculator do
       segments_sequences
       |> Enum.map(
         &{
-          Enum.map(&1, fn sg -> 8 * sg.bytes_size end) |> Enum.sum(),
+          Enum.map(&1, fn sg -> 8 * sg.byte_size end) |> Enum.sum(),
           Enum.map(&1, fn sg -> sg.duration / Time.second() end)
           |> Enum.reduce(fn acc, x -> acc + x end)
         }
