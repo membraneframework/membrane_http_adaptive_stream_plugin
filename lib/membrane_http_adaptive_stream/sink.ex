@@ -94,6 +94,13 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
                 Expected length of each segment. Setting it is not necessary, but
                 may help players achieve better UX.
                 """
+              ],
+              segment_naming_fun: [
+                type: :function,
+                spec: (Manifest.Track.t() -> String.t()),
+                default: &Manifest.Track.default_segment_naming_fun/1,
+                description:
+                  "A function that generates consequent segment names for a given track"
               ]
 
   @impl true
@@ -128,6 +135,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
             content_type: caps.content_type,
             header_extension: ".mp4",
             segment_extension: ".m4s",
+            segment_naming_fun: state.segment_naming_fun,
             target_window_duration: state.target_window_duration,
             target_segment_duration: state.target_segment_duration,
             persist?: state.persist?

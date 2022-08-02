@@ -20,7 +20,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       :content_type,
       :header_extension,
       :segment_extension,
-      :target_segment_duration
+      :target_segment_duration,
+      :segment_naming_fun
     ]
     defstruct @enforce_keys ++
                 [
@@ -34,6 +35,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     - `content_type` - either audio or video
     - `header_extension` - extension of the header file (for example .mp4 for CMAF)
     - `segment_extension` - extension of the segment files (for example .m4s for CMAF)
+    - `segment_naming_fun` - a function that generates consequent segment names for a given track
     - `target_segment_duration` - expected duration of each segment
     - `target_window_duration` - track manifest duration is kept above that time, while the oldest segments
                 are removed whenever possible
@@ -45,6 +47,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
             content_type: :audio | :video,
             header_extension: String.t(),
             segment_extension: String.t(),
+            segment_naming_fun: (Track.t() -> String.t()),
             target_segment_duration: Membrane.Time.t() | Ratio.t(),
             target_window_duration: Membrane.Time.t() | Ratio.t(),
             persist?: boolean
@@ -87,6 +90,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
           header_extension: String.t(),
           segment_extension: String.t(),
           target_segment_duration: segment_duration_t,
+          segment_naming_fun: (t -> String.t()),
           target_window_duration: Membrane.Time.t() | Ratio.t(),
           persist?: boolean,
           track_name: String.t(),
@@ -134,6 +138,11 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     |> Map.merge(config)
   end
 
+  @spec default_segment_naming_fun(t) :: String.t()
+  def default_segment_naming_fun(track) do
+    "#{track.content_type}_segment_#{track.next_segment_id}_#{track.track_name}"
+  end
+
   @doc """
   Add a segment of given duration to the track.
   It is recommended not to pass discontinuity attribute manually but use `discontinue/1` function instead.
@@ -150,9 +159,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   def add_segment(%__MODULE__{finished?: false} = track, bytes_size, duration, attributes) do
     use Ratio, comparison: true
 
-    name =
-      "#{track.content_type}_segment_#{track.next_segment_id}_" <>
-        "#{track.track_name}#{track.segment_extension}"
+    name = track.segment_naming_fun.(track) <> track.segment_extension
 
     attributes =
       if is_nil(track.awaiting_discontinuity),

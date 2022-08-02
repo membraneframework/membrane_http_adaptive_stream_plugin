@@ -13,7 +13,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   use Membrane.Bin
 
   alias Membrane.{MP4, ParentSpec, Time}
-  alias Membrane.HTTPAdaptiveStream.{Sink, Storage}
+  alias Membrane.HTTPAdaptiveStream.{Manifest, Sink, Storage}
 
   @payloaders %{H264: MP4.Payloader.H264, AAC: MP4.Payloader.AAC}
 
@@ -73,6 +73,13 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
                 - In `:muxed_av` audio will be added to each video rendition, creating CMAF segments that contain both audio and video.
                 - In `:separate_av` audio and video tracks will be separate and synchronization will need to be sorted out by the player.
                 """
+              ],
+              segment_naming_fun: [
+                type: :function,
+                spec: (Manifest.Track.t() -> String.t()),
+                default: &Manifest.Track.default_segment_naming_fun/1,
+                description:
+                  "A function that generates consequent segment names for a given track"
               ]
 
   def_input_pad :input,
@@ -106,7 +113,8 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
           storage: opts.storage,
           target_window_duration: opts.target_window_duration,
           persist?: opts.persist?,
-          target_segment_duration: opts.target_segment_duration
+          target_segment_duration: opts.target_segment_duration,
+          segment_naming_fun: opts.segment_naming_fun
         }
       ] ++
         if(opts.hls_mode == :muxed_av, do: [audio_tee: Membrane.Tee.Parallel], else: [])
