@@ -36,27 +36,27 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
 
     send_buf(pipeline, "audio_track", 2)
     assert_receive {SendStorage, :store, %{type: :manifest, name: "index.m3u8"}}
-    assert_receive {SendStorage, :store, %{type: :manifest, name: "audio.m3u8"}}
+    assert_receive {SendStorage, :store, %{type: :manifest, name: "audio" <> _}}
     assert_receive {SendStorage, :store, %{name: "audio_segment_0_" <> _}}
     assert_pipeline_notified(pipeline, :sink, {:track_playable, "audio_track"})
 
     send_buf(pipeline, "audio_track", 4)
-    assert_receive {SendStorage, :store, %{type: :manifest, name: "audio.m3u8"}}
+    assert_receive {SendStorage, :store, %{type: :manifest, name: "audio" <> _}}
     assert_receive {SendStorage, :store, %{name: "audio_segment_1_" <> _}}
 
     send_buf(pipeline, "audio_track", 2)
-    assert_receive {SendStorage, :store, %{type: :manifest, name: "audio.m3u8"}}
+    assert_receive {SendStorage, :store, %{type: :manifest, name: "audio" <> _}}
     assert_receive {SendStorage, :store, %{name: "audio_segment_2_" <> _}}
     assert_receive {SendStorage, :remove, %{name: "audio_segment_0_" <> _}}
     refute_receive {SendStorage, _, _}
 
     :ok = Testing.Pipeline.execute_actions(pipeline, playback: :stopped)
     assert_pipeline_playback_changed(pipeline, _, :stopped)
-    assert_receive {SendStorage, :store, %{type: :manifest, name: "audio.m3u8"}}
+    assert_receive {SendStorage, :store, %{type: :manifest, name: "audio" <> _}}
     assert_pipeline_notified(pipeline, :sink, {:cleanup, cleanup_fun})
     assert :ok = cleanup_fun.()
     assert_receive {SendStorage, :remove, %{type: :manifest, name: "index.m3u8"}}
-    assert_receive {SendStorage, :remove, %{type: :manifest, name: "audio.m3u8"}}
+    assert_receive {SendStorage, :remove, %{type: :manifest, name: "audio" <> _}}
     assert_receive {SendStorage, :remove, %{name: "audio_segment_1_" <> _}}
     assert_receive {SendStorage, :remove, %{name: "audio_segment_2_" <> _}}
     refute_receive {SendStorage, _, _}
@@ -70,7 +70,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
 
     send_buf(pipeline, "audio_track", 2)
     assert_receive {SendStorage, :store, %{type: :manifest, name: "index.m3u8"}}
-    assert_receive {SendStorage, :store, %{type: :manifest, name: "audio.m3u8"}}
+    assert_receive {SendStorage, :store, %{type: :manifest, name: "audio" <> _}}
     assert_receive {SendStorage, :store, %{name: "audio_segment_0_" <> _}}
     assert_pipeline_notified(pipeline, :sink, {:track_playable, "audio_track"})
 
@@ -81,7 +81,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
     assert_pipeline_notified(pipeline, :sink, {:track_playable, "video_track"})
 
     send_buf(pipeline, "audio_track", 4)
-    assert_receive {SendStorage, :store, %{type: :manifest, name: "audio.m3u8"}}
+    assert_receive {SendStorage, :store, %{type: :manifest, name: "audio" <> _}}
     assert_receive {SendStorage, :store, %{name: "audio_segment_1_" <> _}}
 
     send_buf(pipeline, "video_track", 5)
@@ -91,14 +91,14 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
     assert_receive {SendStorage, :remove, %{name: "video_segment_0_" <> _}}
 
     send_buf(pipeline, "audio_track", 2)
-    assert_receive {SendStorage, :store, %{type: :manifest, name: "audio.m3u8"}}
+    assert_receive {SendStorage, :store, %{type: :manifest, name: "audio" <> _}}
     assert_receive {SendStorage, :store, %{name: "audio_segment_2_" <> _}}
     assert_receive {SendStorage, :remove, %{name: "audio_segment_0_" <> _}}
     refute_receive {SendStorage, _, _}
 
     :ok = Testing.Pipeline.execute_actions(pipeline, playback: :stopped)
     assert_pipeline_playback_changed(pipeline, _, :stopped)
-    assert_receive {SendStorage, :store, %{type: :manifest, name: "audio.m3u8"}}
+    assert_receive {SendStorage, :store, %{type: :manifest, name: "audio" <> _}}
     assert_receive {SendStorage, :store, %{type: :manifest, name: "video" <> _}}
     # Cache will be cleared on first track removal, thus index and that track manifest
     # will be stored again upon second track removal.
@@ -107,7 +107,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
     assert_pipeline_notified(pipeline, :sink, {:cleanup, cleanup_fun})
     assert :ok = cleanup_fun.()
     assert_receive {SendStorage, :remove, %{type: :manifest, name: "index.m3u8"}}
-    assert_receive {SendStorage, :remove, %{type: :manifest, name: "audio.m3u8"}}
+    assert_receive {SendStorage, :remove, %{type: :manifest, name: "audio" <> _}}
     assert_receive {SendStorage, :remove, %{type: :manifest, name: "video" <> _}}
     assert_receive {SendStorage, :remove, %{name: "audio_segment_1_" <> _}}
     assert_receive {SendStorage, :remove, %{name: "audio_segment_2_" <> _}}
@@ -133,7 +133,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
 
     send_buf(pipeline, "audio", 2)
     assert_receive {SendStorage, :store, %{type: :manifest, name: "index.m3u8"}}
-    assert_receive {SendStorage, :store, %{type: :manifest, name: "audio.m3u8"}}
+    assert_receive {SendStorage, :store, %{type: :manifest, name: "audio" <> _}}
     assert_receive {SendStorage, :store, %{name: "audio_segment_0_" <> _}}
     refute_receive {SendStorage, _, _}
     assert_pipeline_notified(pipeline, :sink, {:track_playable, "audio"})
@@ -146,7 +146,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
     assert_pipeline_notified(pipeline, :sink, {:track_playable, "track_1"})
 
     send_buf(pipeline, "audio", 4)
-    assert_receive {SendStorage, :store, %{type: :manifest, name: "audio.m3u8"}}
+    assert_receive {SendStorage, :store, %{type: :manifest, name: "audio" <> _}}
     assert_receive {SendStorage, :store, %{name: "audio_segment_1_" <> _}}
     refute_receive {SendStorage, _, _}
 
