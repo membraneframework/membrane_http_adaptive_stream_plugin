@@ -76,7 +76,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
           {"audio.m3u8", serialize_track(audio)},
           videos
           |> Enum.filter(&(&1.segments != @empty_segments))
-          |> Enum.map(&{build_media_playlist_path(&1), serialize_track(&1)})
+          |> Enum.map(&{"video.m3u8", serialize_track(&1)})
         ])
 
       # Handle only audio, without any video tracks
@@ -92,7 +92,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
           {main_manifest_name, build_master_playlist({nil, videos})},
           videos
           |> Enum.filter(&(&1.segments != @empty_segments))
-          |> Enum.map(&{build_media_playlist_path(&1), serialize_track(&1)})
+          |> Enum.map(&{"video.m3u8", serialize_track(&1)})
         ])
     end
   end
