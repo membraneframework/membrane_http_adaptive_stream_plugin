@@ -16,12 +16,12 @@ defmodule Membrane.HTTPAdaptiveStream.Storages.FileStorage do
   def init(%__MODULE__{} = config), do: config
 
   @impl true
-  def store(name, contents, %{mode: :binary}, %__MODULE__{directory: location}) do
+  def store(name, contents, _metadata, %{mode: :binary}, %__MODULE__{directory: location}) do
     File.write(Path.join(location, name), contents, [:binary])
   end
 
   @impl true
-  def store(name, contents, %{mode: :text}, %__MODULE__{directory: location}) do
+  def store(name, contents, _metadata, %{mode: :text}, %__MODULE__{directory: location}) do
     File.write(Path.join(location, name), contents)
   end
 

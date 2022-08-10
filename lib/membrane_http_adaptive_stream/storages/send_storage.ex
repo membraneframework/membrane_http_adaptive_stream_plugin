@@ -31,8 +31,13 @@ defmodule Membrane.HTTPAdaptiveStream.Storages.SendStorage do
   def init(%__MODULE__{} = config), do: config
 
   @impl true
-  def store(name, contents, context, %__MODULE__{destination: destination}) do
-    send(destination, {__MODULE__, :store, Map.merge(context, %{name: name, contents: contents})})
+  def store(name, contents, metadata, context, %__MODULE__{destination: destination}) do
+    send(
+      destination,
+      {__MODULE__, :store,
+       Map.merge(context, %{name: name, contents: contents, metadata: metadata})}
+    )
+
     :ok
   end
 

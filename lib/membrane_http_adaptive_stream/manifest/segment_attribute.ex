@@ -4,7 +4,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.SegmentAttribute do
   This module should also contain macros for generating different types of attributes
   """
 
-  @type segment_type_t :: :discontinuity
+  @type segment_type_t :: :discontinuity | :independent | :byte_range | atom()
   @type t :: {type :: segment_type_t(), arguments :: any()}
 
   @doc """

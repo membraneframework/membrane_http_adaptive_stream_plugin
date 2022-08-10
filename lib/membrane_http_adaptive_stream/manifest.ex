@@ -4,6 +4,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
   """
   use Bunch.Access
   alias __MODULE__.Track
+  alias __MODULE__.SegmentAttribute
 
   @callback serialize(t) :: [{manifest_name :: String.t(), manifest_content :: String.t()}]
 
@@ -33,7 +34,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
           track_id :: Track.id_t(),
           Track.segment_duration_t(),
           Track.segment_byte_size_t(),
-          list(__MODULE__.SegmentAttribute.t())
+          list(SegmentAttribute.t())
         ) ::
           {{to_add_name :: String.t(), to_remove_names :: Track.to_remove_names_t()}, t}
   def add_segment(%__MODULE__{} = manifest, track_id, duration, byte_size, attributes \\ []) do
@@ -41,6 +42,24 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
       manifest,
       [:tracks, track_id],
       &Track.add_segment(&1, duration, byte_size, attributes)
+    )
+  end
+
+  @doc """
+  Finalizes last segment of given track when serving partial segments.
+  """
+  @spec finalize_last_segment(t(), Track.id_t()) :: {Track.segment_t(), t()}
+  def finalize_last_segment(manifest, track_id) do
+    get_and_update_in(manifest, [:tracks, track_id], &Track.finalize_last_segment/1)
+  end
+
+  @spec add_partial_segment(t(), Track.id_t(), Track.segment_duration_t(), SegmentAttribute.t()) ::
+          {part_segment_name :: String.t(), t}
+  def add_partial_segment(manifest, track_id, independent?, duration, attributes \\ []) do
+    get_and_update_in(
+      manifest,
+      [:tracks, track_id],
+      &Track.add_partial_segment(&1, independent?, duration, attributes)
     )
   end
 

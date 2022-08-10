@@ -18,8 +18,16 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   @payloaders %{H264: MP4.Payloader.H264, AAC: MP4.Payloader.AAC}
 
   def_options muxer_segment_duration: [
-                spec: pos_integer,
+                spec: Membrane.Time.t(),
                 default: 2 |> Time.seconds()
+              ],
+              muxer_partial_segment_duration: [
+                spec: Membrane.Time.t() | nil,
+                default: nil,
+                description: """
+                The target duration of partial segments produced by the muxer.
+                If not set then the muxer won't produce any partial segments.
+                """
               ],
               manifest_name: [
                 spec: String.t(),
@@ -114,6 +122,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
           target_window_duration: opts.target_window_duration,
           persist?: opts.persist?,
           target_segment_duration: opts.target_segment_duration,
+          target_partial_segment_duration: opts.muxer_partial_segment_duration,
           segment_naming_fun: opts.segment_naming_fun
         }
       ] ++
@@ -121,6 +130,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
     state = %{
       muxer_segment_duration: opts.muxer_segment_duration,
+      muxer_partial_segment_duration: opts.muxer_partial_segment_duration,
       mode: opts.hls_mode,
       streams_to_start: 0,
       streams_to_end: 0
@@ -131,9 +141,13 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
   @impl true
   def handle_pad_added(Pad.ref(:input, ref) = pad, context, state) do
-    muxer = %MP4.Muxer.CMAF{segment_duration: state.muxer_segment_duration}
-
     encoding = context.options[:encoding]
+
+    muxer = %MP4.Muxer.CMAF{
+      segment_duration: state.muxer_segment_duration,
+      partial_segment_duration: state.muxer_partial_segment_duration
+    }
+
     payloader = Map.fetch!(@payloaders, encoding)
     track_name = context.options[:track_name]
 

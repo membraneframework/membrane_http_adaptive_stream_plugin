@@ -6,6 +6,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   require Membrane.HTTPAdaptiveStream.Manifest.SegmentAttribute
 
   alias Membrane.HTTPAdaptiveStream.Manifest
+  alias Membrane.HTTPAdaptiveStream.Manifest.Segment
 
   defmodule Config do
     @moduledoc """
@@ -21,6 +22,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       :header_extension,
       :segment_extension,
       :target_segment_duration,
+      :target_partial_segment_duration,
       :segment_naming_fun
     ]
     defstruct @enforce_keys ++
@@ -37,6 +39,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     - `segment_extension` - extension of the segment files (for example .m4s for CMAF)
     - `segment_naming_fun` - a function that generates consequent segment names for a given track
     - `target_segment_duration` - expected duration of each segment
+    - `target_partial_segment_duration` - expected duration of each partial segment
     - `target_window_duration` - track manifest duration is kept above that time, while the oldest segments
                 are removed whenever possible
     - `persist?` - determines whether the entire track contents should be available after the streaming finishes
@@ -49,6 +52,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
             segment_extension: String.t(),
             segment_naming_fun: (Track.t() -> String.t()),
             target_segment_duration: Membrane.Time.t() | Ratio.t(),
+            target_partial_segment_duration: Membrane.Time.t() | Ratio.t() | nil,
             target_window_duration: Membrane.Time.t() | Ratio.t(),
             persist?: boolean
           }
@@ -106,13 +110,16 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
         }
 
   @type id_t :: any
-  @type segments_t ::
-          Qex.t(%{
-            name: String.t(),
-            duration: segment_duration_t(),
-            byte_size: segment_byte_size_t(),
-            attributes: list(Manifest.SegmentAttribute.t())
-          })
+
+  @type segment_t :: %{
+          name: String.t(),
+          duration: segment_duration_t(),
+          byte_size: segment_byte_size_t(),
+          partial?: boolean(),
+          attributes: list(Manifest.SegmentAttribute.t())
+        }
+  @type segments_t :: Qex.t(segment_t)
+
   @type segment_duration_t :: Membrane.Time.t() | Ratio.t()
 
   @type segment_byte_size_t :: non_neg_integer()
@@ -159,55 +166,100 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   def add_segment(%__MODULE__{finished?: false} = track, duration, byte_size, attributes) do
     use Ratio, comparison: true
 
-    name = track.segment_naming_fun.(track) <> track.segment_extension
+    {name, attributes} =
+      Keyword.pop(attributes, :name, track.segment_naming_fun.(track) <> track.segment_extension)
+
+    {partial?, attributes} = Keyword.pop(attributes, :partial?, false)
 
     attributes =
       if is_nil(track.awaiting_discontinuity),
         do: attributes,
         else: [track.awaiting_discontinuity | attributes]
 
-    {stale_segments, stale_headers, track} =
+    {elements_to_remove, track} =
       track
       |> Map.update!(
         :segments,
-        &Qex.push(&1, %{
+        &Qex.push(&1, %Segment{
           name: name,
           duration: duration,
           byte_size: byte_size,
+          partial?: partial?,
           attributes: attributes
         })
       )
       |> Map.update!(:next_segment_id, &(&1 + 1))
-      |> Map.update!(:window_duration, &(&1 + duration))
-      |> Map.update!(:target_segment_duration, &if(&1 > duration, do: &1, else: duration))
+      |> then(fn track ->
+        if not partial? do
+          track
+          |> Map.update!(:window_duration, &(&1 + duration))
+          |> Map.update!(:target_segment_duration, &if(&1 > duration, do: &1, else: duration))
+        else
+          track
+        end
+      end)
       |> Map.put(:awaiting_discontinuity, nil)
-      |> pop_stale_segments_and_headers()
+      |> maybe_pop_stale_segments_and_headers()
 
-    {to_remove_segment_names, to_remove_header_names, stale_segments, stale_headers} =
-      if track.persist? do
-        {
-          [],
-          [],
-          Qex.join(track.stale_segments, Qex.new(stale_segments)),
-          Qex.join(track.stale_headers, Qex.new(stale_headers))
-        }
-      else
-        {
-          Enum.map(stale_segments, & &1.name),
-          stale_headers,
-          track.stale_segments,
-          track.stale_headers
-        }
-      end
-
-    track = %{track | current_seq_num: Enum.count(stale_segments)}
-
-    {{name, [segment_names: to_remove_segment_names, header_names: to_remove_header_names]},
-     %__MODULE__{track | stale_segments: stale_segments, stale_headers: stale_headers}}
+    {{name, elements_to_remove}, track}
   end
 
   def add_segment(%__MODULE__{finished?: true} = _track, _duration, _byte_size, _attributes),
     do: raise("Cannot add new segments to finished track")
+
+  def add_partial_segment(
+        %__MODULE__{finished?: false} = track,
+        independent?,
+        duration,
+        attributes
+      ) do
+    use Ratio
+
+    partial_segment = %{
+      independent?: independent?,
+      duration: duration,
+      attributes: attributes
+    }
+
+    {last_segment, segments} = Qex.pop_back!(track.segments)
+
+    last_segment = %Segment{
+      last_segment
+      | parts: last_segment.parts ++ [partial_segment]
+    }
+
+    {{last_segment.name, [segment_names: [], header_names: []]},
+     Map.replace(track, :segments, Qex.push(segments, last_segment))}
+  end
+
+  @spec supports_partial_segments?(t()) :: boolean()
+  def supports_partial_segments?(%__MODULE__{target_partial_segment_duration: duration}),
+    do: duration != nil
+
+  def finalize_last_segment(%__MODULE__{finished?: false} = track) do
+    {%Segment{parts: parts} = last_segment, segments} = Qex.pop_back!(track.segments)
+
+    duration = Enum.map(parts, & &1.duration) |> Enum.sum()
+
+    byte_size =
+      Enum.map(parts, &(&1.attributes |> Keyword.fetch!(:byte_range) |> elem(0))) |> Enum.sum()
+
+    last_segment = %Segment{
+      last_segment
+      | duration: duration,
+        byte_size: byte_size,
+        partial?: false
+    }
+
+    {elements_to_remove, track} =
+      track
+      |> Map.replace!(:segments, Qex.push(segments, last_segment))
+      |> Map.update!(:window_duration, &(&1 + duration))
+      |> Map.update!(:target_segment_duration, &if(&1 > duration, do: &1, else: duration))
+      |> maybe_pop_stale_segments_and_headers()
+
+    {{last_segment.name, elements_to_remove}, track}
+  end
 
   @doc """
   Discontinue the track, indicating that parameters of the stream have changed.
@@ -263,6 +315,34 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   @spec all_segments(t) :: [segment_name :: String.t()]
   def all_segments(%__MODULE__{} = track) do
     Qex.join(track.stale_segments, track.segments) |> Enum.map(& &1.name)
+  end
+
+  defp maybe_pop_stale_segments_and_headers(track) do
+    {stale_segments, stale_headers, track} = pop_stale_segments_and_headers(track)
+
+    {to_remove_segment_names, to_remove_header_names, stale_segments, stale_headers} =
+      if track.persist? do
+        {
+          [],
+          [],
+          Qex.join(track.stale_segments, Qex.new(stale_segments)),
+          Qex.join(track.stale_headers, Qex.new(stale_headers))
+        }
+      else
+        {
+          Enum.map(stale_segments, & &1.name),
+          stale_headers,
+          track.stale_segments,
+          track.stale_headers
+        }
+      end
+
+    track = %{track | current_seq_num: Enum.count(stale_segments)}
+
+    {
+      [segment_names: to_remove_segment_names, header_names: to_remove_header_names],
+      %__MODULE__{track | stale_segments: stale_segments, stale_headers: stale_headers}
+    }
   end
 
   defp pop_stale_segments_and_headers(%__MODULE__{target_window_duration: :infinity} = track) do

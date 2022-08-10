@@ -9,6 +9,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   use Ratio
 
   alias Membrane.HTTPAdaptiveStream.{BandwidthCalculator, Manifest}
+  alias Membrane.HTTPAdaptiveStream.Manifest.{Segment, Track}
   alias Membrane.Time
 
   @version 7
@@ -38,6 +39,29 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
         "#EXT-X-DISCONTINUITY-SEQUENCE:#{number}",
         "#EXT-X-DISCONTINUITY",
         "#EXT-X-MAP:URI=#{header_name}"
+      ]
+    end
+
+    @impl true
+    def serialize({:program_date_time, date_time}) do
+      [
+        "#EXT-X-PROGRAM-DATE-TIME:#{date_time |> DateTime.truncate(:millisecond) |> DateTime.to_iso8601()}"
+      ]
+    end
+
+    @impl true
+    def serialize({:independent, independent}) do
+      if independent do
+        ["INDEPENDENT=YES"]
+      else
+        []
+      end
+    end
+
+    @impl true
+    def serialize({:byte_range, {size, offset}}) do
+      [
+        "BYTERANGE=\"#{size}@#{offset}\""
       ]
     end
   end
@@ -97,19 +121,19 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     end
   end
 
-  defp build_media_playlist_path(%Manifest.Track{} = track) do
+  defp build_media_playlist_path(%Track{} = track) do
     [track.content_type, "_", track.track_name, ".m3u8"] |> Enum.join("")
   end
 
-  defp build_media_playlist_tag(%Manifest.Track{} = track) do
+  defp build_media_playlist_tag(%Track{} = track) do
     case track do
-      %Manifest.Track{content_type: :audio} ->
+      %Track{content_type: :audio} ->
         """
         #EXT-X-MEDIA:TYPE=AUDIO,NAME="#{@default_audio_track_name}",GROUP-ID="#{@default_audio_track_id}",AUTOSELECT=YES,DEFAULT=YES,URI="audio.m3u8"
         """
         |> String.trim()
 
-      %Manifest.Track{content_type: type} when type in [:video, :muxed] ->
+      %Track{content_type: type} when type in [:video, :muxed] ->
         """
         #EXT-X-STREAM-INF:BANDWIDTH=#{BandwidthCalculator.calculate_bandwidth(track)},CODECS="avc1.42e00a"
         """
@@ -153,25 +177,79 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     end
   end
 
-  defp serialize_track(%Manifest.Track{} = track) do
-    target_duration = Ratio.ceil(track.target_segment_duration / Time.second()) |> trunc()
+  defp serialize_track(%Track{} = track) do
+    target_duration = Float.ceil(Ratio.to_float(track.target_segment_duration / Time.second()), 3)
+    supports_ll_hls? = Track.supports_partial_segments?(track)
 
+    target_partial_duration =
+      if supports_ll_hls? do
+        Float.ceil(Ratio.to_float(track.target_partial_segment_duration / Time.second()), 3)
+      else
+        nil
+      end
+
+    # NOTE: I'm not sure about how that skipping should work but the player seems to care about it
     """
     #EXTM3U
     #EXT-X-VERSION:#{@version}
     #EXT-X-TARGETDURATION:#{target_duration}
+    #{if(supports_ll_hls?, do: "#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=#{2 * target_partial_duration},CAN-SKIP-UNTIL=12.000", else: "")}
+    #{if(supports_ll_hls?, do: "#EXT-X-PART-INF:PART-TARGET=#{target_partial_duration}", else: "")}
     #EXT-X-MEDIA-SEQUENCE:#{track.current_seq_num}
     #EXT-X-DISCONTINUITY-SEQUENCE:#{track.current_discontinuity_seq_num}
     #EXT-X-MAP:URI="#{track.header_name}"
-    #{track.segments |> Enum.flat_map(&serialize_segment/1) |> Enum.join("\n")}
+    #{serialize_segments(track)}
     #{if track.finished?, do: "#EXT-X-ENDLIST", else: ""}
     """
   end
 
-  defp serialize_segment(segment) do
+  defp serialize_segments(track) do
+    supports_ll_hls? = Track.supports_partial_segments?(track)
+
+    [track.segments, Enum.count(track.segments)..1]
+    |> Enum.zip()
+    |> Enum.flat_map(&do_serialize_segment(&1, supports_ll_hls?))
+    |> Enum.join("\n")
+  end
+
+  defp do_serialize_segment({%Segment{} = segment, idx}, supports_ll_hls?) do
+    [
+      # serialize partial segments just for the last 2 live segments, otherwise just keep the regular segments
+      if(supports_ll_hls? and idx <= 2,
+        do: serialize_partial_segments(segment, idx == 1),
+        else: []
+      ),
+      serialize_regular_segment(segment)
+    ]
+    |> List.flatten()
+  end
+
+  defp serialize_regular_segment(%Segment{partial?: true}), do: []
+
+  defp serialize_regular_segment(segment) do
     time = Ratio.to_float(segment.duration / Time.second())
 
     Enum.flat_map(segment.attributes, &SegmentAttribute.serialize/1) ++
-      ["#EXTINF:#{time},", segment.name]
+      [
+        "#EXTINF:#{time},",
+        segment.name
+      ]
+  end
+
+  defp serialize_partial_segments(segment, _is_last) do
+    segment.parts
+    |> Enum.map(fn part ->
+      time = Ratio.to_float(part.duration / Time.second())
+
+      [
+        "#EXT-X-PART:DURATION=#{time},URI=\"#{segment.name}\""
+        | Enum.map(part.attributes, &SegmentAttribute.serialize/1)
+      ]
+      |> List.flatten()
+      |> Enum.join(",")
+    end)
+
+    # TODO: we may want to support the EXT-X-PRELOAD-HINT as some point to further reduce latency
+    # for now hls.js (most common HLS backend for browsers) does not support those
   end
 end

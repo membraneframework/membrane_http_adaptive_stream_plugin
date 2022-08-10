@@ -214,7 +214,11 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
   end
 
   defp send_buf(pipeline, source_id, duration) do
-    buffer = %Buffer{payload: "test_payload", metadata: %{duration: Time.seconds(duration)}}
+    buffer = %Buffer{
+      payload: "test_payload",
+      metadata: %{duration: Time.seconds(duration), independent?: true, partial_segment?: false}
+    }
+
     Testing.Pipeline.message_child(pipeline, {:source, source_id}, buffer)
   end
 end

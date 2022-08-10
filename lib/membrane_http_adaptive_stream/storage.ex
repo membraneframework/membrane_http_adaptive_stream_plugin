@@ -22,6 +22,7 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   @callback store(
               resource_name :: String.t(),
               content :: String.t() | binary,
+              metadata :: map(),
               context :: %{type: :manifest | :header | :segment, mode: :text | :binary},
               state_t
             ) :: callback_result_t
@@ -82,7 +83,7 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
     withl cache: false <- cache[name] == manifest,
           store:
             :ok <-
-              storage_impl.store(name, manifest, %{mode: :text, type: :manifest}, impl_state),
+              storage_impl.store(name, manifest, %{}, %{mode: :text, type: :manifest}, impl_state),
           do: storage = %{storage | stored_manifests: MapSet.put(stored_manifests, name)},
           update_cache?: true <- cache_enabled? do
       storage = put_in(storage, [:cache, name], manifest)
@@ -101,7 +102,7 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   def store_header(storage, name, payload) do
     %__MODULE__{storage_impl: storage_impl, impl_state: impl_state} = storage
 
-    result = storage_impl.store(name, payload, %{mode: :binary, type: :header}, impl_state)
+    result = storage_impl.store(name, payload, %{}, %{mode: :binary, type: :header}, impl_state)
     {result, storage}
   end
 
@@ -110,10 +111,11 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   """
   @spec apply_segment_changeset(
           t,
-          {to_add :: String.t(), to_remove :: [String.t()]},
-          payload :: binary
+          {to_add :: String.t(),
+           to_remove :: %{segment_names: [String.t()], header_names: [String.t()]}},
+          buffer :: Membrane.Buffer.t()
         ) :: {callback_result_t, t}
-  def apply_segment_changeset(storage, {to_add, to_remove}, payload) do
+  def apply_segment_changeset(storage, {to_add, to_remove}, buffer) do
     %__MODULE__{storage_impl: storage_impl, impl_state: impl_state} = storage
 
     with :ok <-
@@ -126,7 +128,13 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
              to_remove[:header_names],
              &storage_impl.remove(&1, %{type: :header}, impl_state)
            ) do
-      storage_impl.store(to_add, payload, %{mode: :binary, type: :segment}, impl_state)
+      storage_impl.store(
+        to_add,
+        buffer.payload,
+        buffer.metadata,
+        %{mode: :binary, type: :segment},
+        impl_state
+      )
     end
     |> then(&{&1, storage})
   end

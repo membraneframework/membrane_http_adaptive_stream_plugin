@@ -29,9 +29,12 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
 
   use Bunch
   use Membrane.Sink
+
   require Membrane.HTTPAdaptiveStream.Manifest.SegmentAttribute
+
   alias Membrane.CMAF
-  alias Membrane.HTTPAdaptiveStream.{Manifest, Storage}
+  alias Membrane.HTTPAdaptiveStream.Manifest
+  alias Membrane.HTTPAdaptiveStream.Storage
 
   def_input_pad :input,
     availability: :on_request,
@@ -95,6 +98,14 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
                 may help players achieve better UX.
                 """
               ],
+              target_partial_segment_duration: [
+                spec: Membrane.Time.t() | nil,
+                default: nil,
+                description: """
+                Expected length of each partial segment. When set to `nil` then no
+                partial segments get emitted.
+                """
+              ],
               segment_naming_fun: [
                 type: :function,
                 spec: (Manifest.Track.t() -> String.t()),
@@ -112,7 +123,9 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     |> Map.merge(%{
       storage: Storage.new(options.storage),
       manifest: %Manifest{name: options.manifest_name, module: options.manifest_module},
-      awaiting_first_segment: MapSet.new()
+      awaiting_first_segment: MapSet.new(),
+      # used to keep track of partial segments that should get merged
+      track_to_partial_segments: %{}
     })
     ~> {:ok, &1}
   end
@@ -138,6 +151,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
             segment_naming_fun: state.segment_naming_fun,
             target_window_duration: state.target_window_duration,
             target_segment_duration: state.target_segment_duration,
+            target_partial_segment_duration: state.target_partial_segment_duration,
             persist?: state.persist?
           }
         )
@@ -173,14 +187,18 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   @impl true
   def handle_write(Pad.ref(:input, id) = pad, buffer, _ctx, state) do
     %{storage: storage, manifest: manifest} = state
-    duration = buffer.metadata.duration
 
-    {changeset, manifest} =
-      Manifest.add_segment(manifest, id, duration, byte_size(buffer.payload))
+    {changesets, buffers, state} = handle_buffer(buffer, id, state)
 
-    state = %{state | manifest: manifest}
-
-    with {:ok, storage} <- Storage.apply_segment_changeset(storage, changeset, buffer.payload),
+    with {:ok, storage} <-
+           [changesets, buffers]
+           |> Enum.zip()
+           |> Enum.reduce_while({:ok, storage}, fn {changeset, buffer}, {:ok, storage} ->
+             case Storage.apply_segment_changeset(storage, changeset, buffer) do
+               {:ok, storage} -> {:cont, {:ok, storage}}
+               other -> {:halt, other}
+             end
+           end),
          {:ok, storage} <- serialize_and_store_manifest(manifest, storage) do
       {notify, state} = maybe_notify_playable(id, state)
       {{:ok, notify ++ [demand: pad]}, %{state | storage: storage}}
@@ -241,6 +259,94 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     end
   end
 
+  # we are operating on partial segments which may require
+  # assembling previous partial segments and creating regular one
+  # before processing the current segment
+  defp handle_buffer(
+         %Membrane.Buffer{metadata: %{partial_segment?: true}} = buffer,
+         track_id,
+         state
+       ) do
+    %{
+      duration: duration,
+      independent?: independent?
+    } = buffer.metadata
+
+    partial_segments = get_in(state, [:track_to_partial_segments, track_id]) || []
+    partial_segments_duration = Enum.reduce(partial_segments, 0, &(&1.metadata.duration + &2))
+
+    {full_segment, changeset, manifest, partial_segments} =
+      if independent? and duration + partial_segments_duration >= state.target_segment_duration and
+           partial_segments != [] do
+        payload = %Membrane.Buffer{
+          payload:
+            partial_segments |> Enum.map(& &1.payload) |> Enum.reverse() |> IO.iodata_to_binary(),
+          metadata: %{
+            duration: partial_segments_duration
+          }
+        }
+
+        {changeset, manifest} = Manifest.finalize_last_segment(state.manifest, track_id)
+
+        {payload, changeset, manifest, []}
+      else
+        {nil, nil, state.manifest, partial_segments}
+      end
+
+    new_segment_necessary? = Enum.empty?(partial_segments)
+
+    bytes_offset = Enum.reduce(partial_segments, 0, &(byte_size(&1.payload) + &2))
+    partial_segments = [buffer | partial_segments]
+
+    state = put_in(state, [:track_to_partial_segments, track_id], partial_segments)
+
+    manifest =
+      if new_segment_necessary? do
+        {_changeset, manifest} =
+          Manifest.add_segment(manifest, track_id, 0, 0, [{:partial?, true}, program_date_time()])
+
+        manifest
+      else
+        manifest
+      end
+
+    byte_range = {byte_size(buffer.payload), bytes_offset}
+
+    buffer = %Membrane.Buffer{
+      buffer
+      | metadata: Map.put(buffer.metadata, :byte_range, byte_range)
+    }
+
+    manifest
+    |> Manifest.add_partial_segment(
+      track_id,
+      independent?,
+      duration,
+      byte_range: byte_range,
+      independent: independent?
+    )
+    |> then(fn {new_changeset, manifest} ->
+      {reject_nils([changeset, new_changeset]), reject_nils([full_segment, buffer]),
+       %{state | manifest: manifest}}
+    end)
+  end
+
+  # we are operating on regular segments
+  defp handle_buffer(
+         buffer,
+         track_id,
+         state
+       ) do
+    duration = buffer.metadata.duration
+
+    {changeset, manifest} =
+      Manifest.add_segment(state.manifest, track_id, duration, byte_size(buffer.payload),
+        program_date_time: DateTime.utc_now()
+      )
+
+    {[changeset], [buffer], %{state | manifest: manifest}}
+  end
+
   defp parse_track_name(track_id) when is_binary(track_id) do
     valid_filename_regex = ~r/^[^\/:*?"<>|]+$/
 
@@ -269,4 +375,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     manifest_files = Manifest.serialize(manifest)
     Storage.store_manifests(storage, manifest_files)
   end
+
+  defp program_date_time(), do: {:program_date_time, DateTime.utc_now()}
+  defp reject_nils(enumerable), do: Enum.reject(enumerable, &is_nil/1)
 end

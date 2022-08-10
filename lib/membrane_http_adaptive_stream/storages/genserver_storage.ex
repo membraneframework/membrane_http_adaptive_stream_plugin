@@ -40,8 +40,11 @@ defmodule Membrane.HTTPAdaptiveStream.Storages.GenServerStorage do
   end
 
   @impl true
-  def store(name, contents, context, %__MODULE__{destination: destination, method: method}) do
-    params = Map.merge(context, %{name: name, contents: contents})
+  def store(name, contents, metadata, context, %__MODULE__{
+        destination: destination,
+        method: method
+      }) do
+    params = Map.merge(context, %{name: name, contents: contents, metadata: metadata})
     method.(destination, {__MODULE__, :store, params})
   end
 
