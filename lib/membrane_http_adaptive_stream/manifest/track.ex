@@ -3,6 +3,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   Struct representing a state of a single manifest track and functions to operate
   on it.
   """
+  use Bunch.Access
+
   require Membrane.HTTPAdaptiveStream.Manifest.SegmentAttribute
 
   alias Membrane.HTTPAdaptiveStream.Manifest

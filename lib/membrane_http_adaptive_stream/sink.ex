@@ -27,7 +27,6 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   `output/manifest.m3u8` file.
   """
 
-  use Bunch
   use Membrane.Sink
   require Membrane.HTTPAdaptiveStream.Manifest.SegmentAttribute
   alias Membrane.CMAF
@@ -52,15 +51,13 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
                 type: :string,
                 spec: String.t(),
                 default: "index",
-                description: "Name of the main manifest file"
+                description: "Name of the main manifest file."
               ],
               manifest_module: [
                 type: :atom,
                 spec: module,
-                description: """
-                Implementation of the `Membrane.HTTPAdaptiveStream.Manifest`
-                behaviour.
-                """
+                description:
+                  "Implementation of the `Membrane.HTTPAdaptiveStream.Manifest` behaviour."
               ],
               storage: [
                 type: :struct,
@@ -100,21 +97,20 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
                 spec: (Manifest.Track.t() -> String.t()),
                 default: &Manifest.Track.default_segment_naming_fun/1,
                 description:
-                  "A function that generates consequent segment names for a given track"
+                  "A function that generates consequent segment names for a given track."
               ]
 
   @impl true
   def handle_init(options) do
     options
     |> Map.from_struct()
-    |> Map.delete(:manifest_name)
-    |> Map.delete(:manifest_module)
+    |> Map.drop([:manifest_name, :manifest_module])
     |> Map.merge(%{
       storage: Storage.new(options.storage),
       manifest: %Manifest{name: options.manifest_name, module: options.manifest_module},
       awaiting_first_segment: MapSet.new()
     })
-    ~> {:ok, &1}
+    |> then(&{:ok, &1})
   end
 
   @impl true
@@ -125,7 +121,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
         # According to section 4.3.2.3 of RFC 8216, discontinuity needs to be signaled and new header supplied.
         Manifest.discontinue_track(state.manifest, track_id)
       else
-        track_name = parse_track_name(ctx.pads[pad_ref].options[:track_name] || track_id)
+        track_name = serialize_track_name(ctx.pads[pad_ref].options[:track_name] || track_id)
 
         Manifest.add_track(
           state.manifest,
@@ -241,7 +237,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     end
   end
 
-  defp parse_track_name(track_id) when is_binary(track_id) do
+  defp serialize_track_name(track_id) when is_binary(track_id) do
     valid_filename_regex = ~r/^[^\/:*?"<>|]+$/
 
     if String.match?(track_id, valid_filename_regex) do
@@ -252,7 +248,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     end
   end
 
-  defp parse_track_name(track_id) do
+  defp serialize_track_name(track_id) do
     track_id |> :erlang.term_to_binary() |> Base.url_encode64(padding: false)
   end
 
