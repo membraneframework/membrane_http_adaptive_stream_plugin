@@ -53,10 +53,16 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
     alias Membrane.HTTPAdaptiveStream.Storages.FileStorage
 
     @impl true
-    def handle_init(%{sources: sources, storage: storage, hls_mode: hls_mode, partial_segments: partial_segments}) do
+    def handle_init(%{
+          sources: sources,
+          storage: storage,
+          hls_mode: hls_mode,
+          partial_segments: partial_segments
+        }) do
       sink_bin = %HTTPAdaptiveStream.SinkBin{
         muxer_segment_duration: 2 |> Membrane.Time.seconds(),
-        muxer_partial_segment_duration: if(partial_segments, do: Membrane.Time.milliseconds(500), else: nil),
+        muxer_partial_segment_duration:
+          if(partial_segments, do: Membrane.Time.milliseconds(500), else: nil),
         manifest_module: HTTPAdaptiveStream.HLS,
         target_window_duration: 30 |> Membrane.Time.seconds(),
         target_segment_duration: 2 |> Membrane.Time.seconds(),
@@ -148,6 +154,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
     @tag test_directory: @audio_video_tracks_test_path
     test "audio and video tracks with partial segments" do
       alias Membrane.HTTPAdaptiveStream.Storages.SendStorage
+
       hackney_sources =
         @audio_video_tracks_sources
         |> Enum.map(fn {path, encoding, name} ->
@@ -156,7 +163,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
         end)
 
       {:ok, pipeline} =
-        Testing.Pipeline.start_link([
+        Testing.Pipeline.start_link(
           module: TestPipeline,
           custom_args: %{
             sources: hackney_sources,
@@ -164,40 +171,100 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
             partial_segments: true,
             storage: %SendStorage{destination: self()}
           }
-        ])
+        )
 
       assert_pipeline_playback_changed(pipeline, :prepared, :playing)
 
       assert_receive {SendStorage, :store, %{type: :manifest, name: "index.m3u8"}}, 1_000
-      assert_receive {SendStorage, :store, %{type: :manifest, name: "video_video_track.m3u8" <> _}}
+
+      assert_receive {SendStorage, :store,
+                      %{type: :manifest, name: "video_video_track.m3u8" <> _}}
+
       assert_receive {SendStorage, :store, %{type: :manifest, name: "audio.m3u8" <> _}}
 
-      assert_receive {SendStorage, :store, %{name: "video_segment_0_video_track" <> _, type: :partial_segment, contents: v1}}
-      assert_receive {SendStorage, :store, %{name: "audio_segment_0_audio_track" <> _, type: :partial_segment, contents: a1}}
+      assert_receive {SendStorage, :store,
+                      %{
+                        name: "video_segment_0_video_track" <> _,
+                        type: :partial_segment,
+                        contents: v1
+                      }}
 
-      assert_receive {SendStorage, :store, %{type: :manifest, name: "video_video_track.m3u8" <> _}}
+      assert_receive {SendStorage, :store,
+                      %{
+                        name: "audio_segment_0_audio_track" <> _,
+                        type: :partial_segment,
+                        contents: a1
+                      }}
+
+      assert_receive {SendStorage, :store,
+                      %{type: :manifest, name: "video_video_track.m3u8" <> _}}
+
       assert_receive {SendStorage, :store, %{type: :manifest, name: "audio.m3u8" <> _}}
 
-      assert_receive {SendStorage, :store, %{name: "video_segment_0_video_track" <> _, type: :partial_segment, contents: v2}}
-      assert_receive {SendStorage, :store, %{name: "audio_segment_0_audio_track" <> _, type: :partial_segment, contents: a2}}
+      assert_receive {SendStorage, :store,
+                      %{
+                        name: "video_segment_0_video_track" <> _,
+                        type: :partial_segment,
+                        contents: v2
+                      }}
 
-      assert_receive {SendStorage, :store, %{type: :manifest, name: "video_video_track.m3u8" <> _}}
+      assert_receive {SendStorage, :store,
+                      %{
+                        name: "audio_segment_0_audio_track" <> _,
+                        type: :partial_segment,
+                        contents: a2
+                      }}
+
+      assert_receive {SendStorage, :store,
+                      %{type: :manifest, name: "video_video_track.m3u8" <> _}}
+
       assert_receive {SendStorage, :store, %{type: :manifest, name: "audio.m3u8" <> _}}
 
-      assert_receive {SendStorage, :store, %{name: "video_segment_0_video_track" <> _, type: :partial_segment, contents: v3}}
-      assert_receive {SendStorage, :store, %{name: "audio_segment_0_audio_track" <> _, type: :partial_segment, contents: a3}}
+      assert_receive {SendStorage, :store,
+                      %{
+                        name: "video_segment_0_video_track" <> _,
+                        type: :partial_segment,
+                        contents: v3
+                      }}
 
-      assert_receive {SendStorage, :store, %{type: :manifest, name: "video_video_track.m3u8" <> _}}
+      assert_receive {SendStorage, :store,
+                      %{
+                        name: "audio_segment_0_audio_track" <> _,
+                        type: :partial_segment,
+                        contents: a3
+                      }}
+
+      assert_receive {SendStorage, :store,
+                      %{type: :manifest, name: "video_video_track.m3u8" <> _}}
+
       assert_receive {SendStorage, :store, %{type: :manifest, name: "audio.m3u8" <> _}}
 
-      assert_receive {SendStorage, :store, %{name: "video_segment_0_video_track" <> _, type: :partial_segment, contents: v4}}
+      assert_receive {SendStorage, :store,
+                      %{
+                        name: "video_segment_0_video_track" <> _,
+                        type: :partial_segment,
+                        contents: v4
+                      }}
 
       full_video_segment = v1 <> v2 <> v3 <> v4
-      assert_receive {SendStorage, :store, %{name: "video_segment_0_video_track" <> _, type: :segment, contents: ^full_video_segment}}
+
+      assert_receive {SendStorage, :store,
+                      %{
+                        name: "video_segment_0_video_track" <> _,
+                        type: :segment,
+                        contents: ^full_video_segment
+                      }}
 
       # with audio segments we can't gather regular 2 seconds so we are left with 3 segments
       full_audio_segment = a1 <> a2 <> a3
-      assert_receive {SendStorage, :store, %{name: "audio_segment_0_audio_track" <> _, type: :segment, contents: ^full_audio_segment}}
+
+      assert_receive {SendStorage, :store,
+                      %{
+                        name: "audio_segment_0_audio_track" <> _,
+                        type: :segment,
+                        contents: ^full_audio_segment
+                      }}
+
       # assert_receive {SendStorage, :store, %{name: "audio_segment_0_audio_track" <> _, type: :segment}}
 
       assert_pipeline_notified(pipeline, :sink_bin, :end_of_stream)
@@ -219,7 +286,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
           partial_segments: false,
           storage: %FileStorage{
             directory: result_directory
-          },
+          }
         }
       ]
       |> Testing.Pipeline.start_link()

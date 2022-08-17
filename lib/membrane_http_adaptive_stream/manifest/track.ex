@@ -62,14 +62,14 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     @moduledoc false
 
     @enforce_keys [:to_add, :to_remove]
-    defstruct  @enforce_keys
+    defstruct @enforce_keys
 
     @type element_t :: {type :: :header | :segment | :partial_segment, name :: String.t()}
 
     @type t :: %__MODULE__{
-      to_add: element_t(),
-      to_remove: [element_t()]
-    }
+            to_add: element_t(),
+            to_remove: [element_t()]
+          }
   end
 
   @config_keys Config.__struct__() |> Map.from_struct() |> Map.keys()
@@ -208,7 +208,6 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       |> Map.put(:awaiting_discontinuity, nil)
       |> maybe_pop_stale_segments_and_headers()
 
-
     changeset = %Changeset{
       to_add: {if(partial?, do: :partial_segment, else: :segment), name},
       to_remove: elements_to_remove
@@ -220,7 +219,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   def add_segment(%__MODULE__{finished?: true} = _track, _duration, _byte_size, _attributes),
     do: raise("Cannot add new segments to finished track")
 
-  @spec add_partial_segment(t, boolean, segment_duration_t, list(Manifest.SegmentAttribute.t))  :: {Changeset.t(), t()}
+  @spec add_partial_segment(t, boolean, segment_duration_t, list(Manifest.SegmentAttribute.t())) ::
+          {Changeset.t(), t()}
   def add_partial_segment(
         %__MODULE__{finished?: false} = track,
         independent?,
@@ -364,7 +364,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     track = %{track | current_seq_num: Enum.count(stale_segments)}
 
     {
-      Enum.map(to_remove_header_names, & {:header, &1}) ++ Enum.map(to_remove_segment_names, & {:segment, &1}),
+      Enum.map(to_remove_header_names, &{:header, &1}) ++
+        Enum.map(to_remove_segment_names, &{:segment, &1}),
       %__MODULE__{track | stale_segments: stale_segments, stale_headers: stale_headers}
     }
   end

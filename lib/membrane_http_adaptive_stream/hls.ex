@@ -193,17 +193,15 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     #EXTM3U
     #EXT-X-VERSION:#{@version}
     #EXT-X-TARGETDURATION:#{target_duration}
-    """
-    <>
-      serialize_ll_hls_tags(supports_ll_hls?, target_partial_duration)
-    <>
-    """
-    #EXT-X-MEDIA-SEQUENCE:#{track.current_seq_num}
-    #EXT-X-DISCONTINUITY-SEQUENCE:#{track.current_discontinuity_seq_num}
-    #EXT-X-MAP:URI="#{track.header_name}"
-    #{serialize_segments(track)}
-    #{if track.finished?, do: "#EXT-X-ENDLIST", else: ""}
-    """
+    """ <>
+      serialize_ll_hls_tags(supports_ll_hls?, target_partial_duration) <>
+      """
+      #EXT-X-MEDIA-SEQUENCE:#{track.current_seq_num}
+      #EXT-X-DISCONTINUITY-SEQUENCE:#{track.current_discontinuity_seq_num}
+      #EXT-X-MAP:URI="#{track.header_name}"
+      #{serialize_segments(track)}
+      #{if track.finished?, do: "#EXT-X-ENDLIST", else: ""}
+      """
   end
 
   defp serialize_segments(track) do

@@ -162,7 +162,10 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
     supports_partial_segments? = state.muxer_partial_segment_duration != nil
 
-    track_options = [track_name: track_name, supports_partial_segments?: supports_partial_segments?]
+    track_options = [
+      track_name: track_name,
+      supports_partial_segments?: supports_partial_segments?
+    ]
 
     spec =
       cond do

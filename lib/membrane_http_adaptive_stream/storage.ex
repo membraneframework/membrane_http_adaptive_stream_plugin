@@ -25,7 +25,10 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
               resource_name :: String.t(),
               content :: String.t() | binary,
               metadata :: map(),
-              context :: %{type: :manifest | :header | :segment | :partial_segment, mode: :text | :binary},
+              context :: %{
+                type: :manifest | :header | :segment | :partial_segment,
+                mode: :text | :binary
+              },
               state_t
             ) :: callback_result_t
 
@@ -125,11 +128,13 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
 
     %Changeset{to_add: {to_add_type, to_add_name}, to_remove: to_remove} = changeset
 
-    grouped = Enum.group_by(
-      to_remove,
-      fn {type, _value} -> type end,
-      fn {_type, value} -> value end
-    )
+    grouped =
+      Enum.group_by(
+        to_remove,
+        fn {type, _value} -> type end,
+        fn {_type, value} -> value end
+      )
+
     segment_names = Map.get(grouped, :segment, [])
     header_names = Map.get(grouped, :header, [])
 

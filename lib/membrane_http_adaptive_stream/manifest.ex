@@ -54,7 +54,13 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
     get_and_update_in(manifest, [:tracks, track_id], &Track.finalize_last_segment/1)
   end
 
-  @spec add_partial_segment(t(), Track.id_t(), boolean(), Track.segment_duration_t(), list(SegmentAttribute.t())) ::
+  @spec add_partial_segment(
+          t(),
+          Track.id_t(),
+          boolean(),
+          Track.segment_duration_t(),
+          list(SegmentAttribute.t())
+        ) ::
           {Changeset.t(), t}
   def add_partial_segment(manifest, track_id, independent?, duration, attributes \\ []) do
     get_and_update_in(

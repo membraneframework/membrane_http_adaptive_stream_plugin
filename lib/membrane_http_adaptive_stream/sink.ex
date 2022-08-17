@@ -202,7 +202,9 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   @impl true
   def handle_write(Pad.ref(:input, track_id) = pad, buffer, ctx, state) do
     supports_partial_segments? = ctx.pads[pad].options[:supports_partial_segments?]
-    {changesets, buffers, state} = handle_buffer(buffer, track_id, supports_partial_segments?, state)
+
+    {changesets, buffers, state} =
+      handle_buffer(buffer, track_id, supports_partial_segments?, state)
 
     %{storage: storage, manifest: manifest} = state
 
@@ -320,7 +322,13 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     manifest =
       if new_segment_necessary? do
         {_changeset, manifest} =
-          Manifest.add_segment(manifest, track_id, 0, 0, [partial?: true] ++ creation_time(state.mode))
+          Manifest.add_segment(
+            manifest,
+            track_id,
+            0,
+            0,
+            [partial?: true] ++ creation_time(state.mode)
+          )
 
         manifest
       else
@@ -358,7 +366,13 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     duration = buffer.metadata.duration
 
     {changeset, manifest} =
-      Manifest.add_segment(state.manifest, track_id, duration, byte_size(buffer.payload), creation_time(state.mode))
+      Manifest.add_segment(
+        state.manifest,
+        track_id,
+        duration,
+        byte_size(buffer.payload),
+        creation_time(state.mode)
+      )
 
     {[changeset], [buffer], %{state | manifest: manifest}}
   end
