@@ -48,6 +48,13 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
         Name that will be used to name the media playlist for the given track, as well as its header and segments files.
         It must not contain any URI reserved characters
         """
+      ],
+      supports_partial_segments?: [
+        spec: boolean(),
+        default: false,
+        description: """
+        Decides if the incoming track will produce partial segments or not. If so then the playlist will be adjusted accordingly.
+        """
       ]
     ]
 
@@ -88,6 +95,14 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
                 description: """
                 If true, stale segments are removed from the manifest only. Once
                 playback finishes, they are put back into the manifest.
+                """
+              ],
+              mode: [
+                spec: :live | :vod,
+                default: :vod,
+                description: """
+                Tells if the session is live or a VOD type of broadcast. It can influence type of metadata
+                inserted into the playlist's manifest.
                 """
               ],
               target_segment_duration: [
@@ -185,10 +200,11 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   end
 
   @impl true
-  def handle_write(Pad.ref(:input, id) = pad, buffer, _ctx, state) do
-    %{storage: storage, manifest: manifest} = state
+  def handle_write(Pad.ref(:input, track_id) = pad, buffer, ctx, state) do
+    supports_partial_segments? = ctx.pads[pad].options[:supports_partial_segments?]
+    {changesets, buffers, state} = handle_buffer(buffer, track_id, supports_partial_segments?, state)
 
-    {changesets, buffers, state} = handle_buffer(buffer, id, state)
+    %{storage: storage, manifest: manifest} = state
 
     with {:ok, storage} <-
            [changesets, buffers]
@@ -200,7 +216,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
              end
            end),
          {:ok, storage} <- serialize_and_store_manifest(manifest, storage) do
-      {notify, state} = maybe_notify_playable(id, state)
+      {notify, state} = maybe_notify_playable(track_id, state)
       {{:ok, notify ++ [demand: pad]}, %{state | storage: storage}}
     else
       {error, storage} -> {error, %{state | storage: storage}}
@@ -263,9 +279,10 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   # assembling previous partial segments and creating regular one
   # before processing the current segment
   defp handle_buffer(
-         %Membrane.Buffer{metadata: %{partial_segment?: true}} = buffer,
+         buffer,
          track_id,
-         state
+         true = _supports_partial_segments?,
+         %{mode: :live} = state
        ) do
     %{
       duration: duration,
@@ -303,7 +320,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     manifest =
       if new_segment_necessary? do
         {_changeset, manifest} =
-          Manifest.add_segment(manifest, track_id, 0, 0, [{:partial?, true}, program_date_time()])
+          Manifest.add_segment(manifest, track_id, 0, 0, [partial?: true] ++ creation_time(state.mode))
 
         manifest
       else
@@ -335,14 +352,13 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   defp handle_buffer(
          buffer,
          track_id,
+         false = _supports_partial_segments?,
          state
        ) do
     duration = buffer.metadata.duration
 
     {changeset, manifest} =
-      Manifest.add_segment(state.manifest, track_id, duration, byte_size(buffer.payload),
-        program_date_time: DateTime.utc_now()
-      )
+      Manifest.add_segment(state.manifest, track_id, duration, byte_size(buffer.payload), creation_time(state.mode))
 
     {[changeset], [buffer], %{state | manifest: manifest}}
   end
@@ -376,6 +392,8 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     Storage.store_manifests(storage, manifest_files)
   end
 
-  defp program_date_time(), do: {:program_date_time, DateTime.utc_now()}
+  defp creation_time(:live), do: [{:creation_time, DateTime.utc_now()}]
+  defp creation_time(:vod), do: []
+
   defp reject_nils(enumerable), do: Enum.reject(enumerable, &is_nil/1)
 end

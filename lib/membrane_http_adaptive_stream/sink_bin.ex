@@ -64,6 +64,14 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
                 playback finishes, they are put back into the manifest.
                 """
               ],
+              mode: [
+                spec: :live | :vod,
+                default: :vod,
+                description: """
+                Tells if the session is live or a VOD type of broadcast. It can influence type of metadata
+                inserted into the playlist's manifest.
+                """
+              ],
               target_segment_duration: [
                 spec: pos_integer,
                 default: 0,
@@ -123,7 +131,8 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
           persist?: opts.persist?,
           target_segment_duration: opts.target_segment_duration,
           target_partial_segment_duration: opts.muxer_partial_segment_duration,
-          segment_naming_fun: opts.segment_naming_fun
+          segment_naming_fun: opts.segment_naming_fun,
+          mode: opts.mode
         }
       ] ++
         if(opts.hls_mode == :muxed_av, do: [audio_tee: Membrane.Tee.Parallel], else: [])
@@ -151,6 +160,10 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
     payloader = Map.fetch!(@payloaders, encoding)
     track_name = context.options[:track_name]
 
+    supports_partial_segments? = state.muxer_partial_segment_duration != nil
+
+    track_options = [track_name: track_name, supports_partial_segments?: supports_partial_segments?]
+
     spec =
       cond do
         state.mode == :separate_av ->
@@ -159,7 +172,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
               link_bin_input(pad)
               |> to({:payloader, ref}, payloader)
               |> to({:cmaf_muxer, ref}, muxer)
-              |> via_in(pad, options: [track_name: track_name])
+              |> via_in(pad, options: track_options)
               |> to(:sink)
             ]
           }
@@ -177,7 +190,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
               link(:audio_tee)
               |> to({:cmaf_muxer, ref}),
               link({:cmaf_muxer, ref})
-              |> via_in(pad, options: [track_name: track_name])
+              |> via_in(pad, options: track_options)
               |> to(:sink)
             ]
           }

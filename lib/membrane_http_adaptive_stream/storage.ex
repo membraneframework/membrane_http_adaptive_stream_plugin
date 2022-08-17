@@ -5,6 +5,8 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   use Bunch
   use Bunch.Access
 
+  alias Membrane.HTTPAdaptiveStream.Manifest.Track.Changeset
+
   @type config_t :: struct
   @type state_t :: any
   @type callback_result_t :: :ok | {:error, reason :: any}
@@ -23,12 +25,16 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
               resource_name :: String.t(),
               content :: String.t() | binary,
               metadata :: map(),
-              context :: %{type: :manifest | :header | :segment, mode: :text | :binary},
+              context :: %{type: :manifest | :header | :segment | :partial_segment, mode: :text | :binary},
               state_t
             ) :: callback_result_t
 
   @doc """
   Removes the resource.
+
+  In case of removing a segment the storage should make sure to remove all
+  previous partial segments with the same name. It is the user's responsibility to remember
+  and distinguish between the partial segments.
   """
   @callback remove(
               resource_name :: String.t(),
@@ -111,28 +117,37 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   """
   @spec apply_segment_changeset(
           t,
-          {to_add :: String.t(),
-           to_remove :: %{segment_names: [String.t()], header_names: [String.t()]}},
+          Track.Changeset.t(),
           buffer :: Membrane.Buffer.t()
         ) :: {callback_result_t, t}
-  def apply_segment_changeset(storage, {to_add, to_remove}, buffer) do
+  def apply_segment_changeset(storage, changeset, buffer) do
     %__MODULE__{storage_impl: storage_impl, impl_state: impl_state} = storage
+
+    %Changeset{to_add: {to_add_type, to_add_name}, to_remove: to_remove} = changeset
+
+    grouped = Enum.group_by(
+      to_remove,
+      fn {type, _value} -> type end,
+      fn {_type, value} -> value end
+    )
+    segment_names = Map.get(grouped, :segment, [])
+    header_names = Map.get(grouped, :header, [])
 
     with :ok <-
            Bunch.Enum.try_each(
-             to_remove[:segment_names],
+             segment_names,
              &storage_impl.remove(&1, %{type: :segment}, impl_state)
            ),
          :ok <-
            Bunch.Enum.try_each(
-             to_remove[:header_names],
+             header_names,
              &storage_impl.remove(&1, %{type: :header}, impl_state)
            ) do
       storage_impl.store(
-        to_add,
+        to_add_name,
         buffer.payload,
         buffer.metadata,
-        %{mode: :binary, type: :segment},
+        %{mode: :binary, type: to_add_type},
         impl_state
       )
     end

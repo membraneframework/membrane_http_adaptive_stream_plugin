@@ -43,7 +43,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     end
 
     @impl true
-    def serialize({:program_date_time, date_time}) do
+    def serialize({:creation_time, date_time}) do
       [
         "#EXT-X-PROGRAM-DATE-TIME:#{date_time |> DateTime.truncate(:millisecond) |> DateTime.to_iso8601()}"
       ]
@@ -178,7 +178,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   end
 
   defp serialize_track(%Track{} = track) do
-    target_duration = Float.ceil(Ratio.to_float(track.target_segment_duration / Time.second()), 3)
+    target_duration = Ratio.ceil(track.target_segment_duration / Time.second()) |> trunc()
     supports_ll_hls? = Track.supports_partial_segments?(track)
 
     target_partial_duration =
@@ -193,8 +193,11 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     #EXTM3U
     #EXT-X-VERSION:#{@version}
     #EXT-X-TARGETDURATION:#{target_duration}
-    #{if(supports_ll_hls?, do: "#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=#{2 * target_partial_duration},CAN-SKIP-UNTIL=12.000", else: "")}
-    #{if(supports_ll_hls?, do: "#EXT-X-PART-INF:PART-TARGET=#{target_partial_duration}", else: "")}
+    """
+    <>
+      serialize_ll_hls_tags(supports_ll_hls?, target_partial_duration)
+    <>
+    """
     #EXT-X-MEDIA-SEQUENCE:#{track.current_seq_num}
     #EXT-X-DISCONTINUITY-SEQUENCE:#{track.current_discontinuity_seq_num}
     #EXT-X-MAP:URI="#{track.header_name}"
@@ -215,7 +218,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   defp do_serialize_segment({%Segment{} = segment, idx}, supports_ll_hls?) do
     [
       # serialize partial segments just for the last 2 live segments, otherwise just keep the regular segments
-      if(supports_ll_hls? and idx <= 2,
+      if(supports_ll_hls? and idx <= 4,
         do: serialize_partial_segments(segment, idx == 1),
         else: []
       ),
@@ -224,7 +227,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     |> List.flatten()
   end
 
-  defp serialize_regular_segment(%Segment{partial?: true}), do: []
+  defp serialize_regular_segment(%Segment{type: :partial}), do: []
 
   defp serialize_regular_segment(segment) do
     time = Ratio.to_float(segment.duration / Time.second())
@@ -249,7 +252,16 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
       |> Enum.join(",")
     end)
 
-    # TODO: we may want to support the EXT-X-PRELOAD-HINT as some point to further reduce latency
+    # NOTE: we may want to support the EXT-X-PRELOAD-HINT as some point to further reduce latency
     # for now hls.js (most common HLS backend for browsers) does not support those
   end
+
+  defp serialize_ll_hls_tags(true, target_partial_duration) do
+    """
+    #EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=#{2 * target_partial_duration}
+    #EXT-X-PART-INF:PART-TARGET=#{target_partial_duration}
+    """
+  end
+
+  defp serialize_ll_hls_tags(false, _target_partial_duration), do: ""
 end

@@ -20,7 +20,7 @@ defmodule Membrane.HTTPAdaptiveStream.Storages.SendStorage do
            %{
              name: String.t(),
              contents: String.t(),
-             type: :manifest | :header | :segment,
+             type: :manifest | :header | :segment | :partial_segment,
              mode: :text | :binary
            }}
 

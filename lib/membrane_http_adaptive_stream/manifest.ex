@@ -3,8 +3,9 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
   Behaviour for manifest serialization.
   """
   use Bunch.Access
-  alias __MODULE__.Track
+
   alias __MODULE__.SegmentAttribute
+  alias __MODULE__.Track
 
   @callback serialize(t) :: [{manifest_name :: String.t(), manifest_content :: String.t()}]
 
@@ -53,8 +54,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
     get_and_update_in(manifest, [:tracks, track_id], &Track.finalize_last_segment/1)
   end
 
-  @spec add_partial_segment(t(), Track.id_t(), Track.segment_duration_t(), SegmentAttribute.t()) ::
-          {part_segment_name :: String.t(), t}
+  @spec add_partial_segment(t(), Track.id_t(), boolean(), Track.segment_duration_t(), list(SegmentAttribute.t())) ::
+          {Changeset.t(), t}
   def add_partial_segment(manifest, track_id, independent?, duration, attributes \\ []) do
     get_and_update_in(
       manifest,
