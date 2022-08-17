@@ -138,7 +138,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
     refute_receive {SendStorage, _, _}
     assert_pipeline_notified(pipeline, :sink, {:track_playable, "audio"})
 
-    send_buf(pipeline, "track_1", 3)
+    send_buf(pipeline, "track_1", 5)
     assert_receive {SendStorage, :store, %{type: :manifest, name: "index.m3u8"}}
     assert_receive {SendStorage, :store, %{type: :manifest, name: "video_track_1" <> _}}
     assert_receive {SendStorage, :store, %{name: "video_segment_0_track_1" <> _}}
@@ -171,7 +171,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
     refute_receive {SendStorage, _, _}
     assert_pipeline_notified(pipeline, :sink, {:track_playable, "track_0"})
 
-    send_buf(pipeline, "track_1", 5)
+    send_buf(pipeline, "track_1", 6)
     assert_receive {SendStorage, :store, %{type: :manifest, name: "index.m3u8"}}
     assert_receive {SendStorage, :store, %{type: :manifest, name: "video_track_1" <> _}}
     assert_receive {SendStorage, :store, %{name: "video_segment_1_track_1" <> _}}
@@ -197,7 +197,8 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
           manifest_module: Membrane.HTTPAdaptiveStream.HLS,
           storage: %SendStorage{destination: self()},
           target_window_duration: Time.seconds(5),
-          target_segment_duration: Time.seconds(5)
+          target_segment_duration: Time.seconds(5),
+          mode: :vod
         }
       ] ++ sources
 
@@ -216,7 +217,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
   defp send_buf(pipeline, source_id, duration) do
     buffer = %Buffer{
       payload: "test_payload",
-      metadata: %{duration: Time.seconds(duration), independent?: true, partial_segment?: false}
+      metadata: %{duration: Time.seconds(duration), independent?: true}
     }
 
     Testing.Pipeline.message_child(pipeline, {:source, source_id}, buffer)
