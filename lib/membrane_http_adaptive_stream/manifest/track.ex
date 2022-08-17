@@ -254,7 +254,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   def supports_partial_segments?(%__MODULE__{target_partial_segment_duration: duration}),
     do: duration != nil
 
-  @spec finalize_last_segment(t()) :: Changeset.t()
+  @spec finalize_last_segment(t()) :: {Changeset.t(), t}
   def finalize_last_segment(%__MODULE__{finished?: false} = track) do
     {%Segment{parts: parts} = last_segment, segments} = Qex.pop_back!(track.segments)
 

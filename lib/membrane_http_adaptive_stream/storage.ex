@@ -120,7 +120,7 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   """
   @spec apply_segment_changeset(
           t,
-          Track.Changeset.t(),
+          Changeset.t(),
           buffer :: Membrane.Buffer.t()
         ) :: {callback_result_t, t}
   def apply_segment_changeset(storage, changeset, buffer) do

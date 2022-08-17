@@ -37,7 +37,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
           Track.segment_byte_size_t(),
           list(SegmentAttribute.t())
         ) ::
-          {{to_add_name :: String.t(), to_remove_names :: Track.to_remove_names_t()}, t}
+          {Track.Changeset.t(), t}
   def add_segment(%__MODULE__{} = manifest, track_id, duration, byte_size, attributes \\ []) do
     get_and_update_in(
       manifest,
@@ -49,7 +49,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
   @doc """
   Finalizes last segment of given track when serving partial segments.
   """
-  @spec finalize_last_segment(t(), Track.id_t()) :: {Track.segment_t(), t()}
+  @spec finalize_last_segment(t(), Track.id_t()) :: {Track.Changeset.t(), t()}
   def finalize_last_segment(manifest, track_id) do
     get_and_update_in(manifest, [:tracks, track_id], &Track.finalize_last_segment/1)
   end
@@ -61,7 +61,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
           Track.segment_duration_t(),
           list(SegmentAttribute.t())
         ) ::
-          {Changeset.t(), t}
+          {Track.Changeset.t(), t}
   def add_partial_segment(manifest, track_id, independent?, duration, attributes \\ []) do
     get_and_update_in(
       manifest,
