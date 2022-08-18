@@ -59,7 +59,10 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   end
 
   defmodule Changeset do
-    @moduledoc false
+    @moduledoc """
+    Structure representing changes that has been applied to the track. What element has been added
+    and what elements are to be removed.
+    """
 
     @enforce_keys [:to_add, :to_remove]
     defstruct @enforce_keys
