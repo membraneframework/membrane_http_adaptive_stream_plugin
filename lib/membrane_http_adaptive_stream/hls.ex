@@ -73,7 +73,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
       %{audio: [audio], video: videos} ->
         List.flatten([
           {main_manifest_name, build_master_playlist({audio, videos})},
-          {"audio.m3u8", serialize_track(audio)},
+          {build_media_playlist_path(audio), serialize_track(audio)},
           videos
           |> Enum.filter(&(&1.segments != @empty_segments))
           |> Enum.map(&{build_media_playlist_path(&1), serialize_track(&1)})
@@ -83,7 +83,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
       %{audio: [audio]} ->
         [
           {main_manifest_name, build_master_playlist({audio, nil})},
-          {"audio.m3u8", serialize_track(audio)}
+          {build_media_playlist_path(audio), serialize_track(audio)}
         ]
 
       # Handle video without audio
@@ -105,7 +105,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     case track do
       %Manifest.Track{content_type: :audio} ->
         """
-        #EXT-X-MEDIA:TYPE=AUDIO,NAME="#{@default_audio_track_name}",GROUP-ID="#{@default_audio_track_id}",AUTOSELECT=YES,DEFAULT=YES,URI="audio.m3u8"
+        #EXT-X-MEDIA:TYPE=AUDIO,NAME="#{@default_audio_track_name}",GROUP-ID="#{@default_audio_track_id}",AUTOSELECT=YES,DEFAULT=YES,URI="#{build_media_playlist_path(track)}"
         """
         |> String.trim()
 
