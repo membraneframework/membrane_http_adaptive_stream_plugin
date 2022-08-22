@@ -76,49 +76,57 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
       |> Map.values()
       |> Enum.group_by(& &1.content_type)
 
-    main_manifest_name = "#{manifest.name}.m3u8"
-
     if length(Map.get(tracks_by_content, :audio, [])) > 1 do
       raise ArgumentError, message: "Multiple audio tracks are not currently supported."
     end
 
-    # Depending on tracks present in the manifest, generate master playlist and playlists for each track
-    case tracks_by_content do
-      # Handling muxed content - where audio and video is contained in a single CMAF Track
-      %{muxed: muxed_tracks} ->
-        List.flatten([
-          {main_manifest_name, build_master_playlist({nil, muxed_tracks})},
-          muxed_tracks
-          |> Enum.filter(&(&1.segments != @empty_segments))
-          |> Enum.map(&{build_media_playlist_path(&1), serialize_track(&1)})
-        ])
+    main_manifest = main_playlist_from_tracks(tracks_by_content, manifest)
+    manifest_per_track = playlists_per_track(tracks_by_content)
 
-      # Handle audio track and multiple renditions of video
+    %{
+      main_manifest: main_manifest,
+      manifest_per_track: manifest_per_track
+    }
+  end
+
+  defp main_playlist_from_tracks(tracks, manifest) do
+    main_manifest_name = "#{manifest.name}.m3u8"
+
+    main_playlist =
+      case tracks do
+        %{muxed: muxed} -> build_master_playlist({nil, muxed})
+        %{audio: [audio], video: videos} -> build_master_playlist({audio, videos})
+        %{audio: [audio]} -> build_master_playlist({audio, nil})
+        %{video: videos} -> build_master_playlist({nil, videos})
+      end
+
+    {main_manifest_name, main_playlist}
+  end
+
+  defp playlists_per_track(tracks) do
+    case tracks do
+      %{muxed: tracks} ->
+        serialize_tracks(tracks)
+
       %{audio: [audio], video: videos} ->
-        List.flatten([
-          {main_manifest_name, build_master_playlist({audio, videos})},
-          {"audio.m3u8", serialize_track(audio)},
-          videos
-          |> Enum.filter(&(&1.segments != @empty_segments))
-          |> Enum.map(&{build_media_playlist_path(&1), serialize_track(&1)})
-        ])
+        videos
+        |> serialize_tracks()
+        |> Map.put(audio.id, {"audio.m3u8", serialize_track(audio)})
 
-      # Handle only audio, without any video tracks
       %{audio: [audio]} ->
-        [
-          {main_manifest_name, build_master_playlist({audio, nil})},
-          {"audio.m3u8", serialize_track(audio)}
-        ]
+        %{audio.id => {"audio.m3u8", serialize_track(audio)}}
 
-      # Handle video without audio
       %{video: videos} ->
-        List.flatten([
-          {main_manifest_name, build_master_playlist({nil, videos})},
-          videos
-          |> Enum.filter(&(&1.segments != @empty_segments))
-          |> Enum.map(&{build_media_playlist_path(&1), serialize_track(&1)})
-        ])
+        serialize_tracks(videos)
     end
+  end
+
+  defp serialize_tracks(tracks) do
+    tracks
+    |> Enum.filter(&(&1.segments != @empty_segments))
+    |> Map.new(fn track ->
+      {track.id, {build_media_playlist_path(track), serialize_track(track)}}
+    end)
   end
 
   defp build_media_playlist_path(%Track{} = track) do

@@ -11,6 +11,14 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   @type state_t :: any
   @type callback_result_t :: :ok | {:error, reason :: any}
 
+  @typedoc """
+  The identifier of a parent that the resource belongs to.
+
+  It can either be a main or secondary playlist (a track playlist).
+  In case of main playlist the identifier will be `:main`  while for tracks it can be an arbitrary value.
+  """
+  @type parent_t :: any()
+
   @doc """
   Generates the storage state based on the configuration struct.
   """
@@ -22,6 +30,7 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   Gets the mode that should be used when writing to a file and type of the resource
   """
   @callback store(
+              parent_id :: parent_t(),
               resource_name :: String.t(),
               content :: String.t() | binary,
               metadata :: map(),
@@ -40,6 +49,7 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   and distinguish between the partial segments.
   """
   @callback remove(
+              parent_id :: parent_t(),
               resource_name :: String.t(),
               context :: %{type: :manifest | :header | :segment},
               state_t
@@ -74,13 +84,13 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   @doc """
   Stores serialized manifest files
   """
-  @spec store_manifests(t, [{name :: String.t(), content :: String.t()}]) ::
+  @spec store_manifests(t, [{id :: term() | :main, {name :: String.t(), content :: String.t()}}]) ::
           {callback_result_t, t}
   def store_manifests(storage, manifests) do
     Bunch.Enum.try_reduce(manifests, storage, &store_manifest/2)
   end
 
-  defp store_manifest({name, manifest}, storage) do
+  defp store_manifest({id, {name, manifest}}, storage) do
     %__MODULE__{
       storage_impl: storage_impl,
       impl_state: impl_state,
@@ -92,8 +102,15 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
     withl cache: false <- cache[name] == manifest,
           store:
             :ok <-
-              storage_impl.store(name, manifest, %{}, %{mode: :text, type: :manifest}, impl_state),
-          do: storage = %{storage | stored_manifests: MapSet.put(stored_manifests, name)},
+              storage_impl.store(
+                id,
+                name,
+                manifest,
+                %{},
+                %{mode: :text, type: :manifest},
+                impl_state
+              ),
+          do: storage = %{storage | stored_manifests: MapSet.put(stored_manifests, {id, name})},
           update_cache?: true <- cache_enabled? do
       storage = put_in(storage, [:cache, name], manifest)
       {:ok, storage}
@@ -107,11 +124,21 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   @doc """
   Stores stream header file.
   """
-  @spec store_header(t, name :: String.t(), payload :: binary) :: {callback_result_t, t}
-  def store_header(storage, name, payload) do
+  @spec store_header(t, track_id :: term(), name :: String.t(), payload :: binary) ::
+          {callback_result_t, t}
+  def store_header(storage, track_id, name, payload) do
     %__MODULE__{storage_impl: storage_impl, impl_state: impl_state} = storage
 
-    result = storage_impl.store(name, payload, %{}, %{mode: :binary, type: :header}, impl_state)
+    result =
+      storage_impl.store(
+        track_id,
+        name,
+        payload,
+        %{},
+        %{mode: :binary, type: :header},
+        impl_state
+      )
+
     {result, storage}
   end
 
@@ -120,10 +147,11 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   """
   @spec apply_segment_changeset(
           t,
+          track_id :: term(),
           Changeset.t(),
           buffer :: Membrane.Buffer.t()
         ) :: {callback_result_t, t}
-  def apply_segment_changeset(storage, changeset, buffer) do
+  def apply_segment_changeset(storage, track_id, changeset, buffer) do
     %__MODULE__{storage_impl: storage_impl, impl_state: impl_state} = storage
 
     %Changeset{to_add: {to_add_type, to_add_name}, to_remove: to_remove} = changeset
@@ -141,14 +169,15 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
     with :ok <-
            Bunch.Enum.try_each(
              segment_names,
-             &storage_impl.remove(&1, %{type: :segment}, impl_state)
+             &storage_impl.remove(track_id, &1, %{type: :segment}, impl_state)
            ),
          :ok <-
            Bunch.Enum.try_each(
              header_names,
-             &storage_impl.remove(&1, %{type: :header}, impl_state)
+             &storage_impl.remove(track_id, &1, %{type: :header}, impl_state)
            ) do
       storage_impl.store(
+        track_id,
         to_add_name,
         buffer.payload,
         buffer.metadata,
@@ -160,21 +189,34 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   end
 
   @doc """
-  Removes all the saved segments and manifests.
+  Removes all the saved segments and manifest for given
   """
-  @spec cleanup(t, segments :: [String.t()]) :: {callback_result_t, t}
-  def cleanup(storage, segments) do
+  @spec cleanup(t, id :: any(), segments :: [String.t()]) :: {callback_result_t, t}
+  def cleanup(storage, id, segments) do
     %__MODULE__{storage_impl: storage_impl, impl_state: impl_state, stored_manifests: manifests} =
       storage
 
+    manifest_to_delete = Enum.find(manifests, fn {manifest_id, _name} -> manifest_id == id end)
+
     with :ok <-
-           Bunch.Enum.try_each(
-             manifests,
-             &storage_impl.remove(&1, %{type: :manifest}, impl_state)
-           ),
+           (case manifest_to_delete do
+              nil ->
+                :ok
+
+              {manifest_id, manifest_name} ->
+                storage_impl.remove(manifest_id, manifest_name, %{type: :manifest}, impl_state)
+            end),
          :ok <-
-           Bunch.Enum.try_each(segments, &storage_impl.remove(&1, %{type: :segment}, impl_state)) do
-      {:ok, %__MODULE__{storage | cache: %{}, stored_manifests: MapSet.new()}}
+           Bunch.Enum.try_each(
+             segments,
+             &storage_impl.remove(id, &1, %{type: :segment}, impl_state)
+           ) do
+      {:ok,
+       %__MODULE__{
+         storage
+         | cache: %{},
+           stored_manifests: MapSet.delete(manifests, manifest_to_delete)
+       }}
     else
       error -> {error, storage}
     end

@@ -7,7 +7,16 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
   alias __MODULE__.SegmentAttribute
   alias __MODULE__.Track
 
-  @callback serialize(t) :: [{manifest_name :: String.t(), manifest_content :: String.t()}]
+  @type serialized_manifest_t :: {manifest_name :: String.t(), manifest_content :: String.t()}
+
+  @type serialized_manifests_t :: %{
+          main_manifest: serialized_manifest_t(),
+          manifest_per_track: %{
+            optional(track_id :: any()) => serialized_manifest_t()
+          }
+        }
+
+  @callback serialize(t) :: serialized_manifests_t()
 
   @type t :: %__MODULE__{
           name: String.t(),
@@ -70,7 +79,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
     )
   end
 
-  @spec serialize(t) :: [{name :: String.t(), manifest :: String.t()}]
+  @spec serialize(t) :: serialized_manifests_t()
   def serialize(%__MODULE__{module: module} = manifest) do
     module.serialize(manifest)
   end
@@ -112,8 +121,16 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
   @doc """
   Returns stale and current segments' names from all tracks
   """
-  @spec all_segments(t) :: [[track_name :: String.t()]]
+  @spec all_segments(t) :: [segment_name :: String.t()]
   def all_segments(%__MODULE__{} = manifest) do
+    # here we should just group by track instead of flat mapping
     manifest.tracks |> Map.values() |> Enum.flat_map(&Track.all_segments/1)
+  end
+
+  @spec all_segments_per_track(t()) :: %{
+          optional(track_id :: term()) => [segment_name :: String.t()]
+        }
+  def all_segments_per_track(%__MODULE__{} = manifest) do
+    Map.new(manifest.tracks, fn {track_id, track} -> {track_id, Track.all_segments(track)} end)
   end
 end

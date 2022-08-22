@@ -172,7 +172,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
         )
       end
 
-    {result, storage} = Storage.store_header(state.storage, header_name, caps.header)
+    {result, storage} = Storage.store_header(state.storage, track_id, header_name, caps.header)
 
     {result, %{state | storage: storage, manifest: manifest}}
   end
@@ -212,7 +212,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
            [changesets, buffers]
            |> Enum.zip()
            |> Enum.reduce_while({:ok, storage}, fn {changeset, buffer}, {:ok, storage} ->
-             case Storage.apply_segment_changeset(storage, changeset, buffer) do
+             case Storage.apply_segment_changeset(storage, track_id, changeset, buffer) do
                {:ok, storage} -> {:cont, {:ok, storage}}
                other -> {:halt, other}
              end
@@ -243,19 +243,25 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
       persist?: persist?
     } = state
 
-    to_remove = Manifest.all_segments(manifest)
-
-    cleanup = fn ->
-      {result, _storage} = Storage.cleanup(storage, to_remove)
-      result
-    end
-
     track_ids =
       ctx.pads
       |> Map.keys()
       |> Enum.map(fn
         Pad.ref(:input, track_id) -> track_id
       end)
+
+    to_remove = Manifest.all_segments_per_track(manifest)
+
+    # cleanup all data of the secondary playlist and the main one
+    cleanup = fn ->
+      with {:ok, storage} <-
+             Bunch.Enum.try_reduce(to_remove, storage, fn {track_id, segments}, storage ->
+               Storage.cleanup(storage, track_id, segments)
+             end),
+           {:ok, _storage} <- Storage.cleanup(storage, :main, []) do
+        :ok
+      end
+    end
 
     # prevent storing empty manifest, such situation can happen
     # when the sink goes from prepared -> playing -> prepared -> stopped
@@ -265,7 +271,9 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     result =
       if persist? and any_track_persisted? do
         {result, storage} =
-          manifest |> Manifest.from_beginning() |> serialize_and_store_manifest(storage)
+          manifest
+          |> Manifest.from_beginning()
+          |> serialize_and_store_manifest(storage)
 
         {result, %{state | storage: storage}}
       else
@@ -402,7 +410,11 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   end
 
   defp serialize_and_store_manifest(manifest, storage) do
-    manifest_files = Manifest.serialize(manifest)
+    %{main_manifest: main_manifest, manifest_per_track: manifest_per_track} =
+      Manifest.serialize(manifest)
+
+    manifest_files = [{:main, main_manifest} | Map.to_list(manifest_per_track)]
+
     Storage.store_manifests(storage, manifest_files)
   end
 
