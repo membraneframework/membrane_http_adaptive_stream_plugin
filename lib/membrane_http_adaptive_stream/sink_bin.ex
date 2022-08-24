@@ -14,18 +14,20 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
   alias Membrane.{MP4, ParentSpec, Time}
   alias Membrane.HTTPAdaptiveStream.{Manifest, Sink, Storage}
+  alias Membrane.MP4.Muxer.CMAF
 
   @payloaders %{H264: MP4.Payloader.H264, AAC: MP4.Payloader.AAC}
 
-  def_options muxer_segment_duration: [
-                spec: Membrane.Time.t(),
-                default: 2 |> Time.seconds()
+  def_options muxer_segment_duration_range: [
+                spec: CMAF.SegmentDurationRange.t(),
+                default: CMAF.SegmentDurationRange.new(Time.milliseconds(1000), Time.milliseconds(2000))
               ],
-              muxer_partial_segment_duration: [
-                spec: Membrane.Time.t() | nil,
+              muxer_partial_segment_duration_range: [
+                spec: CMAF.SegmentDurationRange.t() | nil,
+                default: CMAF.SegmentDurationRange.new(Time.milliseconds(250), Time.milliseconds(500)),
                 default: nil,
                 description: """
-                The target duration of partial segments produced by the muxer.
+                The target duration range of partial segments produced by the muxer.
                 If not set then the muxer won't produce any partial segments.
                 """
               ],
@@ -70,14 +72,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
                 description: """
                 Tells if the session is live or a VOD type of broadcast. It can influence type of metadata
                 inserted into the playlist's manifest.
-                """
-              ],
-              target_segment_duration: [
-                spec: pos_integer,
-                default: 0,
-                description: """
-                Expected length of each segment. Setting it is not necessary, but
-                may help players achieve better UX.
                 """
               ],
               hls_mode: [
@@ -129,8 +123,9 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
           storage: opts.storage,
           target_window_duration: opts.target_window_duration,
           persist?: opts.persist?,
-          target_segment_duration: opts.target_segment_duration,
-          target_partial_segment_duration: opts.muxer_partial_segment_duration,
+          target_segment_duration: opts.muxer_segment_duration_range.target,
+          target_partial_segment_duration: opts.muxer_partial_segment_duration_range &&
+            opts.muxer_partial_segment_duration_range.target,
           segment_naming_fun: opts.segment_naming_fun,
           mode: opts.mode
         }
@@ -138,8 +133,8 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
         if(opts.hls_mode == :muxed_av, do: [audio_tee: Membrane.Tee.Parallel], else: [])
 
     state = %{
-      muxer_segment_duration: opts.muxer_segment_duration,
-      muxer_partial_segment_duration: opts.muxer_partial_segment_duration,
+      muxer_segment_duration_range: opts.muxer_segment_duration_range,
+      muxer_partial_segment_duration_range: opts.muxer_partial_segment_duration_range,
       mode: opts.hls_mode,
       streams_to_start: 0,
       streams_to_end: 0
@@ -153,14 +148,14 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
     encoding = context.options[:encoding]
 
     muxer = %MP4.Muxer.CMAF{
-      segment_duration: state.muxer_segment_duration,
-      partial_segment_duration: state.muxer_partial_segment_duration
+      segment_duration_range: state.muxer_segment_duration_range,
+      partial_segment_duration_range: state.muxer_partial_segment_duration_range,
     }
 
     payloader = Map.fetch!(@payloaders, encoding)
     track_name = context.options[:track_name]
 
-    supports_partial_segments? = state.muxer_partial_segment_duration != nil
+    supports_partial_segments? = state.muxer_partial_segment_duration_range != nil
 
     track_options = [
       track_name: track_name,

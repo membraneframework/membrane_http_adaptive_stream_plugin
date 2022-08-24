@@ -49,8 +49,11 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
 
   defmodule TestPipeline do
     use Membrane.Pipeline
+
     alias Membrane.HTTPAdaptiveStream
     alias Membrane.HTTPAdaptiveStream.Storages.FileStorage
+    alias Membrane.MP4.Muxer.CMAF.SegmentDurationRange, as: Range
+    alias Membrane.Time
 
     @impl true
     def handle_init(%{
@@ -60,12 +63,11 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
           partial_segments: partial_segments
         }) do
       sink_bin = %HTTPAdaptiveStream.SinkBin{
-        muxer_segment_duration: 2 |> Membrane.Time.seconds(),
-        muxer_partial_segment_duration:
-          if(partial_segments, do: Membrane.Time.milliseconds(500), else: nil),
+        muxer_segment_duration_range: Range.new(Time.milliseconds(1000), Time.milliseconds(2000)),
+        muxer_partial_segment_duration_range:
+          if(partial_segments, do: Range.new(Time.milliseconds(250), Time.milliseconds(500)), else: nil),
         manifest_module: HTTPAdaptiveStream.HLS,
         target_window_duration: 30 |> Membrane.Time.seconds(),
-        target_segment_duration: 2 |> Membrane.Time.seconds(),
         persist?: false,
         storage: storage,
         hls_mode: hls_mode,
