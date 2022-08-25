@@ -20,11 +20,13 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
   def_options muxer_segment_duration_range: [
                 spec: CMAF.SegmentDurationRange.t(),
-                default: CMAF.SegmentDurationRange.new(Time.milliseconds(1000), Time.milliseconds(2000))
+                default:
+                  CMAF.SegmentDurationRange.new(Time.milliseconds(1000), Time.milliseconds(2000))
               ],
               muxer_partial_segment_duration_range: [
                 spec: CMAF.SegmentDurationRange.t() | nil,
-                default: CMAF.SegmentDurationRange.new(Time.milliseconds(250), Time.milliseconds(500)),
+                default:
+                  CMAF.SegmentDurationRange.new(Time.milliseconds(250), Time.milliseconds(500)),
                 default: nil,
                 description: """
                 The target duration range of partial segments produced by the muxer.
@@ -124,8 +126,9 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
           target_window_duration: opts.target_window_duration,
           persist?: opts.persist?,
           target_segment_duration: opts.muxer_segment_duration_range.target,
-          target_partial_segment_duration: opts.muxer_partial_segment_duration_range &&
-            opts.muxer_partial_segment_duration_range.target,
+          target_partial_segment_duration:
+            opts.muxer_partial_segment_duration_range &&
+              opts.muxer_partial_segment_duration_range.target,
           segment_naming_fun: opts.segment_naming_fun,
           mode: opts.mode
         }
@@ -149,7 +152,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
     muxer = %MP4.Muxer.CMAF{
       segment_duration_range: state.muxer_segment_duration_range,
-      partial_segment_duration_range: state.muxer_partial_segment_duration_range,
+      partial_segment_duration_range: state.muxer_partial_segment_duration_range
     }
 
     payloader = Map.fetch!(@payloaders, encoding)
