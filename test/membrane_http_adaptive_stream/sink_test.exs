@@ -191,13 +191,14 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
         {{:source, source_id}, %Source{content_type: content_type, source_id: source_id}}
       end)
 
+    segment_duration = Sink.SegmentDuration.new(Time.seconds(5))
+
     children =
       [
         sink: %Sink{
           manifest_module: Membrane.HTTPAdaptiveStream.HLS,
           storage: %SendStorage{destination: self()},
           target_window_duration: Time.seconds(5),
-          target_segment_duration: Time.seconds(5),
           mode: :vod
         }
       ] ++ sources
@@ -205,7 +206,9 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
     links =
       Enum.map(sources, fn {{:source, source_id}, _config} ->
         link({:source, source_id})
-        |> via_in(Pad.ref(:input, source_id), options: [track_name: source_id])
+        |> via_in(Pad.ref(:input, source_id),
+          options: [track_name: source_id, segment_duration: segment_duration]
+        )
         |> to(:sink)
       end)
 

@@ -18,22 +18,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
   @payloaders %{H264: MP4.Payloader.H264, AAC: MP4.Payloader.AAC}
 
-  def_options muxer_segment_duration_range: [
-                spec: CMAF.SegmentDurationRange.t(),
-                default:
-                  CMAF.SegmentDurationRange.new(Time.milliseconds(1000), Time.milliseconds(2000))
-              ],
-              muxer_partial_segment_duration_range: [
-                spec: CMAF.SegmentDurationRange.t() | nil,
-                default:
-                  CMAF.SegmentDurationRange.new(Time.milliseconds(250), Time.milliseconds(500)),
-                default: nil,
-                description: """
-                The target duration range of partial segments produced by the muxer.
-                If not set then the muxer won't produce any partial segments.
-                """
-              ],
-              manifest_name: [
+  def_options manifest_name: [
                 spec: String.t(),
                 default: "index",
                 description: "Name of the main manifest file"
@@ -112,6 +97,20 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
         Name that will be used to name the media playlist for the given track, as well as its header and segments files.
         It must not contain any URI reserved characters
         """
+      ],
+      muxer_segment_duration_range: [
+        spec: CMAF.SegmentDurationRange.t(),
+        description: """
+        The target duration range of regular segments produced by the muxer.
+        """
+      ],
+      muxer_partial_segment_duration_range: [
+        spec: CMAF.SegmentDurationRange.t() | nil,
+        default: nil,
+        description: """
+        The target duration range of partial segments produced by the muxer.
+        If not set then the muxer won't produce any partial segments.
+        """
       ]
     ]
 
@@ -125,10 +124,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
           storage: opts.storage,
           target_window_duration: opts.target_window_duration,
           persist?: opts.persist?,
-          target_segment_duration: opts.muxer_segment_duration_range.target,
-          target_partial_segment_duration:
-            opts.muxer_partial_segment_duration_range &&
-              opts.muxer_partial_segment_duration_range.target,
           segment_naming_fun: opts.segment_naming_fun,
           mode: opts.mode
         }
@@ -136,8 +131,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
         if(opts.hls_mode == :muxed_av, do: [audio_tee: Membrane.Tee.Parallel], else: [])
 
     state = %{
-      muxer_segment_duration_range: opts.muxer_segment_duration_range,
-      muxer_partial_segment_duration_range: opts.muxer_partial_segment_duration_range,
       mode: opts.hls_mode,
       streams_to_start: 0,
       streams_to_end: 0
@@ -148,21 +141,34 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
   @impl true
   def handle_pad_added(Pad.ref(:input, ref) = pad, context, state) do
-    encoding = context.options[:encoding]
+    %{
+      encoding: encoding,
+      muxer_segment_duration_range: muxer_segment_duration_range,
+      muxer_partial_segment_duration_range: muxer_partial_segment_duration_range
+    } = context.options
 
     muxer = %MP4.Muxer.CMAF{
-      segment_duration_range: state.muxer_segment_duration_range,
-      partial_segment_duration_range: state.muxer_partial_segment_duration_range
+      segment_duration_range: muxer_segment_duration_range,
+      partial_segment_duration_range: muxer_partial_segment_duration_range
     }
 
     payloader = Map.fetch!(@payloaders, encoding)
     track_name = context.options[:track_name]
 
-    supports_partial_segments? = state.muxer_partial_segment_duration_range != nil
+    target_partial_segment_duration =
+      case muxer_partial_segment_duration_range do
+        nil -> nil
+        range -> range.target
+      end
 
     track_options = [
       track_name: track_name,
-      supports_partial_segments?: supports_partial_segments?
+      segment_duration:
+        Sink.SegmentDuration.new(
+          muxer_segment_duration_range.min,
+          muxer_segment_duration_range.target
+        ),
+      target_partial_segment_duration: target_partial_segment_duration
     ]
 
     spec =

@@ -36,6 +36,43 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   alias Membrane.HTTPAdaptiveStream.Manifest
   alias Membrane.HTTPAdaptiveStream.Storage
 
+  defmodule SegmentDuration do
+    @moduledoc """
+    Module representing a segment duration range that should appear
+    in a playlist.
+
+    The minimum and target durations are relevant if sink
+    is set to work in low latency mode as the durations of partial
+    segment can greatly vary.
+    """
+
+    alias Membrane.Time
+
+    @enforce_keys [:min, :target]
+    defstruct @enforce_keys
+
+    @type t :: %__MODULE__{
+            min: Time.t(),
+            target: Time.t()
+          }
+
+    @doc """
+    Creates a new segment duration with a minimum and target duration.
+    """
+    @spec new(Time.t(), Time.t()) :: t()
+    def new(min, target) when min <= target,
+      do: %__MODULE__{min: min, target: target}
+
+    @doc """
+    Creates a new segment duration with a target duration.
+
+    The minimum duration is set to the target one.
+    """
+    @spec new(Time.t()) :: t()
+    def new(target),
+      do: %__MODULE__{min: target, target: target}
+  end
+
   def_input_pad :input,
     availability: :on_request,
     demand_unit: :buffers,
@@ -49,11 +86,22 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
         It must not contain any URI reserved characters
         """
       ],
-      supports_partial_segments?: [
-        spec: boolean(),
-        default: false,
+      segment_duration: [
+        spec: SegmentDuration.t(),
         description: """
-        Decides if the incoming track will produce partial segments or not. If so then the playlist will be adjusted accordingly.
+        The expected minimum and target duration of media segment produced by this particular track.
+
+        In case of regular paced streams the parameter may not have any impact but when
+        partial segments gets used it may decide when regular segments gets finalized and new gets started.
+        """
+      ],
+      target_partial_segment_duration: [
+        spec: Membrane.Time.t() | nil,
+        default: nil,
+        description: """
+        The target duration of partial segments.
+
+        When set to nil then the track is not supposed to emit partial segments.
         """
       ]
     ]
@@ -81,8 +129,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
                 """
               ],
               target_window_duration: [
-                spec: pos_integer | :infinity,
-                type: :time,
+                spec: Membrane.Time.t() | :infinity,
                 default: Membrane.Time.seconds(40),
                 description: """
                 Manifest duration is keept above that time, while the oldest segments
@@ -103,22 +150,6 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
                 description: """
                 Tells if the session is live or a VOD type of broadcast. It can influence type of metadata
                 inserted into the playlist's manifest.
-                """
-              ],
-              target_segment_duration: [
-                type: :time,
-                default: 0,
-                description: """
-                Expected length of each segment. Setting it is not necessary, but
-                may help players achieve better UX.
-                """
-              ],
-              target_partial_segment_duration: [
-                spec: Membrane.Time.t() | nil,
-                default: nil,
-                description: """
-                Expected length of each partial segment. When set to `nil` then no
-                partial segments get emitted.
                 """
               ],
               segment_naming_fun: [
@@ -153,7 +184,8 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
         # According to section 4.3.2.3 of RFC 8216, discontinuity needs to be signaled and new header supplied.
         Manifest.discontinue_track(state.manifest, track_id)
       else
-        track_name = parse_track_name(ctx.pads[pad_ref].options[:track_name] || track_id)
+        track_options = ctx.pads[pad_ref].options
+        track_name = parse_track_name(track_options[:track_name] || track_id)
 
         Manifest.add_track(
           state.manifest,
@@ -165,8 +197,8 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
             segment_extension: ".m4s",
             segment_naming_fun: state.segment_naming_fun,
             target_window_duration: state.target_window_duration,
-            target_segment_duration: state.target_segment_duration,
-            target_partial_segment_duration: state.target_partial_segment_duration,
+            target_segment_duration: track_options.segment_duration.target,
+            target_partial_segment_duration: track_options.target_partial_segment_duration,
             persist?: state.persist?
           }
         )
@@ -201,10 +233,19 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
 
   @impl true
   def handle_write(Pad.ref(:input, track_id) = pad, buffer, ctx, state) do
-    supports_partial_segments? = ctx.pads[pad].options[:supports_partial_segments?]
+    %{
+      target_partial_segment_duration: target_partial_segment_duration,
+      segment_duration: segment_duration
+    } = ctx.pads[pad].options
+
+    supports_partial_segments? = target_partial_segment_duration != nil
 
     {changesets, buffers, state} =
-      handle_buffer(buffer, track_id, supports_partial_segments?, state)
+      if supports_partial_segments? do
+        handle_partial_segment(buffer, track_id, segment_duration, state)
+      else
+        handle_segment(buffer, track_id, state)
+      end
 
     %{storage: storage, manifest: manifest} = state
 
@@ -288,10 +329,10 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   # we are operating on partial segments which may require
   # assembling previous partial segments and creating regular one
   # before processing the current segment
-  defp handle_buffer(
+  defp handle_partial_segment(
          buffer,
          track_id,
-         true = _supports_partial_segments?,
+         segment_duration,
          %{mode: :live} = state
        ) do
     %{
@@ -303,8 +344,9 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     partial_segments_duration = Enum.reduce(partial_segments, 0, &(&1.metadata.duration + &2))
 
     {full_segment, changeset, manifest, partial_segments} =
-      if independent? and duration + partial_segments_duration >= state.target_segment_duration and
+      if independent? and duration + partial_segments_duration >= segment_duration.min and
            partial_segments != [] do
+        # create a full segment by merging all pending partial segments
         payload = %Membrane.Buffer{
           payload:
             partial_segments |> Enum.map(& &1.payload) |> Enum.reverse() |> IO.iodata_to_binary(),
@@ -335,7 +377,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
             track_id,
             0,
             0,
-            [partial?: true] ++ creation_time(state.mode)
+            [{:partial?, true} | creation_time(state.mode)]
           )
 
         manifest
@@ -359,16 +401,17 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
       independent: independent?
     )
     |> then(fn {new_changeset, manifest} ->
-      {reject_nils([changeset, new_changeset]), reject_nils([full_segment, buffer]),
-       %{state | manifest: manifest}}
+      changesets = reject_nils([changeset, new_changeset])
+      segments = reject_nils([full_segment, buffer])
+
+      {changesets, segments, %{state | manifest: manifest}}
     end)
   end
 
   # we are operating on regular segments
-  defp handle_buffer(
+  defp handle_segment(
          buffer,
          track_id,
-         false = _supports_partial_segments?,
          state
        ) do
     duration = buffer.metadata.duration
