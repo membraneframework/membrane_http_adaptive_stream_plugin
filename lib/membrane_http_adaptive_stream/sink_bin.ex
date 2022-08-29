@@ -139,6 +139,30 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
     {{:ok, spec: %ParentSpec{children: children}}, state}
   end
 
+  defp track_options(context) do
+    %{
+      track_name: track_name,
+      muxer_segment_duration_range: muxer_segment_duration_range,
+      muxer_partial_segment_duration_range: muxer_partial_segment_duration_range
+    } = context.options
+
+    target_partial_segment_duration =
+      case muxer_partial_segment_duration_range do
+        nil -> nil
+        range -> range.target
+      end
+
+    [
+      track_name: track_name,
+      segment_duration:
+        Sink.SegmentDuration.new(
+          muxer_segment_duration_range.min,
+          muxer_segment_duration_range.target
+        ),
+      target_partial_segment_duration: target_partial_segment_duration
+    ]
+  end
+
   @impl true
   def handle_pad_added(Pad.ref(:input, ref) = pad, context, state) do
     %{
@@ -153,23 +177,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
     }
 
     payloader = Map.fetch!(@payloaders, encoding)
-    track_name = context.options[:track_name]
-
-    target_partial_segment_duration =
-      case muxer_partial_segment_duration_range do
-        nil -> nil
-        range -> range.target
-      end
-
-    track_options = [
-      track_name: track_name,
-      segment_duration:
-        Sink.SegmentDuration.new(
-          muxer_segment_duration_range.min,
-          muxer_segment_duration_range.target
-        ),
-      target_partial_segment_duration: target_partial_segment_duration
-    ]
 
     spec =
       cond do
@@ -179,7 +186,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
               link_bin_input(pad)
               |> to({:payloader, ref}, payloader)
               |> to({:cmaf_muxer, ref}, muxer)
-              |> via_in(pad, options: track_options)
+              |> via_in(pad, options: track_options(context))
               |> to(:sink)
             ]
           }
@@ -197,7 +204,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
               link(:audio_tee)
               |> to({:cmaf_muxer, ref}),
               link({:cmaf_muxer, ref})
-              |> via_in(pad, options: track_options)
+              |> via_in(pad, options: track_options(context))
               |> to(:sink)
             ]
           }
