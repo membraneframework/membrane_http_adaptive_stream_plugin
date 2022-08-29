@@ -66,7 +66,6 @@ defmodule Membrane.HTTPAdaptiveStream.MixProject do
       {:membrane_core, "~> 0.10.0"},
       {:membrane_cmaf_format, "~> 0.6.0"},
       {:membrane_tee_plugin, "~> 0.9.0"},
-      # {:membrane_mp4_plugin, "~> 0.16.0"},
       {:membrane_mp4_plugin,
        github: "membraneframework/membrane_mp4_plugin", branch: "partial-cmaf-segments"},
       {:credo, "~> 1.6.1", only: :dev, runtime: false},

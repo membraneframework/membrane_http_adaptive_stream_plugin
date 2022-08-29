@@ -49,8 +49,11 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
 
   defmodule TestPipeline do
     use Membrane.Pipeline
+
     alias Membrane.HTTPAdaptiveStream
     alias Membrane.HTTPAdaptiveStream.Storages.FileStorage
+    alias Membrane.MP4.Muxer.CMAF.SegmentDurationRange, as: Range
+    alias Membrane.Time
 
     @impl true
     def handle_init(%{
@@ -60,12 +63,8 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
           partial_segments: partial_segments
         }) do
       sink_bin = %HTTPAdaptiveStream.SinkBin{
-        muxer_segment_duration: 2 |> Membrane.Time.seconds(),
-        muxer_partial_segment_duration:
-          if(partial_segments, do: Membrane.Time.milliseconds(500), else: nil),
         manifest_module: HTTPAdaptiveStream.HLS,
         target_window_duration: 30 |> Membrane.Time.seconds(),
-        target_segment_duration: 2 |> Membrane.Time.seconds(),
         persist?: false,
         storage: storage,
         hls_mode: hls_mode,
@@ -104,13 +103,31 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
           link({:source, track_name})
           |> to({:parser, track_name})
           |> via_in(Pad.ref(:input, track_name),
-            options: [encoding: encoding, track_name: track_name]
+            options: [
+              encoding: encoding,
+              track_name: track_name,
+              muxer_segment_duration_range: segment_duration_range_for(encoding),
+              muxer_partial_segment_duration_range:
+                if(partial_segments, do: partial_segment_duration_range_for(encoding), else: nil)
+            ]
           )
           |> to(:sink_bin)
         end)
 
       {{:ok, spec: %ParentSpec{children: children, links: links}, playback: :playing}, %{}}
     end
+
+    defp segment_duration_range_for(:AAC),
+      do: Range.new(Time.milliseconds(2000), Time.milliseconds(2000))
+
+    defp segment_duration_range_for(:H264),
+      do: Range.new(Time.milliseconds(1500), Time.milliseconds(2000))
+
+    defp partial_segment_duration_range_for(:AAC),
+      do: Range.new(Time.milliseconds(250), Time.milliseconds(500))
+
+    defp partial_segment_duration_range_for(:H264),
+      do: Range.new(Time.milliseconds(250), Time.milliseconds(500))
   end
 
   test "check if fixture creation is disabled" do
@@ -182,71 +199,22 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
 
       assert_receive {SendStorage, :store, %{type: :manifest, name: "audio.m3u8" <> _}}
 
-      assert_receive {SendStorage, :store,
-                      %{
-                        name: "video_segment_0_video_track" <> _,
-                        type: :partial_segment,
-                        contents: v1
-                      }}
+      segments =
+        for _i <- 1..19 do
+          assert_receive {SendStorage, :store,
+                          %{
+                            name: "video_segment_0_video_track" <> _,
+                            type: :partial_segment,
+                            contents: segment
+                          }}
 
-      assert_receive {SendStorage, :store,
-                      %{
-                        name: "audio_segment_0_audio_track" <> _,
-                        type: :partial_segment,
-                        contents: a1
-                      }}
+          assert_receive {SendStorage, :store,
+                          %{type: :manifest, name: "video_video_track.m3u8" <> _}}
 
-      assert_receive {SendStorage, :store,
-                      %{type: :manifest, name: "video_video_track.m3u8" <> _}}
+          segment
+        end
 
-      assert_receive {SendStorage, :store, %{type: :manifest, name: "audio.m3u8" <> _}}
-
-      assert_receive {SendStorage, :store,
-                      %{
-                        name: "video_segment_0_video_track" <> _,
-                        type: :partial_segment,
-                        contents: v2
-                      }}
-
-      assert_receive {SendStorage, :store,
-                      %{
-                        name: "audio_segment_0_audio_track" <> _,
-                        type: :partial_segment,
-                        contents: a2
-                      }}
-
-      assert_receive {SendStorage, :store,
-                      %{type: :manifest, name: "video_video_track.m3u8" <> _}}
-
-      assert_receive {SendStorage, :store, %{type: :manifest, name: "audio.m3u8" <> _}}
-
-      assert_receive {SendStorage, :store,
-                      %{
-                        name: "video_segment_0_video_track" <> _,
-                        type: :partial_segment,
-                        contents: v3
-                      }}
-
-      assert_receive {SendStorage, :store,
-                      %{
-                        name: "audio_segment_0_audio_track" <> _,
-                        type: :partial_segment,
-                        contents: a3
-                      }}
-
-      assert_receive {SendStorage, :store,
-                      %{type: :manifest, name: "video_video_track.m3u8" <> _}}
-
-      assert_receive {SendStorage, :store, %{type: :manifest, name: "audio.m3u8" <> _}}
-
-      assert_receive {SendStorage, :store,
-                      %{
-                        name: "video_segment_0_video_track" <> _,
-                        type: :partial_segment,
-                        contents: v4
-                      }}
-
-      full_video_segment = v1 <> v2 <> v3 <> v4
+      full_video_segment = IO.iodata_to_binary(segments)
 
       assert_receive {SendStorage, :store,
                       %{
@@ -255,8 +223,21 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
                         contents: ^full_video_segment
                       }}
 
-      # with audio segments we can't gather regular 2 seconds so we are left with 3 segments
-      full_audio_segment = a1 <> a2 <> a3
+      segments =
+        for _i <- 1..3 do
+          assert_receive {SendStorage, :store,
+                          %{
+                            name: "audio_segment_0_audio_track" <> _,
+                            type: :partial_segment,
+                            contents: segment
+                          }}
+
+          assert_receive {SendStorage, :store, %{type: :manifest, name: "audio.m3u8" <> _}}
+
+          segment
+        end
+
+      full_audio_segment = IO.iodata_to_binary(segments)
 
       assert_receive {SendStorage, :store,
                       %{
@@ -264,8 +245,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
                         type: :segment,
                         contents: ^full_audio_segment
                       }}
-
-      # assert_receive {SendStorage, :store, %{name: "audio_segment_0_audio_track" <> _, type: :segment}}
 
       assert_pipeline_notified(pipeline, :sink_bin, :end_of_stream)
 

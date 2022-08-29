@@ -39,7 +39,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     - `segment_extension` - extension of the segment files (for example .m4s for CMAF)
     - `segment_naming_fun` - a function that generates consequent segment names for a given track
     - `target_segment_duration` - expected duration of each segment
-    - `target_partial_segment_duration` - expected duration of each partial segment
+    - `target_partial_segment_duration` - expected duration of each partial segment, nil if not partial segments are expected
     - `target_window_duration` - track manifest duration is kept above that time, while the oldest segments
                 are removed whenever possible
     - `persist?` - determines whether the entire track contents should be available after the streaming finishes
@@ -51,9 +51,9 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
             header_extension: String.t(),
             segment_extension: String.t(),
             segment_naming_fun: (Track.t() -> String.t()),
-            target_segment_duration: Membrane.Time.t() | Ratio.t(),
-            target_partial_segment_duration: Membrane.Time.t() | Ratio.t() | nil,
-            target_window_duration: Membrane.Time.t() | Ratio.t(),
+            target_partial_segment_duration: Membrane.Time.t() | nil,
+            target_segment_duration: Membrane.Time.t(),
+            target_window_duration: Membrane.Time.t(),
             persist?: boolean
           }
   end
@@ -110,6 +110,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
           content_type: :audio | :video | :muxed,
           header_extension: String.t(),
           segment_extension: String.t(),
+          target_partial_segment_duration: segment_duration_t | nil,
           target_segment_duration: segment_duration_t,
           segment_naming_fun: (t -> String.t()),
           target_window_duration: Membrane.Time.t() | Ratio.t(),
@@ -157,6 +158,13 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   def default_segment_naming_fun(track) do
     "#{track.content_type}_segment_#{track.next_segment_id}_#{track.track_name}"
   end
+
+  @doc """
+  Tells whether the track is able to produce partial media segments.
+  """
+  @spec supports_partial_segments?(t()) :: boolean()
+  def supports_partial_segments?(%__MODULE__{target_partial_segment_duration: duration}),
+    do: duration != nil
 
   @doc """
   Add a segment of given duration to the track.
@@ -252,10 +260,6 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
 
     {changeset, Map.replace(track, :segments, Qex.push(segments, last_segment))}
   end
-
-  @spec supports_partial_segments?(t()) :: boolean()
-  def supports_partial_segments?(%__MODULE__{target_partial_segment_duration: duration}),
-    do: duration != nil
 
   @spec finalize_last_segment(t()) :: {Changeset.t(), t}
   def finalize_last_segment(%__MODULE__{finished?: false} = track) do

@@ -31,19 +31,28 @@ defmodule Membrane.HTTPAdaptiveStream.Storages.SendStorage do
   def init(%__MODULE__{} = config), do: config
 
   @impl true
-  def store(name, contents, metadata, context, %__MODULE__{destination: destination}) do
+  def store(parent_id, name, contents, metadata, context, %__MODULE__{destination: destination}) do
     send(
       destination,
       {__MODULE__, :store,
-       Map.merge(context, %{name: name, contents: contents, metadata: metadata})}
+       Map.merge(context, %{
+         parent_id: parent_id,
+         name: name,
+         contents: contents,
+         metadata: metadata
+       })}
     )
 
     :ok
   end
 
   @impl true
-  def remove(name, context, %__MODULE__{destination: destination}) do
-    send(destination, {__MODULE__, :remove, Map.merge(context, %{name: name})})
+  def remove(parent_id, name, context, %__MODULE__{destination: destination}) do
+    send(
+      destination,
+      {__MODULE__, :remove, Map.merge(context, %{parent_id: parent_id, name: name})}
+    )
+
     :ok
   end
 end

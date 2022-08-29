@@ -10,9 +10,9 @@ video_segment_0_video_540x360.m4s
 video_segment_1_video_540x360.m4s
 #EXTINF:2.0,
 video_segment_2_video_540x360.m4s
-#EXTINF:2.8,
+#EXTINF:1.8,
 video_segment_3_video_540x360.m4s
-#EXTINF:2.96,
+#EXTINF:3.96,
 video_segment_4_video_540x360.m4s
 #EXTINF:2.0,
 video_segment_5_video_540x360.m4s
