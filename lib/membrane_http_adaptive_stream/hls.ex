@@ -104,28 +104,49 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   end
 
   defp playlists_per_track(tracks) do
+    renditions = playlist_renditions(tracks)
+
     case tracks do
       %{muxed: tracks} ->
-        serialize_tracks(tracks)
+        serialize_tracks(tracks, renditions)
 
       %{audio: [audio], video: videos} ->
         videos
-        |> serialize_tracks()
-        |> Map.put(audio.id, {"audio.m3u8", serialize_track(audio)})
+        |> serialize_tracks(renditions)
+        |> Map.put(audio.id, {"audio.m3u8", serialize_track(audio, renditions)})
 
       %{audio: [audio]} ->
-        %{audio.id => {"audio.m3u8", serialize_track(audio)}}
+        %{audio.id => {"audio.m3u8", serialize_track(audio, renditions)}}
 
       %{video: videos} ->
-        serialize_tracks(videos)
+        serialize_tracks(videos, renditions)
     end
   end
 
-  defp serialize_tracks(tracks) do
+  defp playlist_renditions(tracks) do
+    tracks =
+      case tracks do
+        %{muxed: tracks} -> tracks
+        %{audio: audios, video: videos} -> audios ++ videos
+        %{audio: audios} -> audios
+        %{videos: videos} -> videos
+      end
+
+    tracks
+    |> Map.new(fn track ->
+      name = build_media_playlist_path(track)
+
+      latest_sn = Track.latest_sequence_numbers(track)
+
+      {track.id, {name, latest_sn}}
+    end)
+  end
+
+  defp serialize_tracks(tracks, renditions) do
     tracks
     |> Enum.filter(&(&1.segments != @empty_segments))
     |> Map.new(fn track ->
-      {track.id, {build_media_playlist_path(track), serialize_track(track)}}
+      {track.id, {build_media_playlist_path(track), serialize_track(track, renditions)}}
     end)
   end
 
@@ -185,7 +206,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     end
   end
 
-  defp serialize_track(%Track{} = track) do
+  defp serialize_track(%Track{} = track, renditions) do
     target_duration = Ratio.ceil(track.target_segment_duration / Time.second()) |> trunc()
     supports_ll_hls? = Track.supports_partial_segments?(track)
 
@@ -196,19 +217,24 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
         nil
       end
 
-    """
-    #EXTM3U
-    #EXT-X-VERSION:#{@version}
-    #EXT-X-TARGETDURATION:#{target_duration}
-    """ <>
-      serialize_ll_hls_tags(supports_ll_hls?, target_partial_duration) <>
+    [
+      """
+      #EXTM3U
+      #EXT-X-VERSION:#{@version}
+      #EXT-X-TARGETDURATION:#{target_duration}
+      """,
+      serialize_ll_hls_tags(supports_ll_hls?, target_partial_duration),
       """
       #EXT-X-MEDIA-SEQUENCE:#{track.current_seq_num}
       #EXT-X-DISCONTINUITY-SEQUENCE:#{track.current_discontinuity_seq_num}
       #EXT-X-MAP:URI="#{track.header_name}"
       #{serialize_segments(track)}
-      #{if track.finished?, do: "#EXT-X-ENDLIST", else: ""}
-      """
+      """,
+      serialize_ll_hls_renditions(supports_ll_hls?, track.id, renditions),
+      if(track.finished?, do: "#EXT-X-ENDLIST", else: "")
+    ]
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.join("\n")
   end
 
   defp serialize_segments(track) do
@@ -269,4 +295,15 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   end
 
   defp serialize_ll_hls_tags(false, _target_partial_duration), do: ""
+
+  defp serialize_ll_hls_renditions(true, track_id, renditions) do
+    renditions
+    |> Map.delete(track_id)
+    |> Enum.map(fn {_track_id, {playlist_name, {sn, part_sn}}} ->
+      "#EXT-X-RENDITION-REPORT:URI=\"#{playlist_name}\",LAST-MSN=#{sn},LAST-PART=#{part_sn}"
+    end)
+    |> Enum.join("\n")
+  end
+
+  defp serialize_ll_hls_renditions(false, _track_id, _renditions), do: ""
 end

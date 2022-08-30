@@ -265,7 +265,9 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       to_remove: []
     }
 
-    {changeset, Map.replace(track, :segments, Qex.push(segments, last_segment))}
+    track = %__MODULE__{track | segments: Qex.push(segments, last_segment)}
+
+    {changeset, track}
   end
 
   @spec finalize_last_segment(t()) :: {Changeset.t(), t}
@@ -355,6 +357,23 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     Qex.join(track.stale_segments, track.segments) |> Enum.map(& &1.name)
   end
 
+  @spec latest_sequence_numbers(t) ::
+          {sequence_number :: non_neg_integer, partial_sequence_number :: non_neg_integer()}
+  def latest_sequence_numbers(track) do
+    sn = max(0, track.current_seq_num + Enum.count(track.segments) - 1)
+
+    part_sn =
+      case Qex.last(track.segments) do
+        {:value, segment} ->
+          Enum.count(segment.parts)
+
+        _other ->
+          0
+      end
+
+    {sn, part_sn}
+  end
+
   defp maybe_pop_stale_segments_and_headers(track) do
     {stale_segments, stale_headers, track} = pop_stale_segments_and_headers(track)
 
@@ -375,7 +394,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
         }
       end
 
-    track = %{track | current_seq_num: Enum.count(stale_segments)}
+    track = %__MODULE__{track | current_seq_num: Enum.count(stale_segments)}
 
     {
       Enum.map(to_remove_header_names, &{:header, &1}) ++
