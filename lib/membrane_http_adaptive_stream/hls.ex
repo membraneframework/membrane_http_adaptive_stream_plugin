@@ -196,7 +196,6 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
         nil
       end
 
-    # NOTE: I'm not sure about how that skipping should work but the player seems to care about it
     """
     #EXTM3U
     #EXT-X-VERSION:#{@version}

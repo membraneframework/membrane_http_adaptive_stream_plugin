@@ -230,6 +230,13 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   def add_segment(%__MODULE__{finished?: true} = _track, _duration, _byte_size, _attributes),
     do: raise("Cannot add new segments to finished track")
 
+  @doc """
+  Append a partial segment to the latest segment.
+
+  The last segment is supposed to be of type `:partial`, meaning that it is still in a phase
+  of gathering partial segments before being finalized into a full segment. There can only be
+  a single such segment.
+  """
   @spec add_partial_segment(t, boolean, segment_duration_t, list(Manifest.SegmentAttribute.t())) ::
           {Changeset.t(), t()}
   def add_partial_segment(
@@ -246,7 +253,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       attributes: attributes
     }
 
-    {last_segment, segments} = Qex.pop_back!(track.segments)
+    {%Segment{type: :partial} = last_segment, segments} = Qex.pop_back!(track.segments)
 
     last_segment = %Segment{
       last_segment
