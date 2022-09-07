@@ -401,8 +401,8 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
       independent: independent?
     )
     |> then(fn {new_changeset, manifest} ->
-      changesets = reject_nils([changeset, new_changeset])
-      segments = reject_nils([full_segment, buffer])
+      changesets = if is_nil(changeset), do: [new_changeset], else: [changeset, new_changeset]
+      segments = if is_nil(full_segment), do: [buffer], else: [full_segment, buffer]
 
       {changesets, segments, %{state | manifest: manifest}}
     end)
@@ -463,6 +463,4 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
 
   defp creation_time(:live), do: [{:creation_time, DateTime.utc_now()}]
   defp creation_time(:vod), do: []
-
-  defp reject_nils(enumerable), do: Enum.reject(enumerable, &is_nil/1)
 end

@@ -198,14 +198,16 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
 
     manifest_to_delete = Enum.find(manifests, fn {manifest_id, _name} -> manifest_id == id end)
 
-    with :ok <-
-           (case manifest_to_delete do
-              nil ->
-                :ok
+    manifest_remove_result =
+      case manifest_to_delete do
+        nil ->
+          :ok
 
-              {manifest_id, manifest_name} ->
-                storage_impl.remove(manifest_id, manifest_name, %{type: :manifest}, impl_state)
-            end),
+        {manifest_id, manifest_name} ->
+          storage_impl.remove(manifest_id, manifest_name, %{type: :manifest}, impl_state)
+      end
+
+    with :ok <- manifest_remove_result,
          :ok <-
            Bunch.Enum.try_each(
              segments,
