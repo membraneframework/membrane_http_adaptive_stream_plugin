@@ -234,7 +234,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
       if(track.finished?, do: "#EXT-X-ENDLIST", else: "")
     ]
     |> Enum.reject(&(&1 == ""))
-    |> Enum.join("\n")
+    |> Enum.join()
   end
 
   defp serialize_segments(track) do
