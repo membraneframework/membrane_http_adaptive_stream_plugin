@@ -30,7 +30,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Segment do
   @type partial_segment_t :: %{
           independent?: boolean(),
           duration: segment_duration_t(),
-          attributes: [SegmentAttribute.t()]
+          byte_size: non_neg_integer()
         }
 
   @typedoc """

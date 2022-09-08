@@ -154,7 +154,7 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   def apply_segment_changeset(storage, track_id, changeset, buffer) do
     %__MODULE__{storage_impl: storage_impl, impl_state: impl_state} = storage
 
-    %Changeset{to_add: {to_add_type, to_add_name}, to_remove: to_remove} = changeset
+    %Changeset{to_add: {to_add_type, to_add_name, metadata}, to_remove: to_remove} = changeset
 
     grouped =
       Enum.group_by(
@@ -180,7 +180,7 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
         track_id,
         to_add_name,
         buffer.payload,
-        buffer.metadata,
+        metadata,
         %{mode: :binary, type: to_add_type},
         impl_state
       )

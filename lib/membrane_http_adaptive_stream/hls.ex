@@ -48,22 +48,6 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
         "#EXT-X-PROGRAM-DATE-TIME:#{date_time |> DateTime.truncate(:millisecond) |> DateTime.to_iso8601()}"
       ]
     end
-
-    @impl true
-    def serialize({:independent, independent}) do
-      if independent do
-        ["INDEPENDENT=YES"]
-      else
-        []
-      end
-    end
-
-    @impl true
-    def serialize({:byte_range, {size, offset}}) do
-      [
-        "BYTERANGE=\"#{size}@#{offset}\""
-      ]
-    end
   end
 
   @doc """
@@ -246,16 +230,17 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
 
   defp serialize_partial_segments(segment, _is_last) do
     segment.parts
-    |> Enum.map(fn part ->
+    |> Enum.map_reduce(0, fn part, total_bytes ->
       time = Ratio.to_float(part.duration / Time.second())
 
-      [
-        "#EXT-X-PART:DURATION=#{time},URI=\"#{segment.name}\""
-        | Enum.map(part.attributes, &SegmentAttribute.serialize/1)
-      ]
-      |> List.flatten()
-      |> Enum.join(",")
+      serialized =
+        "#EXT-X-PART:DURATION=#{time},URI=\"#{segment.name}\",BYTERANGE=\"#{part.byte_size}@#{total_bytes}\""
+
+      serialized = if part.independent?, do: serialized <> ",INDEPENDENT=true", else: serialized
+
+      {serialized, part.byte_size + total_bytes}
     end)
+    |> then(fn {parts, _acc} -> parts end)
 
     # NOTE: we may want to support the EXT-X-PRELOAD-HINT as some point to further reduce latency
     # for now hls.js (most common HLS backend for browsers) does not support those

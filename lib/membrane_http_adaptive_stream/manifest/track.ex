@@ -67,11 +67,11 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     @enforce_keys [:to_add, :to_remove]
     defstruct @enforce_keys
 
-    @type element_t :: {type :: :header | :segment | :partial_segment, name :: String.t()}
+    @type element_type_t :: :header | :segment | :partial_segment
 
     @type t :: %__MODULE__{
-            to_add: element_t(),
-            to_remove: [element_t()]
+            to_add: {element_type_t(), name :: String.t(), metadata :: map()},
+            to_remove: [{element_type_t(), name :: String.t()}]
           }
   end
 
@@ -220,7 +220,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       |> maybe_pop_stale_segments_and_headers()
 
     changeset = %Changeset{
-      to_add: {if(partial?, do: :partial_segment, else: :segment), name},
+      to_add: {if(partial?, do: :partial_segment, else: :segment), name, %{}},
       to_remove: elements_to_remove
     }
 
@@ -237,23 +237,27 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   of gathering partial segments before being finalized into a full segment. There can only be
   a single such segment.
   """
-  @spec add_partial_segment(t, boolean, segment_duration_t, list(Manifest.SegmentAttribute.t())) ::
+  @spec add_partial_segment(t, boolean, segment_duration_t, segment_byte_size_t) ::
           {Changeset.t(), t()}
   def add_partial_segment(
         %__MODULE__{finished?: false} = track,
         independent?,
         duration,
-        attributes
+        byte_size
       ) do
     use Ratio
 
     partial_segment = %{
       independent?: independent?,
       duration: duration,
-      attributes: attributes
+      byte_size: byte_size
     }
 
     {%Segment{type: :partial} = last_segment, segments} = Qex.pop_back!(track.segments)
+
+    metadata = %{
+      byte_offset: Enum.map(last_segment.parts, & &1.byte_size) |> Enum.sum()
+    }
 
     last_segment = %Segment{
       last_segment
@@ -261,7 +265,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     }
 
     changeset = %Changeset{
-      to_add: {:partial_segment, last_segment.name},
+      to_add: {:partial_segment, last_segment.name, metadata},
       to_remove: []
     }
 
@@ -272,10 +276,10 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   def finalize_last_segment(%__MODULE__{finished?: false} = track) do
     {%Segment{parts: parts} = last_segment, segments} = Qex.pop_back!(track.segments)
 
-    duration = Enum.map(parts, & &1.duration) |> Enum.sum()
-
-    byte_size =
-      Enum.map(parts, &(&1.attributes |> Keyword.fetch!(:byte_range) |> elem(0))) |> Enum.sum()
+    {byte_size, duration} =
+      Enum.reduce(parts, {0, 0}, fn part, {size, duration} ->
+        {size + part.byte_size, duration + part.duration}
+      end)
 
     last_segment = %Segment{
       last_segment
@@ -292,7 +296,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       |> maybe_pop_stale_segments_and_headers()
 
     changeset = %Changeset{
-      to_add: {:segment, last_segment.name},
+      to_add: {:segment, last_segment.name, %{}},
       to_remove: elements_to_remove
     }
 

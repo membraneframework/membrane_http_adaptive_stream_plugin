@@ -364,7 +364,6 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
 
     new_segment_necessary? = Enum.empty?(partial_segments)
 
-    bytes_offset = Enum.reduce(partial_segments, 0, &(byte_size(&1.payload) + &2))
     partial_segments = [buffer | partial_segments]
 
     state = put_in(state, [:track_to_partial_segments, track_id], partial_segments)
@@ -377,7 +376,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
             track_id,
             0,
             0,
-            [{:partial?, true} | creation_time(state.mode)]
+            [partial?: true] ++ creation_time(state.mode)
           )
 
         manifest
@@ -385,20 +384,12 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
         manifest
       end
 
-    byte_range = {byte_size(buffer.payload), bytes_offset}
-
-    buffer = %Membrane.Buffer{
-      buffer
-      | metadata: Map.put(buffer.metadata, :byte_range, byte_range)
-    }
-
     manifest
     |> Manifest.add_partial_segment(
       track_id,
       independent?,
       duration,
-      byte_range: byte_range,
-      independent: independent?
+      byte_size(buffer.payload)
     )
     |> then(fn {new_changeset, manifest} ->
       changesets = if is_nil(changeset), do: [new_changeset], else: [changeset, new_changeset]
