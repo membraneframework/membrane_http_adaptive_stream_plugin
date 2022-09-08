@@ -188,8 +188,15 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
     |> then(&{&1, storage})
   end
 
+  @spec clean_all_track_segments(t(), %{(id :: any()) => [String.t()]}) :: {callback_result_t, t}
+  def clean_all_track_segments(storage, segments_per_track) do
+    Bunch.Enum.try_reduce(segments_per_track, storage, fn {track_id, segments}, storage ->
+      cleanup(storage, track_id, segments)
+    end)
+  end
+
   @doc """
-  Removes all the saved segments and manifest for given
+  Removes all the saved segments and manifest for given id.
   """
   @spec cleanup(t, id :: any(), segments :: [String.t()]) :: {callback_result_t, t}
   def cleanup(storage, id, segments) do

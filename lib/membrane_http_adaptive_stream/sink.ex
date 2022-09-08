@@ -291,10 +291,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
 
     # cleanup all data of the secondary playlist and the main one
     cleanup = fn ->
-      with {:ok, storage} <-
-             Bunch.Enum.try_reduce(to_remove, storage, fn {track_id, segments}, storage ->
-               Storage.cleanup(storage, track_id, segments)
-             end),
+      with {:ok, storage} <- Storage.clean_all_track_segments(storage, to_remove),
            {:ok, _storage} <- Storage.cleanup(storage, :main, []) do
         :ok
       end
