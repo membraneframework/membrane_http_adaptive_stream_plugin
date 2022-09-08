@@ -95,10 +95,10 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
       %{audio: [audio], video: videos} ->
         videos
         |> serialize_tracks()
-        |> Map.put(audio.id, {"audio.m3u8", serialize_track(audio)})
+        |> Map.put(audio.id, {build_media_playlist_path(audio), serialize_track(audio)})
 
       %{audio: [audio]} ->
-        %{audio.id => {"audio.m3u8", serialize_track(audio)}}
+        %{audio.id => {build_media_playlist_path(audio), serialize_track(audio)}}
 
       %{video: videos} ->
         serialize_tracks(videos)
@@ -121,7 +121,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     case track do
       %Track{content_type: :audio} ->
         """
-        #EXT-X-MEDIA:TYPE=AUDIO,NAME="#{@default_audio_track_name}",GROUP-ID="#{@default_audio_track_id}",AUTOSELECT=YES,DEFAULT=YES,URI="audio.m3u8"
+        #EXT-X-MEDIA:TYPE=AUDIO,NAME="#{@default_audio_track_name}",GROUP-ID="#{@default_audio_track_id}",AUTOSELECT=YES,DEFAULT=YES,URI="#{build_media_playlist_path(track)}"
         """
         |> String.trim()
 

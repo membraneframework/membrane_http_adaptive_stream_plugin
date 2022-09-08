@@ -3,6 +3,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   Struct representing a state of a single manifest track and functions to operate
   on it.
   """
+  use Bunch.Access
+
   require Membrane.HTTPAdaptiveStream.Manifest.SegmentAttribute
 
   alias Membrane.HTTPAdaptiveStream.Manifest
@@ -156,7 +158,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
 
   @spec default_segment_naming_fun(t) :: String.t()
   def default_segment_naming_fun(track) do
-    "#{track.content_type}_segment_#{track.next_segment_id}_#{track.track_name}"
+    Enum.join([track.content_type, "segment", track.next_segment_id, track.track_name], "_")
   end
 
   @doc """
