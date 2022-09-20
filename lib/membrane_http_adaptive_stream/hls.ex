@@ -114,7 +114,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   end
 
   defp build_media_playlist_path(%Track{} = track) do
-    [track.content_type, "_", track.track_name, ".m3u8"] |> Enum.join("")
+    track.track_name <> ".m3u8"
   end
 
   defp build_media_playlist_tag(%Track{} = track) do

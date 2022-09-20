@@ -25,6 +25,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       :segment_extension,
       :target_segment_duration,
       :target_partial_segment_duration,
+      :header_naming_fun,
       :segment_naming_fun
     ]
     defstruct @enforce_keys ++
@@ -39,6 +40,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     - `content_type` - either audio or video
     - `header_extension` - extension of the header file (for example .mp4 for CMAF)
     - `segment_extension` - extension of the segment files (for example .m4s for CMAF)
+    - `header_naming_fun` - a function that generates consequent header names for a given track
     - `segment_naming_fun` - a function that generates consequent segment names for a given track
     - `target_segment_duration` - expected duration of each segment
     - `target_partial_segment_duration` - expected duration of each partial segment, nil if not partial segments are expected
@@ -52,6 +54,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
             content_type: :audio | :video,
             header_extension: String.t(),
             segment_extension: String.t(),
+            header_naming_fun: (Track.t(), counter :: non_neg_integer() -> String.t()),
             segment_naming_fun: (Track.t() -> String.t()),
             target_partial_segment_duration: Membrane.Time.t() | nil,
             target_segment_duration: Membrane.Time.t(),
@@ -114,6 +117,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
           segment_extension: String.t(),
           target_partial_segment_duration: segment_duration_t | nil,
           target_segment_duration: segment_duration_t,
+          header_naming_fun: (t, counter :: non_neg_integer() -> String.t()),
           segment_naming_fun: (t -> String.t()),
           target_window_duration: Membrane.Time.t() | Ratio.t(),
           persist?: boolean,
@@ -151,7 +155,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       |> Map.put(:content_type, type)
 
     %__MODULE__{
-      header_name: header_name(config, 0)
+      header_name: config.header_naming_fun.(config, 0) <> config.header_extension
     }
     |> Map.merge(config)
   end
@@ -159,6 +163,11 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   @spec default_segment_naming_fun(t) :: String.t()
   def default_segment_naming_fun(track) do
     Enum.join([track.content_type, "segment", track.next_segment_id, track.track_name], "_")
+  end
+
+  @spec default_header_naming_fun(t, non_neg_integer) :: String.t()
+  def default_header_naming_fun(track, counter) do
+    Enum.join([track.content_type, "header", track.track_name, "part", "#{counter}"], "_")
   end
 
   @doc """
@@ -312,7 +321,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   """
   @spec discontinue(t()) :: {header_name :: String.t(), t()}
   def discontinue(%__MODULE__{finished?: false, discontinuities_counter: counter} = track) do
-    header = header_name(track, counter + 1)
+    header = track.header_naming_fun.(track, counter + 1) <> track.header_extension
     discontinuity = Manifest.SegmentAttribute.discontinuity(header, counter + 1)
 
     track =
@@ -324,10 +333,6 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   end
 
   def discontinue(%__MODULE__{finished?: true}), do: raise("Cannot discontinue finished track")
-
-  defp header_name(%{} = config, counter) do
-    "#{config.content_type}_header_#{config.track_name}_part#{counter}_#{config.header_extension}"
-  end
 
   @doc """
   Marks the track as finished. After this action, it won't be possible to add any new segments to the track.

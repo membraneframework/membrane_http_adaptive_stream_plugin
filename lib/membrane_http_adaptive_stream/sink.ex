@@ -149,6 +149,12 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
                 inserted into the playlist's manifest.
                 """
               ],
+              header_naming_fun: [
+                spec: (Manifest.Track.t(), counter :: non_neg_integer -> String.t()),
+                default: &Manifest.Track.default_header_naming_fun/2,
+                description:
+                  "A function that generates consequent header names for a given track."
+              ],
               segment_naming_fun: [
                 type: :function,
                 spec: (Manifest.Track.t() -> String.t()),
@@ -191,6 +197,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
             content_type: caps.content_type,
             header_extension: ".mp4",
             segment_extension: ".m4s",
+            header_naming_fun: state.header_naming_fun,
             segment_naming_fun: state.segment_naming_fun,
             target_window_duration: state.target_window_duration,
             target_segment_duration: track_options.segment_duration.target,

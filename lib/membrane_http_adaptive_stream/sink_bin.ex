@@ -71,6 +71,12 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
                 - In `:separate_av` audio and video tracks will be separate and synchronization will need to be sorted out by the player.
                 """
               ],
+              header_naming_fun: [
+                spec: (Manifest.Track.t(), counter :: non_neg_integer() -> String.t()),
+                default: &Manifest.Track.default_header_naming_fun/2,
+                description:
+                  "A function that generates consequent media header names for a given track"
+              ],
               segment_naming_fun: [
                 type: :function,
                 spec: (Manifest.Track.t() -> String.t()),
@@ -124,6 +130,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
           storage: opts.storage,
           target_window_duration: opts.target_window_duration,
           persist?: opts.persist?,
+          header_naming_fun: opts.header_naming_fun,
           segment_naming_fun: opts.segment_naming_fun,
           mode: opts.mode
         }
