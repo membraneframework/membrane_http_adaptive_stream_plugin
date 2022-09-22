@@ -14,8 +14,8 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   @typedoc """
   The identifier of a parent that the resource belongs to.
 
-  It can either be a main or secondary playlist (a track playlist).
-  In case of main playlist the identifier will be `:main`  while for tracks it can be an arbitrary value.
+  It can either be a master or secondary playlist (a track playlist).
+  In case of master playlist the identifier will be `:master`  while for tracks it can be an arbitrary value.
   """
   @type parent_t :: any()
 
@@ -84,7 +84,7 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   @doc """
   Stores serialized manifest files
   """
-  @spec store_manifests(t, [{id :: term() | :main, {name :: String.t(), content :: String.t()}}]) ::
+  @spec store_manifests(t, [{id :: :master | term(), {name :: String.t(), content :: String.t()}}]) ::
           {callback_result_t, t}
   def store_manifests(storage, manifests) do
     Bunch.Enum.try_reduce(manifests, storage, &store_manifest/2)

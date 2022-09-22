@@ -10,7 +10,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
   @type serialized_manifest_t :: {manifest_name :: String.t(), manifest_content :: String.t()}
 
   @type serialized_manifests_t :: %{
-          main_manifest: serialized_manifest_t(),
+          master_manifest: serialized_manifest_t(),
           manifest_per_track: %{
             optional(track_id :: any()) => serialized_manifest_t()
           }

@@ -230,8 +230,12 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       |> Map.put(:awaiting_discontinuity, nil)
       |> maybe_pop_stale_segments_and_headers()
 
+    metadata = %{
+      duration: duration
+    }
+
     changeset = %Changeset{
-      to_add: {if(partial?, do: :partial_segment, else: :segment), name, %{}},
+      to_add: {if(partial?, do: :partial_segment, else: :segment), name, metadata},
       to_remove: elements_to_remove
     }
 
@@ -267,7 +271,9 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     {%Segment{type: :partial} = last_segment, segments} = Qex.pop_back!(track.segments)
 
     metadata = %{
-      byte_offset: Enum.map(last_segment.parts, & &1.byte_size) |> Enum.sum()
+      byte_offset: Enum.map(last_segment.parts, & &1.byte_size) |> Enum.sum(),
+      duration: duration,
+      independent: independent?
     }
 
     last_segment = %Segment{

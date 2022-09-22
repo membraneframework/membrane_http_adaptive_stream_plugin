@@ -64,19 +64,19 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
       raise ArgumentError, message: "Multiple audio tracks are not currently supported."
     end
 
-    main_manifest = main_playlist_from_tracks(tracks_by_content, manifest)
+    master_manifest = master_playlist_from_tracks(tracks_by_content, manifest)
     manifest_per_track = playlists_per_track(tracks_by_content)
 
     %{
-      main_manifest: main_manifest,
+      master_manifest: master_manifest,
       manifest_per_track: manifest_per_track
     }
   end
 
-  defp main_playlist_from_tracks(tracks, manifest) do
-    main_manifest_name = "#{manifest.name}.m3u8"
+  defp master_playlist_from_tracks(tracks, manifest) do
+    master_manifest_name = "#{manifest.name}.m3u8"
 
-    main_playlist =
+    master_playlist =
       case tracks do
         %{muxed: muxed} -> build_master_playlist({nil, muxed})
         %{audio: [audio], video: videos} -> build_master_playlist({audio, videos})
@@ -84,7 +84,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
         %{video: videos} -> build_master_playlist({nil, videos})
       end
 
-    {main_manifest_name, main_playlist}
+    {master_manifest_name, master_playlist}
   end
 
   defp playlists_per_track(tracks) do

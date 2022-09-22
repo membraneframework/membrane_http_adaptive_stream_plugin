@@ -296,10 +296,10 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
 
     to_remove = Manifest.all_segments_per_track(manifest)
 
-    # cleanup all data of the secondary playlist and the main one
+    # cleanup all data of the secondary playlist and the master one
     cleanup = fn ->
       with {:ok, storage} <- Storage.clean_all_track_segments(storage, to_remove),
-           {:ok, _storage} <- Storage.cleanup(storage, :main, []) do
+           {:ok, _storage} <- Storage.cleanup(storage, :master, []) do
         :ok
       end
     end
@@ -444,10 +444,10 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   end
 
   defp serialize_and_store_manifest(manifest, storage) do
-    %{main_manifest: main_manifest, manifest_per_track: manifest_per_track} =
+    %{master_manifest: master_manifest, manifest_per_track: manifest_per_track} =
       Manifest.serialize(manifest)
 
-    manifest_files = [{:main, main_manifest} | Map.to_list(manifest_per_track)]
+    manifest_files = [{:master, master_manifest} | Map.to_list(manifest_per_track)]
 
     Storage.store_manifests(storage, manifest_files)
   end
