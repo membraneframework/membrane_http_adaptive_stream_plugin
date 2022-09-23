@@ -313,7 +313,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       |> maybe_pop_stale_segments_and_headers()
 
     changeset = %Changeset{
-      to_add: {:segment, last_segment.name, %{}},
+      to_add: {:segment, last_segment.name, %{duration: duration}},
       to_remove: elements_to_remove
     }
 
