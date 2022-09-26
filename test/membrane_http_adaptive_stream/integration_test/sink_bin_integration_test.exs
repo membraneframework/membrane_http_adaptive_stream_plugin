@@ -194,19 +194,18 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
 
       assert_receive {SendStorage, :store, %{type: :manifest, name: "index.m3u8"}}, 1_000
 
-      assert_receive {SendStorage, :store, %{type: :manifest, name: "video_track.m3u8" <> _}}
+      assert_receive {SendStorage, :store, %{type: :manifest, name: "video_track.m3u8"}}, 500
 
-      assert_receive {SendStorage, :store, %{type: :manifest, name: "audio_track.m3u8" <> _}}
+      assert_receive {SendStorage, :store, %{type: :manifest, name: "audio_track.m3u8"}}, 500
 
       segments =
-        for _i <- 1..19 do
+        for _i <- 1..21 do
           assert_receive {SendStorage, :store,
                           %{
                             name: "video_segment_0_video_track" <> _,
                             type: :partial_segment,
                             contents: segment
                           }}
-
           assert_receive {SendStorage, :store, %{type: :manifest, name: "video_track.m3u8" <> _}}
 
           segment
@@ -222,7 +221,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
                       }}
 
       segments =
-        for _i <- 1..3 do
+        for _i <- 1..4 do
           assert_receive {SendStorage, :store,
                           %{
                             name: "audio_segment_0_audio_track" <> _,
