@@ -355,7 +355,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
           }
         }
 
-        {changeset, manifest} = Manifest.finalize_last_segment(state.manifest, track_id)
+        {changeset, manifest} = Manifest.finalize_current_segment(state.manifest, track_id)
 
         {payload, changeset, manifest, []}
       else

@@ -199,10 +199,9 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
 
   defp serialize_segments(track) do
     supports_ll_hls? = Track.supports_partial_segments?(track)
-    total_segments = Enum.count(track.segments)
 
     track.segments
-    |> Enum.split(total_segments - @keep_latest_n_segment_parts)
+    |> Enum.split(-@keep_latest_n_segment_parts)
     |> then(fn {regular_segments, ll_segments} ->
       regular = Enum.flat_map(regular_segments, &do_serialize_segment(&1, false))
 

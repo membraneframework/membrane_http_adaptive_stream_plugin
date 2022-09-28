@@ -28,7 +28,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
   defstruct @enforce_keys ++ [tracks: %{}]
 
   @doc """
-  Adds a track to the manifest.
+  Add a track to the manifest.
 
   Returns the name under which the header file should be stored.
   """
@@ -39,6 +39,9 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
     {track.header_name, manifest}
   end
 
+  @doc """
+  Add a new regular segment to the track with given `track_id`.
+  """
   @spec add_segment(
           t,
           track_id :: Track.id_t(),
@@ -55,13 +58,13 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
   end
 
   @doc """
-  Finalizes last segment of given track when serving partial segments.
-  """
-  @spec finalize_last_segment(t(), Track.id_t()) :: {Track.Changeset.t(), t()}
-  def finalize_last_segment(manifest, track_id) do
-    get_and_update_in(manifest, [:tracks, track_id], &Track.finalize_last_segment/1)
-  end
+  Add a new partial segment to the track with given `track_id`.
 
+  Partial segments gets appended to the latest regular segment
+  until `finalize_current_segment/2` gets called. After that, in order to
+  add new partial segments one must add an incomplete segment (a regular segment with
+  and option of `complete?` set to false).
+  """
   @spec add_partial_segment(
           t(),
           Track.id_t(),
@@ -76,6 +79,14 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
       [:tracks, track_id],
       &Track.add_partial_segment(&1, independent?, duration, byte_size)
     )
+  end
+
+  @doc """
+  Finalizes current segment of given track when serving partial segments.
+  """
+  @spec finalize_current_segment(t(), Track.id_t()) :: {Track.Changeset.t(), t()}
+  def finalize_current_segment(manifest, track_id) do
+    get_and_update_in(manifest, [:tracks, track_id], &Track.finalize_current_segment/1)
   end
 
   @spec serialize(t) :: serialized_manifests_t()
@@ -117,6 +128,9 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
     %__MODULE__{manifest | tracks: tracks}
   end
 
+  @doc """
+  Returns all segments grouped by the track id.
+  """
   @spec all_segments_per_track(t()) :: %{
           optional(track_id :: term()) => [segment_name :: String.t()]
         }

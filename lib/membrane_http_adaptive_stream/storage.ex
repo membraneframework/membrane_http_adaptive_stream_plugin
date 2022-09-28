@@ -12,7 +12,7 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   @type callback_result_t :: :ok | {:error, reason :: any}
 
   @typedoc """
-  The identifier of a parent that the resource belongs to.
+  The identifier of a parent that the resource belongs to (the track identifier).
 
   It can either be a master or secondary playlist (a track playlist).
   In case of master playlist the identifier will be `:master`  while for tracks it can be an arbitrary value.
@@ -188,6 +188,9 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
     |> then(&{&1, storage})
   end
 
+  @doc """
+  Removes all segments grouped by track.
+  """
   @spec clean_all_track_segments(t(), %{(id :: any()) => [String.t()]}) :: {callback_result_t, t}
   def clean_all_track_segments(storage, segments_per_track) do
     Bunch.Enum.try_reduce(segments_per_track, storage, fn {track_id, segments}, storage ->

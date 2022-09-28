@@ -37,6 +37,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     @typedoc """
     Track configuration consists of the following fields:
     - `id` - identifies the track, will be serialized and attached to names of manifests, headers and segments
+    - `track_name` - the name of the track, determines how manifest files will be named 
     - `content_type` - either audio or video
     - `header_extension` - extension of the header file (for example .mp4 for CMAF)
     - `segment_extension` - extension of the segment files (for example .m4s for CMAF)
@@ -56,8 +57,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
             segment_extension: String.t(),
             header_naming_fun: (Track.t(), counter :: non_neg_integer() -> String.t()),
             segment_naming_fun: (Track.t() -> String.t()),
-            target_partial_segment_duration: Membrane.Time.t() | nil,
             target_segment_duration: Membrane.Time.t(),
+            target_partial_segment_duration: Membrane.Time.t() | nil,
             target_window_duration: Membrane.Time.t(),
             persist?: boolean
           }
@@ -100,7 +101,6 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   The struct representing a track.
 
   Consists of all the fields from `Config.t` and also:
-  - `id_string` - serialized `id`
   - `header_name` - name of the header file
   - `current_seq_num` - the number to identify the next segment
   - `current_discontinuity_seq_num` - number of current discontinuity sequence.
@@ -109,6 +109,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   - `stale_headers` - stale headers' names, kept empty unless `persist?` is set to true
   - `finished?` - determines whether the track is finished
   - `window_duration` - current window duration
+  - `discontinuities_counter` - the number of discontinuities that happened so far 
+  - `next_segment_id` - the sequence number of the next segment that will be generated
   """
   @type t :: %__MODULE__{
           id: id_t,
@@ -251,11 +253,11 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     do: raise("Cannot add new segments to finished track")
 
   @doc """
-  Append a partial segment to the latest segment.
+  Append a partial segment to the current incomplete segment.
 
-  The last segment is supposed to be of type `:partial`, meaning that it is still in a phase
+  The current segment is supposed to be of type `:partial`, meaning that it is still in a phase
   of gathering partial segments before being finalized into a full segment. There can only be
-  a single such segment.
+  a single such segment and it must be the last one.
   """
   @spec add_partial_segment(t, boolean, segment_duration_t, segment_byte_size_t) ::
           {Changeset.t(), t()}
@@ -294,9 +296,22 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     {changeset, Map.replace(track, :segments, Qex.push(segments, last_segment))}
   end
 
-  @spec finalize_last_segment(t()) :: {Changeset.t(), t}
-  def finalize_last_segment(%__MODULE__{finished?: false} = track) do
-    {%Segment{parts: parts} = last_segment, segments} = Qex.pop_back!(track.segments)
+  @doc """
+  Finalize current segment.
+
+  With low latency, a regular segments gets created gradually. Each partial
+  segment gets appended to a regular one, if all parts are collected then
+  the regular segment is said to be complete.
+
+  This function aims to finalize the current (latest) segment
+  that is still incomplete so it can live on its own and so a new segment can
+  get started.
+
+  """
+  @spec finalize_current_segment(t()) :: {Changeset.t(), t}
+  def finalize_current_segment(%__MODULE__{finished?: false} = track) do
+    {%Segment{type: :partial, parts: parts} = last_segment, segments} =
+      Qex.pop_back!(track.segments)
 
     {byte_size, duration} =
       Enum.reduce(parts, {0, 0}, fn part, {size, duration} ->
@@ -327,6 +342,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
 
   @doc """
   Discontinue the track, indicating that parameters of the stream have changed.
+
   New header has to be stored under the returned filename.
   For details on discontinuity, please refer to [RFC 8216](https://datatracker.ietf.org/doc/html/rfc8216).
   """
@@ -355,7 +371,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
 
   @doc """
   Return new track with all stale segments restored, resulting in playback of historic data.
-  Only works with 'persist?' option enabled
+  Only works with 'persist?' option enabled.
   """
   @spec from_beginning(t()) :: t()
   def from_beginning(%__MODULE__{persist?: true} = track) do

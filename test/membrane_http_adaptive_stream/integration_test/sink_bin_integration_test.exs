@@ -51,8 +51,8 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
     use Membrane.Pipeline
 
     alias Membrane.HTTPAdaptiveStream
+    alias Membrane.HTTPAdaptiveStream.Sink.SegmentDuration
     alias Membrane.HTTPAdaptiveStream.Storages.FileStorage
-    alias Membrane.MP4.Muxer.CMAF.SegmentDurationRange, as: Range
     alias Membrane.Time
 
     @impl true
@@ -106,9 +106,9 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
             options: [
               encoding: encoding,
               track_name: track_name,
-              muxer_segment_duration_range: segment_duration_range_for(encoding),
-              muxer_partial_segment_duration_range:
-                if(partial_segments, do: partial_segment_duration_range_for(encoding), else: nil)
+              segment_duration: segment_duration_for(encoding),
+              partial_segment_duration:
+                if(partial_segments, do: partial_segment_duration_for(encoding), else: nil)
             ]
           )
           |> to(:sink_bin)
@@ -117,17 +117,17 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
       {{:ok, spec: %ParentSpec{children: children, links: links}, playback: :playing}, %{}}
     end
 
-    defp segment_duration_range_for(:AAC),
-      do: Range.new(Time.milliseconds(2000), Time.milliseconds(2000))
+    defp segment_duration_for(:AAC),
+      do: SegmentDuration.new(Time.milliseconds(2000), Time.milliseconds(2000))
 
-    defp segment_duration_range_for(:H264),
-      do: Range.new(Time.milliseconds(1500), Time.milliseconds(2000))
+    defp segment_duration_for(:H264),
+      do: SegmentDuration.new(Time.milliseconds(1500), Time.milliseconds(2000))
 
-    defp partial_segment_duration_range_for(:AAC),
-      do: Range.new(Time.milliseconds(250), Time.milliseconds(500))
+    defp partial_segment_duration_for(:AAC),
+      do: SegmentDuration.new(Time.milliseconds(250), Time.milliseconds(500))
 
-    defp partial_segment_duration_range_for(:H264),
-      do: Range.new(Time.milliseconds(250), Time.milliseconds(500))
+    defp partial_segment_duration_for(:H264),
+      do: SegmentDuration.new(Time.milliseconds(250), Time.milliseconds(500))
   end
 
   test "check if fixture creation is disabled" do

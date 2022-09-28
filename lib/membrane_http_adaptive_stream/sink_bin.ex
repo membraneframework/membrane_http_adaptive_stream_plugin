@@ -104,18 +104,18 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
         It must not contain any URI reserved characters
         """
       ],
-      muxer_segment_duration_range: [
-        spec: CMAF.SegmentDurationRange.t(),
+      segment_duration: [
+        spec: Sink.SegmentDuration.t(),
         description: """
-        The target duration range of regular segments produced by the muxer.
+        The segment duration range  of the regular segments.
         """
       ],
-      muxer_partial_segment_duration_range: [
-        spec: CMAF.SegmentDurationRange.t() | nil,
+      partial_segment_duration: [
+        spec: Sink.SegmentDuration.t() | nil,
         default: nil,
         description: """
-        The target duration range of partial segments produced by the muxer.
-        If not set then the muxer won't produce any partial segments.
+        The segment duration range  of the partial segments.
+        If not set then the bin won't produce any partial segments.
         """
       ]
     ]
@@ -149,23 +149,19 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   defp track_options(context) do
     %{
       track_name: track_name,
-      muxer_segment_duration_range: muxer_segment_duration_range,
-      muxer_partial_segment_duration_range: muxer_partial_segment_duration_range
+      segment_duration: segment_duration,
+      partial_segment_duration: partial_segment_duration
     } = context.options
 
     target_partial_segment_duration =
-      case muxer_partial_segment_duration_range do
+      case partial_segment_duration do
         nil -> nil
-        range -> range.target
+        duration -> duration.target
       end
 
     [
       track_name: track_name,
-      segment_duration:
-        Sink.SegmentDuration.new(
-          muxer_segment_duration_range.min,
-          muxer_segment_duration_range.target
-        ),
+      segment_duration: segment_duration,
       target_partial_segment_duration: target_partial_segment_duration
     ]
   end
@@ -174,13 +170,13 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   def handle_pad_added(Pad.ref(:input, ref) = pad, context, state) do
     %{
       encoding: encoding,
-      muxer_segment_duration_range: muxer_segment_duration_range,
-      muxer_partial_segment_duration_range: muxer_partial_segment_duration_range
+      segment_duration: segment_duration,
+      partial_segment_duration: partial_segment_duration
     } = context.options
 
     muxer = %MP4.Muxer.CMAF{
-      segment_duration_range: muxer_segment_duration_range,
-      partial_segment_duration_range: muxer_partial_segment_duration_range
+      segment_duration_range: convert_segment_duration_for_muxer(segment_duration),
+      partial_segment_duration_range: convert_segment_duration_for_muxer(partial_segment_duration)
     }
 
     payloader = Map.fetch!(@payloaders, encoding)
@@ -319,4 +315,9 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
       Enum.count(context.pads, fn {_pad, metadata} ->
         metadata.options.encoding == :AAC
       end)
+
+  defp convert_segment_duration_for_muxer(nil), do: nil
+
+  defp convert_segment_duration_for_muxer(%Sink.SegmentDuration{min: min, target: target}),
+    do: %CMAF.SegmentDurationRange{min: min, target: target}
 end
