@@ -11,6 +11,14 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   @type state_t :: any
   @type callback_result_t :: :ok | {:error, reason :: any}
 
+  @type segment_metadata_t :: %{duration: Membrane.Time.t()}
+  @type partial_segment_metadata :: %{
+          duration: Membrane.Time.t(),
+          independent: boolean(),
+          byte_offset: non_neg_integer()
+        }
+  @type metadata_t :: segment_metadata_t() | partial_segment_metadata() | %{}
+
   @typedoc """
   The identifier of a parent that the resource belongs to (the track identifier).
 
@@ -33,7 +41,7 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
               parent_id :: parent_t(),
               resource_name :: String.t(),
               content :: String.t() | binary,
-              metadata :: map(),
+              metadata :: metadata_t(),
               context :: %{
                 type: :manifest | :header | :segment | :partial_segment,
                 mode: :text | :binary
