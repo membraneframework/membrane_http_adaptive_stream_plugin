@@ -374,9 +374,8 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
           Manifest.add_segment(
             manifest,
             track_id,
-            0,
-            0,
-            [partial?: true] ++ creation_time(state.mode)
+            [complete?: false],
+            creation_time(state.mode)
           )
 
         manifest
@@ -411,8 +410,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
       Manifest.add_segment(
         state.manifest,
         track_id,
-        duration,
-        byte_size(buffer.payload),
+        [duration: duration, byte_size: byte_size(buffer.payload)],
         creation_time(state.mode)
       )
 

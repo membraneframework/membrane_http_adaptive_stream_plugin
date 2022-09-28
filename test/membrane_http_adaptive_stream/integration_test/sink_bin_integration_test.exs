@@ -206,6 +206,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
                             type: :partial_segment,
                             contents: segment
                           }}
+
           assert_receive {SendStorage, :store, %{type: :manifest, name: "video_track.m3u8" <> _}}
 
           segment

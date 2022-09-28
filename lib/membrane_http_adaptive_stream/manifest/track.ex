@@ -141,6 +141,12 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
 
   @type segment_byte_size_t :: non_neg_integer()
 
+  @type segment_opt_t ::
+          {:name, String.t()}
+          | {:complete?, boolean()}
+          | {:duration, segment_duration_t()}
+          | {:byte_size, segment_byte_size_t()}
+
   @spec new(Config.t()) :: t
   def new(%Config{} = config) do
     type =
@@ -183,27 +189,26 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   """
   @spec add_segment(
           t,
-          segment_duration_t,
-          segment_byte_size_t,
+          list(segment_opt_t()),
           list(Manifest.SegmentAttribute.t())
         ) ::
           {Changeset.t(), t}
-  def add_segment(track, duration, byte_size, attributes \\ [])
+  def add_segment(track, opts, attributes \\ [])
 
-  def add_segment(%__MODULE__{finished?: false} = track, duration, byte_size, attributes) do
+  def add_segment(%__MODULE__{finished?: false} = track, opts, attributes) do
     use Ratio, comparison: true
 
-    {name, attributes} =
-      Keyword.pop(attributes, :name, track.segment_naming_fun.(track) <> track.segment_extension)
-
-    {partial?, attributes} = Keyword.pop(attributes, :partial?, false)
+    name = Keyword.get(opts, :name, track.segment_naming_fun.(track) <> track.segment_extension)
+    duration = Keyword.get(opts, :duration, 0)
+    byte_size = Keyword.get(opts, :byte_size, 0)
+    complete? = Keyword.get(opts, :complete?, true)
 
     attributes =
       if is_nil(track.awaiting_discontinuity),
         do: attributes,
         else: [track.awaiting_discontinuity | attributes]
 
-    segment_type = if(partial?, do: :partial, else: :full)
+    segment_type = if(complete?, do: :full, else: :partial)
 
     {elements_to_remove, track} =
       track
@@ -219,12 +224,12 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       )
       |> Map.update!(:next_segment_id, &(&1 + 1))
       |> then(fn track ->
-        if partial? do
-          track
-        else
+        if complete? do
           track
           |> Map.update!(:window_duration, &(&1 + duration))
           |> Map.update!(:target_segment_duration, &if(&1 > duration, do: &1, else: duration))
+        else
+          track
         end
       end)
       |> Map.put(:awaiting_discontinuity, nil)
@@ -235,14 +240,14 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     }
 
     changeset = %Changeset{
-      to_add: {if(partial?, do: :partial_segment, else: :segment), name, metadata},
+      to_add: {if(complete?, do: :segment, else: :partial_segment), name, metadata},
       to_remove: elements_to_remove
     }
 
     {changeset, track}
   end
 
-  def add_segment(%__MODULE__{finished?: true} = _track, _duration, _byte_size, _attributes),
+  def add_segment(%__MODULE__{finished?: true} = _track, _opts, _attributes),
     do: raise("Cannot add new segments to finished track")
 
   @doc """

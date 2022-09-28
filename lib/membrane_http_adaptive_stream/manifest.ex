@@ -42,16 +42,15 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
   @spec add_segment(
           t,
           track_id :: Track.id_t(),
-          Track.segment_duration_t(),
-          Track.segment_byte_size_t(),
+          list(Track.segment_opt_t()),
           list(SegmentAttribute.t())
         ) ::
           {Track.Changeset.t(), t}
-  def add_segment(%__MODULE__{} = manifest, track_id, duration, byte_size, attributes \\ []) do
+  def add_segment(%__MODULE__{} = manifest, track_id, opts, attributes \\ []) do
     get_and_update_in(
       manifest,
       [:tracks, track_id],
-      &Track.add_segment(&1, duration, byte_size, attributes)
+      &Track.add_segment(&1, opts, attributes)
     )
   end
 
@@ -116,15 +115,6 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
   def from_beginning(%__MODULE__{} = manifest) do
     tracks = Bunch.Map.map_values(manifest.tracks, &Track.from_beginning/1)
     %__MODULE__{manifest | tracks: tracks}
-  end
-
-  @doc """
-  Returns stale and current segments' names from all tracks
-  """
-  @spec all_segments(t) :: [segment_name :: String.t()]
-  def all_segments(%__MODULE__{} = manifest) do
-    # here we should just group by track instead of flat mapping
-    manifest.tracks |> Map.values() |> Enum.flat_map(&Track.all_segments/1)
   end
 
   @spec all_segments_per_track(t()) :: %{

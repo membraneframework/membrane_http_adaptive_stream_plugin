@@ -25,6 +25,8 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   @default_audio_track_id "audio_default_id"
   @default_audio_track_name "audio_default_name"
 
+  @keep_latest_n_segment_parts 4
+
   defmodule SegmentAttribute do
     @moduledoc """
     Implementation of `Membrane.HTTPAdaptiveStream.Manifest.SegmentAttribute` behaviour for HTTP Live Streaming
@@ -197,18 +199,25 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
 
   defp serialize_segments(track) do
     supports_ll_hls? = Track.supports_partial_segments?(track)
+    total_segments = Enum.count(track.segments)
 
-    [track.segments, Enum.count(track.segments)..1]
-    |> Enum.zip()
-    |> Enum.flat_map(&do_serialize_segment(&1, supports_ll_hls?))
+    track.segments
+    |> Enum.split(total_segments - @keep_latest_n_segment_parts)
+    |> then(fn {regular_segments, ll_segments} ->
+      regular = Enum.flat_map(regular_segments, &do_serialize_segment(&1, false))
+
+      ll = Enum.flat_map(ll_segments, &do_serialize_segment(&1, supports_ll_hls?))
+
+      regular ++ ll
+    end)
     |> Enum.join("\n")
   end
 
-  defp do_serialize_segment({%Segment{} = segment, idx}, supports_ll_hls?) do
+  defp do_serialize_segment(%Segment{} = segment, supports_ll_hls?) do
     [
       # serialize partial segments just for the last 2 live segments, otherwise just keep the regular segments
-      if(supports_ll_hls? and idx <= 4,
-        do: serialize_partial_segments(segment, idx == 1),
+      if(supports_ll_hls?,
+        do: serialize_partial_segments(segment),
         else: []
       ),
       serialize_regular_segment(segment)
@@ -228,7 +237,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
       ]
   end
 
-  defp serialize_partial_segments(segment, _is_last) do
+  defp serialize_partial_segments(segment) do
     segment.parts
     |> Enum.map_reduce(0, fn part, total_bytes ->
       time = Ratio.to_float(part.duration / Time.second())
