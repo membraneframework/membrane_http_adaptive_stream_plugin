@@ -14,14 +14,11 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
   alias Membrane.{MP4, ParentSpec, Time}
   alias Membrane.HTTPAdaptiveStream.{Manifest, Sink, Storage}
+  alias Membrane.MP4.Muxer.CMAF
 
   @payloaders %{H264: MP4.Payloader.H264, AAC: MP4.Payloader.AAC}
 
-  def_options muxer_segment_duration: [
-                spec: pos_integer,
-                default: 2 |> Time.seconds()
-              ],
-              manifest_name: [
+  def_options manifest_name: [
                 spec: String.t(),
                 default: "index",
                 description: "Name of the main manifest file"
@@ -56,12 +53,12 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
                 playback finishes, they are put back into the manifest.
                 """
               ],
-              target_segment_duration: [
-                spec: pos_integer,
-                default: 0,
+              mode: [
+                spec: :live | :vod,
+                default: :vod,
                 description: """
-                Expected length of each segment. Setting it is not necessary, but
-                may help players achieve better UX.
+                Tells if the session is live or a VOD type of broadcast. It can influence type of metadata
+                inserted into the playlist's manifest.
                 """
               ],
               hls_mode: [
@@ -73,6 +70,12 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
                 - In `:muxed_av` audio will be added to each video rendition, creating CMAF segments that contain both audio and video.
                 - In `:separate_av` audio and video tracks will be separate and synchronization will need to be sorted out by the player.
                 """
+              ],
+              header_naming_fun: [
+                spec: (Manifest.Track.t(), counter :: non_neg_integer() -> String.t()),
+                default: &Manifest.Track.default_header_naming_fun/2,
+                description:
+                  "A function that generates consequent media header names for a given track"
               ],
               segment_naming_fun: [
                 type: :function,
@@ -100,6 +103,20 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
         Name that will be used to name the media playlist for the given track, as well as its header and segments files.
         It must not contain any URI reserved characters
         """
+      ],
+      segment_duration: [
+        spec: Sink.SegmentDuration.t(),
+        description: """
+        The segment duration range  of the regular segments.
+        """
+      ],
+      partial_segment_duration: [
+        spec: Sink.SegmentDuration.t() | nil,
+        default: nil,
+        description: """
+        The segment duration range  of the partial segments.
+        If not set then the bin won't produce any partial segments.
+        """
       ]
     ]
 
@@ -113,14 +130,14 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
           storage: opts.storage,
           target_window_duration: opts.target_window_duration,
           persist?: opts.persist?,
-          target_segment_duration: opts.target_segment_duration,
-          segment_naming_fun: opts.segment_naming_fun
+          header_naming_fun: opts.header_naming_fun,
+          segment_naming_fun: opts.segment_naming_fun,
+          mode: opts.mode
         }
       ] ++
         if(opts.hls_mode == :muxed_av, do: [audio_tee: Membrane.Tee.Parallel], else: [])
 
     state = %{
-      muxer_segment_duration: opts.muxer_segment_duration,
       mode: opts.hls_mode,
       streams_to_start: 0,
       streams_to_end: 0
@@ -129,13 +146,40 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
     {{:ok, spec: %ParentSpec{children: children}}, state}
   end
 
+  defp track_options(context) do
+    %{
+      track_name: track_name,
+      segment_duration: segment_duration,
+      partial_segment_duration: partial_segment_duration
+    } = context.options
+
+    target_partial_segment_duration =
+      case partial_segment_duration do
+        nil -> nil
+        duration -> duration.target
+      end
+
+    [
+      track_name: track_name,
+      segment_duration: segment_duration,
+      target_partial_segment_duration: target_partial_segment_duration
+    ]
+  end
+
   @impl true
   def handle_pad_added(Pad.ref(:input, ref) = pad, context, state) do
-    muxer = %MP4.Muxer.CMAF{segment_duration: state.muxer_segment_duration}
+    %{
+      encoding: encoding,
+      segment_duration: segment_duration,
+      partial_segment_duration: partial_segment_duration
+    } = context.options
 
-    encoding = context.options[:encoding]
+    muxer = %MP4.Muxer.CMAF{
+      segment_duration_range: convert_segment_duration_for_muxer(segment_duration),
+      partial_segment_duration_range: convert_segment_duration_for_muxer(partial_segment_duration)
+    }
+
     payloader = Map.fetch!(@payloaders, encoding)
-    track_name = context.options[:track_name]
 
     spec =
       cond do
@@ -145,7 +189,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
               link_bin_input(pad)
               |> to({:payloader, ref}, payloader)
               |> to({:cmaf_muxer, ref}, muxer)
-              |> via_in(pad, options: [track_name: track_name])
+              |> via_in(pad, options: track_options(context))
               |> to(:sink)
             ]
           }
@@ -163,7 +207,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
               link(:audio_tee)
               |> to({:cmaf_muxer, ref}),
               link({:cmaf_muxer, ref})
-              |> via_in(pad, options: [track_name: track_name])
+              |> via_in(pad, options: track_options(context))
               |> to(:sink)
             ]
           }
@@ -271,4 +315,9 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
       Enum.count(context.pads, fn {_pad, metadata} ->
         metadata.options.encoding == :AAC
       end)
+
+  defp convert_segment_duration_for_muxer(nil), do: nil
+
+  defp convert_segment_duration_for_muxer(%Sink.SegmentDuration{min: min, target: target}),
+    do: %CMAF.SegmentDurationRange{min: min, target: target}
 end

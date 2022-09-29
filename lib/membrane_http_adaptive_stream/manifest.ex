@@ -3,9 +3,20 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
   Behaviour for manifest serialization.
   """
   use Bunch.Access
+
+  alias __MODULE__.SegmentAttribute
   alias __MODULE__.Track
 
-  @callback serialize(t) :: [{manifest_name :: String.t(), manifest_content :: String.t()}]
+  @type serialized_manifest_t :: {manifest_name :: String.t(), manifest_content :: String.t()}
+
+  @type serialized_manifests_t :: %{
+          master_manifest: serialized_manifest_t(),
+          manifest_per_track: %{
+            optional(track_id :: any()) => serialized_manifest_t()
+          }
+        }
+
+  @callback serialize(t) :: serialized_manifests_t()
 
   @type t :: %__MODULE__{
           name: String.t(),
@@ -17,7 +28,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
   defstruct @enforce_keys ++ [tracks: %{}]
 
   @doc """
-  Adds a track to the manifest.
+  Add a track to the manifest.
 
   Returns the name under which the header file should be stored.
   """
@@ -28,23 +39,57 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
     {track.header_name, manifest}
   end
 
+  @doc """
+  Add a new regular segment to the track with given `track_id`.
+  """
   @spec add_segment(
           t,
           track_id :: Track.id_t(),
-          Track.segment_duration_t(),
-          Track.segment_byte_size_t(),
-          list(__MODULE__.SegmentAttribute.t())
+          list(Track.segment_opt_t()),
+          list(SegmentAttribute.t())
         ) ::
-          {{to_add_name :: String.t(), to_remove_names :: Track.to_remove_names_t()}, t}
-  def add_segment(%__MODULE__{} = manifest, track_id, duration, byte_size, attributes \\ []) do
+          {Track.Changeset.t(), t}
+  def add_segment(%__MODULE__{} = manifest, track_id, opts, attributes \\ []) do
     get_and_update_in(
       manifest,
       [:tracks, track_id],
-      &Track.add_segment(&1, duration, byte_size, attributes)
+      &Track.add_segment(&1, opts, attributes)
     )
   end
 
-  @spec serialize(t) :: [{name :: String.t(), manifest :: String.t()}]
+  @doc """
+  Add a new partial segment to the track with given `track_id`.
+
+  Partial segments gets appended to the latest regular segment
+  until `finalize_current_segment/2` gets called. After that, in order to
+  add new partial segments one must add an incomplete segment (a regular segment with
+  and option of `complete?` set to false).
+  """
+  @spec add_partial_segment(
+          t(),
+          Track.id_t(),
+          boolean(),
+          Track.segment_duration_t(),
+          Track.segment_byte_size_t()
+        ) ::
+          {Track.Changeset.t(), t}
+  def add_partial_segment(manifest, track_id, independent?, duration, byte_size) do
+    get_and_update_in(
+      manifest,
+      [:tracks, track_id],
+      &Track.add_partial_segment(&1, independent?, duration, byte_size)
+    )
+  end
+
+  @doc """
+  Finalizes current segment of given track when serving partial segments.
+  """
+  @spec finalize_current_segment(t(), Track.id_t()) :: {Track.Changeset.t(), t()}
+  def finalize_current_segment(manifest, track_id) do
+    get_and_update_in(manifest, [:tracks, track_id], &Track.finalize_current_segment/1)
+  end
+
+  @spec serialize(t) :: serialized_manifests_t()
   def serialize(%__MODULE__{module: module} = manifest) do
     module.serialize(manifest)
   end
@@ -84,10 +129,12 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
   end
 
   @doc """
-  Returns stale and current segments' names from all tracks
+  Returns all segments grouped by the track id.
   """
-  @spec all_segments(t) :: [[track_name :: String.t()]]
-  def all_segments(%__MODULE__{} = manifest) do
-    manifest.tracks |> Map.values() |> Enum.flat_map(&Track.all_segments/1)
+  @spec all_segments_per_track(t()) :: %{
+          optional(track_id :: term()) => [segment_name :: String.t()]
+        }
+  def all_segments_per_track(%__MODULE__{} = manifest) do
+    Map.new(manifest.tracks, fn {track_id, track} -> {track_id, Track.all_segments(track)} end)
   end
 end

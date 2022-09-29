@@ -119,10 +119,10 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
   test "audio and multiple video tracks" do
     pipeline =
       mk_pipeline([
-        {:video, "track_0"},
+        {:video, "video_0"},
         {:audio, "audio"},
-        {:video, "track_1"},
-        {:video, "track_2"}
+        {:video, "video_1"},
+        {:video, "video_2"}
       ])
 
     assert_receive {SendStorage, :store, %{type: :header, name: "audio_header" <> _}}
@@ -138,44 +138,44 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
     refute_receive {SendStorage, _, _}
     assert_pipeline_notified(pipeline, :sink, {:track_playable, "audio"})
 
-    send_buf(pipeline, "track_1", 3)
+    send_buf(pipeline, "video_1", 5)
     assert_receive {SendStorage, :store, %{type: :manifest, name: "index.m3u8"}}
-    assert_receive {SendStorage, :store, %{type: :manifest, name: "video_track_1" <> _}}
-    assert_receive {SendStorage, :store, %{name: "video_segment_0_track_1" <> _}}
+    assert_receive {SendStorage, :store, %{type: :manifest, name: "video_1" <> _}}
+    assert_receive {SendStorage, :store, %{name: "video_segment_0_video_1" <> _}}
     refute_receive {SendStorage, _, _}
-    assert_pipeline_notified(pipeline, :sink, {:track_playable, "track_1"})
+    assert_pipeline_notified(pipeline, :sink, {:track_playable, "video_1"})
 
     send_buf(pipeline, "audio", 4)
     assert_receive {SendStorage, :store, %{type: :manifest, name: "audio" <> _}}
     assert_receive {SendStorage, :store, %{name: "audio_segment_1_" <> _}}
     refute_receive {SendStorage, _, _}
 
-    send_buf(pipeline, "track_2", 5)
+    send_buf(pipeline, "video_2", 5)
     assert_receive {SendStorage, :store, %{type: :manifest, name: "index.m3u8"}}
-    assert_receive {SendStorage, :store, %{type: :manifest, name: "video_track_2" <> _}}
-    assert_receive {SendStorage, :store, %{name: "video_segment_0_track_2" <> _}}
+    assert_receive {SendStorage, :store, %{type: :manifest, name: "video_2" <> _}}
+    assert_receive {SendStorage, :store, %{name: "video_segment_0_video_2" <> _}}
     refute_receive {SendStorage, _, _}
-    assert_pipeline_notified(pipeline, :sink, {:track_playable, "track_2"})
+    assert_pipeline_notified(pipeline, :sink, {:track_playable, "video_2"})
 
-    send_buf(pipeline, "track_2", 6)
+    send_buf(pipeline, "video_2", 6)
     assert_receive {SendStorage, :store, %{type: :manifest, name: "index.m3u8"}}
-    assert_receive {SendStorage, :store, %{type: :manifest, name: "video_track_2" <> _}}
-    assert_receive {SendStorage, :store, %{name: "video_segment_1_track_2" <> _}}
-    assert_receive {SendStorage, :remove, %{name: "video_segment_0_track_2" <> _}}
+    assert_receive {SendStorage, :store, %{type: :manifest, name: "video_2" <> _}}
+    assert_receive {SendStorage, :store, %{name: "video_segment_1_video_2" <> _}}
+    assert_receive {SendStorage, :remove, %{name: "video_segment_0_video_2" <> _}}
     refute_receive {SendStorage, _, _}
 
-    send_buf(pipeline, "track_0", 2)
+    send_buf(pipeline, "video_0", 2)
     assert_receive {SendStorage, :store, %{type: :manifest, name: "index.m3u8"}}
-    assert_receive {SendStorage, :store, %{type: :manifest, name: "video_track_0" <> _}}
-    assert_receive {SendStorage, :store, %{name: "video_segment_0_track_0" <> _}}
+    assert_receive {SendStorage, :store, %{type: :manifest, name: "video_0" <> _}}
+    assert_receive {SendStorage, :store, %{name: "video_segment_0_video_0" <> _}}
     refute_receive {SendStorage, _, _}
-    assert_pipeline_notified(pipeline, :sink, {:track_playable, "track_0"})
+    assert_pipeline_notified(pipeline, :sink, {:track_playable, "video_0"})
 
-    send_buf(pipeline, "track_1", 5)
+    send_buf(pipeline, "video_1", 6)
     assert_receive {SendStorage, :store, %{type: :manifest, name: "index.m3u8"}}
-    assert_receive {SendStorage, :store, %{type: :manifest, name: "video_track_1" <> _}}
-    assert_receive {SendStorage, :store, %{name: "video_segment_1_track_1" <> _}}
-    assert_receive {SendStorage, :remove, %{name: "video_segment_0_track_1" <> _}}
+    assert_receive {SendStorage, :store, %{type: :manifest, name: "video_1" <> _}}
+    assert_receive {SendStorage, :store, %{name: "video_segment_1_video_1" <> _}}
+    assert_receive {SendStorage, :remove, %{name: "video_segment_0_video_1" <> _}}
     refute_receive {SendStorage, _, _}
 
     :ok = Testing.Pipeline.execute_actions(pipeline, playback: :stopped)
@@ -191,20 +191,24 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
         {{:source, source_id}, %Source{content_type: content_type, source_id: source_id}}
       end)
 
+    segment_duration = Sink.SegmentDuration.new(Time.seconds(5))
+
     children =
       [
         sink: %Sink{
           manifest_module: Membrane.HTTPAdaptiveStream.HLS,
           storage: %SendStorage{destination: self()},
           target_window_duration: Time.seconds(5),
-          target_segment_duration: Time.seconds(5)
+          mode: :vod
         }
       ] ++ sources
 
     links =
       Enum.map(sources, fn {{:source, source_id}, _config} ->
         link({:source, source_id})
-        |> via_in(Pad.ref(:input, source_id), options: [track_name: source_id])
+        |> via_in(Pad.ref(:input, source_id),
+          options: [track_name: source_id, segment_duration: segment_duration]
+        )
         |> to(:sink)
       end)
 
@@ -214,7 +218,11 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
   end
 
   defp send_buf(pipeline, source_id, duration) do
-    buffer = %Buffer{payload: "test_payload", metadata: %{duration: Time.seconds(duration)}}
+    buffer = %Buffer{
+      payload: "test_payload",
+      metadata: %{duration: Time.seconds(duration), independent?: true}
+    }
+
     Testing.Pipeline.message_child(pipeline, {:source, source_id}, buffer)
   end
 end
