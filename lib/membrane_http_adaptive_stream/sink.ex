@@ -271,8 +271,10 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
 
   @impl true
   def handle_end_of_stream(Pad.ref(:input, id), _ctx, state) do
-    %{manifest: manifest, storage: storage} = state
+    {storage, manifest} = maybe_finalize_and_store_segment(id, state)
+
     manifest = Manifest.finish(manifest, id)
+
     {store_result, storage} = serialize_and_store_manifest(manifest, storage)
     storage = Storage.clear_cache(storage)
     state = %{state | storage: storage, manifest: manifest}
@@ -335,38 +337,21 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
          segment_duration,
          %{mode: :live} = state
        ) do
-    %{
-      duration: duration,
-      independent?: independent?
-    } = buffer.metadata
+    {partials, partials_duration} = partial_segments_for_track(track_id, state)
 
-    partial_segments = get_in(state, [:track_to_partial_segments, track_id]) || []
-    partial_segments_duration = Enum.reduce(partial_segments, 0, &(&1.metadata.duration + &2))
+    {full_segment, changeset, manifest, partials} =
+      if should_finalize_segment?(buffer, partials, partials_duration, segment_duration) do
+        {segment, changeset, manifest} =
+          finalize_segment_for_track(track_id, partials, partials_duration, state.manifest)
 
-    {full_segment, changeset, manifest, partial_segments} =
-      if independent? and duration + partial_segments_duration >= segment_duration.min and
-           partial_segments != [] do
-        # create a full segment by merging all pending partial segments
-        payload = %Membrane.Buffer{
-          payload:
-            partial_segments |> Enum.map(& &1.payload) |> Enum.reverse() |> IO.iodata_to_binary(),
-          metadata: %{
-            duration: partial_segments_duration
-          }
-        }
-
-        {changeset, manifest} = Manifest.finalize_current_segment(state.manifest, track_id)
-
-        {payload, changeset, manifest, []}
+        {segment, changeset, manifest, []}
       else
-        {nil, nil, state.manifest, partial_segments}
+        {nil, nil, state.manifest, partials}
       end
 
-    new_segment_necessary? = Enum.empty?(partial_segments)
+    new_segment_necessary? = Enum.empty?(partials)
 
-    partial_segments = [buffer | partial_segments]
-
-    state = put_in(state, [:track_to_partial_segments, track_id], partial_segments)
+    state = put_in(state, [:track_to_partial_segments, track_id], [buffer | partials])
 
     manifest =
       if new_segment_necessary? do
@@ -386,8 +371,8 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     manifest
     |> Manifest.add_partial_segment(
       track_id,
-      independent?,
-      duration,
+      buffer.metadata.independent?,
+      buffer.metadata.duration,
       byte_size(buffer.payload)
     )
     |> then(fn {new_changeset, manifest} ->
@@ -448,6 +433,61 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     manifest_files = [{:master, master_manifest} | Map.to_list(manifest_per_track)]
 
     Storage.store_manifests(storage, manifest_files)
+  end
+
+  defp total_partial_segments_duration(partials),
+    do: Enum.reduce(partials, 0, &(&1.metadata.duration + &2))
+
+  defp partial_segments_for_track(track_id, state) do
+    partial_segments = Map.get(state.track_to_partial_segments, track_id, [])
+
+    {partial_segments, total_partial_segments_duration(partial_segments)}
+  end
+
+  defp should_finalize_segment?(partial_buffer, partials, partials_duration, segment_duration) do
+    %{independent?: independent?, duration: duration} = partial_buffer.metadata
+
+    partials != [] and independent? and duration + partials_duration > segment_duration.min
+  end
+
+  defp finalize_segment_for_track(track_id, partials, partials_duration, manifest) do
+    payload =
+      partials
+      |> Enum.map(& &1.payload)
+      |> Enum.reverse()
+      |> IO.iodata_to_binary()
+
+    segment = %Membrane.Buffer{
+      payload: payload,
+      metadata: %{duration: partials_duration}
+    }
+
+    {changeset, manifest} = Manifest.finalize_current_segment(manifest, track_id)
+
+    {segment, changeset, manifest}
+  end
+
+  defp maybe_finalize_and_store_segment(track_id, state) do
+    %{manifest: manifest, storage: storage} = state
+
+    {partials, partials_duration} = partial_segments_for_track(track_id, state)
+
+    if partials != [] do
+      with {segment, changeset, manifest} <-
+             finalize_segment_for_track(track_id, partials, partials_duration, manifest),
+           {:ok, storage} <-
+             Storage.apply_segment_changeset(storage, track_id, changeset, segment) do
+        {storage, manifest}
+      else
+        {{:error, reason}, _storage} ->
+          raise reason
+
+        {:error, :not_enough_data} ->
+          {storage, manifest}
+      end
+    else
+      {storage, manifest}
+    end
   end
 
   defp creation_time(:live), do: [{:creation_time, DateTime.utc_now()}]
