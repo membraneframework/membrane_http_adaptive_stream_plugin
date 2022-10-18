@@ -198,51 +198,47 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
 
       assert_receive {SendStorage, :store, %{type: :manifest, name: "audio_track.m3u8"}}, 500
 
-      segments =
-        for _i <- 1..21 do
-          assert_receive {SendStorage, :store,
-                          %{
-                            name: "video_segment_0_video_track" <> _,
-                            type: :partial_segment,
-                            contents: segment
-                          }}
+      # the values below define a set of expected partial segments
+      # that should be followed by regular segments containing all previous parts
+      # (belonging to the current segment)
+      expected_segments = [
+        {:video, 0, 21},
+        {:video, 1, 5},
+        {:audio, 0, 4},
+        {:audio, 1, 4},
+        {:audio, 2, 4},
+        {:audio, 3, 4},
+        {:audio, 4, 4},
+        {:audio, 5, 1}
+      ]
 
-          assert_receive {SendStorage, :store, %{type: :manifest, name: "video_track.m3u8" <> _}}
+      for {type, segment_idx, parts} <- expected_segments do
+        manifest_name = "#{type}_track.m3u8"
+        segment_name = "#{type}_segment_#{segment_idx}_#{type}_track.m4s"
 
-          segment
-        end
+        partial_segments =
+          for _i <- 1..parts do
+            assert_receive {SendStorage, :store,
+                            %{
+                              name: ^segment_name,
+                              type: :partial_segment,
+                              contents: segment
+                            }}
 
-      full_video_segment = IO.iodata_to_binary(segments)
+            assert_receive {SendStorage, :store, %{type: :manifest, name: ^manifest_name}}
 
-      assert_receive {SendStorage, :store,
-                      %{
-                        name: "video_segment_0_video_track" <> _,
-                        type: :segment,
-                        contents: ^full_video_segment
-                      }}
+            segment
+          end
 
-      segments =
-        for _i <- 1..4 do
-          assert_receive {SendStorage, :store,
-                          %{
-                            name: "audio_segment_0_audio_track" <> _,
-                            type: :partial_segment,
-                            contents: segment
-                          }}
+        full_segment = IO.iodata_to_binary(partial_segments)
 
-          assert_receive {SendStorage, :store, %{type: :manifest, name: "audio_track.m3u8" <> _}}
-
-          segment
-        end
-
-      full_audio_segment = IO.iodata_to_binary(segments)
-
-      assert_receive {SendStorage, :store,
-                      %{
-                        name: "audio_segment_0_audio_track" <> _,
-                        type: :segment,
-                        contents: ^full_audio_segment
-                      }}
+        assert_receive {SendStorage, :store,
+                        %{
+                          name: ^segment_name,
+                          type: :segment,
+                          contents: ^full_segment
+                        }}
+      end
 
       assert_pipeline_notified(pipeline, :sink_bin, :end_of_stream)
 
