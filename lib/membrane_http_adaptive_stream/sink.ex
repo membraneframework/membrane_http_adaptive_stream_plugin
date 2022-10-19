@@ -270,10 +270,10 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   end
 
   @impl true
-  def handle_end_of_stream(Pad.ref(:input, id), _ctx, state) do
-    {storage, manifest} = maybe_finalize_and_store_segment(id, state)
+  def handle_end_of_stream(Pad.ref(:input, track_id), _ctx, state) do
+    {storage, manifest} = maybe_finalize_segment_on_eos(track_id, state)
 
-    manifest = Manifest.finish(manifest, id)
+    manifest = Manifest.finish(manifest, track_id)
 
     {store_result, storage} = serialize_and_store_manifest(manifest, storage)
     storage = Storage.clear_cache(storage)
@@ -467,26 +467,24 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     {segment, changeset, manifest}
   end
 
-  defp maybe_finalize_and_store_segment(track_id, state) do
+  defp maybe_finalize_segment_on_eos(track_id, state) do
     %{manifest: manifest, storage: storage} = state
 
     {partials, partials_duration} = partial_segments_for_track(track_id, state)
 
-    if partials != [] do
-      with {segment, changeset, manifest} <-
-             finalize_segment_for_track(track_id, partials, partials_duration, manifest),
-           {:ok, storage} <-
-             Storage.apply_segment_changeset(storage, track_id, changeset, segment) do
-        {storage, manifest}
-      else
+    if partials == [] do
+      {storage, manifest}
+    else
+      {segment, changeset, manifest} =
+        finalize_segment_for_track(track_id, partials, partials_duration, manifest)
+
+      case Storage.apply_segment_changeset(storage, track_id, changeset, segment) do
+        {:ok, storage} ->
+          {storage, manifest}
+
         {{:error, reason}, _storage} ->
           raise reason
-
-        {:error, :not_enough_data} ->
-          {storage, manifest}
       end
-    else
-      {storage, manifest}
     end
   end
 
