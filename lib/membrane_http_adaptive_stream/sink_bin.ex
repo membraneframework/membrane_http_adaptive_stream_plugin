@@ -16,8 +16,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   alias Membrane.HTTPAdaptiveStream.{Manifest, Sink, Storage}
   alias Membrane.MP4.Muxer.CMAF
 
-  @payloaders %{H264: MP4.Payloader.H264, AAC: MP4.Payloader.AAC}
-
   def_options manifest_name: [
                 spec: String.t(),
                 default: "index",
@@ -83,6 +81,15 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
                 default: &Manifest.Track.default_segment_naming_fun/1,
                 description:
                   "A function that generates consequent segment names for a given track"
+              ],
+              mp4_parameters_in_band?: [
+                spec: boolean(),
+                default: false,
+                description: """
+                Determines whether the parameter type nalus will be removed from the stream.
+                Inband parameters seem to be legal with MP4, but some players don't respond kindly to them, so use at your own risk.
+                This parameter should be set to true when discontinuity can occur. For example when resolution can change.
+                """
               ]
 
   def_input_pad :input,
@@ -140,7 +147,8 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
     state = %{
       mode: opts.hls_mode,
       streams_to_start: 0,
-      streams_to_end: 0
+      streams_to_end: 0,
+      mp4_parameters_in_band?: opts.mp4_parameters_in_band?
     }
 
     {{:ok, spec: %ParentSpec{children: children}}, state}
@@ -179,7 +187,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
       partial_segment_duration_range: convert_segment_duration_for_muxer(partial_segment_duration)
     }
 
-    payloader = Map.fetch!(@payloaders, encoding)
+    payloader = get_payloader(encoding, state)
 
     spec =
       cond do
@@ -320,4 +328,10 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
   defp convert_segment_duration_for_muxer(%Sink.SegmentDuration{min: min, target: target}),
     do: %CMAF.SegmentDurationRange{min: min, target: target}
+
+  defp get_payloader(encoding, state) do
+    if encoding == :AAC,
+      do: MP4.Payloader.AAC,
+      else: %MP4.Payloader.H264{parameters_in_band?: state.mp4_parameters_in_band?}
+  end
 end
