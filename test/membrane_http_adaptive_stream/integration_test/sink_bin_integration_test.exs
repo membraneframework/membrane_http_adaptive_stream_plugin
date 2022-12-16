@@ -56,7 +56,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
     alias Membrane.Time
 
     @impl true
-    def handle_init(%{
+    def handle_init(_ctx, %{
           sources: sources,
           storage: storage,
           hls_mode: hls_mode,
@@ -91,30 +91,29 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
             end
 
           [
-            {{:source, track_name}, source},
-            {{:parser, track_name}, parser}
+            child({:source, track_name}, source)
+            |> child({:parser, track_name}, parser)
           ]
         end)
-        |> then(&[{:sink_bin, sink_bin} | &1])
+        |> then(&[child(:sink_bin, sink_bin) | &1])
 
-      links =
-        sources
-        |> Enum.map(fn {_source, encoding, track_name} ->
-          link({:source, track_name})
-          |> to({:parser, track_name})
-          |> via_in(Pad.ref(:input, track_name),
-            options: [
-              encoding: encoding,
-              track_name: track_name,
-              segment_duration: segment_duration_for(encoding),
-              partial_segment_duration:
-                if(partial_segments, do: partial_segment_duration_for(encoding), else: nil)
-            ]
-          )
-          |> to(:sink_bin)
-        end)
+      structure =
+        children ++
+          Enum.map(sources, fn {_source, encoding, track_name} ->
+            get_child({:parser, track_name})
+            |> via_in(Pad.ref(:input, track_name),
+              options: [
+                encoding: encoding,
+                track_name: track_name,
+                segment_duration: segment_duration_for(encoding),
+                partial_segment_duration:
+                  if(partial_segments, do: partial_segment_duration_for(encoding), else: nil)
+              ]
+            )
+            |> get_child(:sink_bin)
+          end)
 
-      {{:ok, spec: %ParentSpec{children: children, links: links}, playback: :playing}, %{}}
+      {[spec: {structure, []}, playback: :playing], %{}}
     end
 
     defp segment_duration_for(:AAC),
@@ -179,8 +178,8 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
            encoding, name}
         end)
 
-      {:ok, pipeline} =
-        Testing.Pipeline.start_link(
+      pipeline =
+        Testing.Pipeline.start_link_supervised!(
           module: TestPipeline,
           custom_args: %{
             sources: hackney_sources,
@@ -190,7 +189,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
           }
         )
 
-      assert_pipeline_playback_changed(pipeline, :prepared, :playing)
+      assert_pipeline_play(pipeline)
 
       assert_receive {SendStorage, :store, %{type: :manifest, name: "index.m3u8"}}, 1_000
 
@@ -242,15 +241,14 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
 
       assert_pipeline_notified(pipeline, :sink_bin, :end_of_stream)
 
-      Testing.Pipeline.terminate(pipeline, blocking?: true)
-      assert_pipeline_playback_changed(pipeline, _, :stopped)
+      :ok = Testing.Pipeline.terminate(pipeline, blocking?: true)
     end
   end
 
   defp run_pipeline(sources, result_directory, hls_mode) do
     alias Membrane.HTTPAdaptiveStream.Storages.FileStorage
 
-    {:ok, pipeline} =
+    pipeline =
       [
         module: TestPipeline,
         custom_args: %{
@@ -262,17 +260,16 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
           }
         }
       ]
-      |> Testing.Pipeline.start_link()
+      |> Testing.Pipeline.start_link_supervised!()
 
-    assert_pipeline_playback_changed(pipeline, _, :playing)
+    assert_pipeline_play(pipeline)
 
     assert_pipeline_notified(pipeline, :sink_bin, :end_of_stream, 5_000)
 
     # Give some time to save all of the files to disk
     Process.sleep(1_000)
 
-    Testing.Pipeline.terminate(pipeline, blocking?: true)
-    assert_pipeline_playback_changed(pipeline, _, :stopped)
+    :ok = Testing.Pipeline.terminate(pipeline, blocking?: true)
   end
 
   defp test_pipeline(sources, reference_directory, test_directory, hls_mode \\ :separate_av) do
