@@ -70,7 +70,7 @@ defmodule Membrane.HTTPAdaptiveStream.MixProject do
        github: "membraneframework/membrane_mp4_plugin", branch: "core-0.11"},
       {:bunch, "~> 1.5"},
       {:membrane_hackney_plugin, "~> 0.9.0", only: :test},
-      {:membrane_h264_ffmpeg_plugin, "~> 0.25.0", only: :test},
+      {:membrane_h264_ffmpeg_plugin, "~> 0.25.1", only: :test},
       {:membrane_aac_plugin, "~> 0.13.0", only: :test},
       {:credo, "~> 1.6.1", only: :dev, runtime: false},
       {:ex_doc, "~> 0.25", only: :dev, runtime: false},

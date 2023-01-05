@@ -6,6 +6,6 @@
 #EXT-X-MAP:URI="video_header_video_track_part_0.mp4"
 #EXTINF:10.0,
 video_segment_0_video_track.m4s
-#EXTINF:2.08,
+#EXTINF:2.0,
 video_segment_1_video_track.m4s
 #EXT-X-ENDLIST
