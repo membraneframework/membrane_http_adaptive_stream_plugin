@@ -191,7 +191,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
       ) do
     {header_name, manifest} =
       if Manifest.has_track?(state.manifest, track_id) do
-        # Arrival of new stream_format for an already existing track indicate that stream parameters have changed.
+        # Arrival of new stream format for an already existing track indicate that stream parameters have changed.
         # According to section 4.3.2.3 of RFC 8216, discontinuity needs to be signaled and new header supplied.
         Manifest.discontinue_track(state.manifest, track_id)
       else
