@@ -168,7 +168,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
       mp4_parameters_in_band?: opts.mp4_parameters_in_band?
     }
 
-    {[spec: {structure, []}], state}
+    {[spec: structure], state}
   end
 
   @impl true
@@ -199,14 +199,11 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
         state.mode == :muxed_av and encoding == :H264 ->
           [
-            child({:payloader, ref}, payloader),
-            child({:cmaf_muxer, ref}, muxer),
             bin_input(pad)
-            |> get_child({:payloader, ref})
-            |> get_child({:cmaf_muxer, ref}),
+            |> child({:payloader, ref}, payloader)
+            |> child({:cmaf_muxer, ref}, muxer),
             get_child(:audio_tee)
-            |> get_child({:cmaf_muxer, ref}),
-            get_child({:cmaf_muxer, ref})
+            |> get_child({:cmaf_muxer, ref})
             |> via_in(pad, options: track_options(context))
             |> get_child(:sink)
           ]
@@ -236,7 +233,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
       |> Map.update!(:streams_to_start, update_streams_count)
       |> Map.update!(:streams_to_end, update_streams_count)
 
-    {[spec: {structure, []}], state}
+    {[spec: structure], state}
   end
 
   @impl true

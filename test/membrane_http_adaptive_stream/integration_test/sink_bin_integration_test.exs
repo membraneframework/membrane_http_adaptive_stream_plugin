@@ -113,7 +113,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
             |> get_child(:sink_bin)
           end)
 
-      {[spec: {structure, []}, playback: :playing], %{}}
+      {[spec: structure, playback: :playing], %{}}
     end
 
     defp segment_duration_for(:AAC),
