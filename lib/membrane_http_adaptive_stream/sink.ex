@@ -9,9 +9,6 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
 
   - `{:track_playable, input_pad_id}` - sent when the first segment of a track is
     stored, and thus the track is ready to be played
-  - `{:cleanup, cleanup_function :: (()-> :ok)}` - sent when playback changes
-    from playing to prepared. Invoking `cleanup_function` lambda results in removing
-    all the files that remain after the streaming
 
   ## Examples
 
@@ -75,22 +72,22 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   def_input_pad :input,
     availability: :on_request,
     demand_unit: :buffers,
-    caps: CMAF.Track,
+    accepted_format: CMAF.Track,
     options: [
       track_name: [
         spec: String.t() | nil,
         default: nil,
         description: """
         Name that will be used to name the media playlist for the given track, as well as its header and segments files.
-        It must not contain any URI reserved characters
+        It must not contain any URI reserved characters.
         """
       ],
       segment_duration: [
         spec: SegmentDuration.t(),
         description: """
-        The expected minimum and target duration of media segment produced by this particular track.
+        The expected minimum and target duration of media segments produced by this particular track.
 
-        In case of regular paced streams the parameter may not have any impact but when
+        In case of regular paced streams the parameter may not have any impact, but when
         partial segments gets used it may decide when regular segments gets finalized and new gets started.
         """
       ],
@@ -106,19 +103,16 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     ]
 
   def_options manifest_name: [
-                type: :string,
                 spec: String.t(),
                 default: "index",
                 description: "Name of the main manifest file."
               ],
               manifest_module: [
-                type: :atom,
-                spec: module,
+                spec: module(),
                 description:
                   "Implementation of the `Membrane.HTTPAdaptiveStream.Manifest` behaviour."
               ],
               storage: [
-                type: :struct,
                 spec: Storage.config_t(),
                 description: """
                 Storage configuration. May be one of `Membrane.HTTPAdaptiveStream.Storages.*`.
@@ -134,7 +128,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
                 """
               ],
               persist?: [
-                type: :bool,
+                spec: boolean(),
                 default: false,
                 description: """
                 If true, stale segments are removed from the manifest only. Once
@@ -156,33 +150,48 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
                   "A function that generates consequent header names for a given track."
               ],
               segment_naming_fun: [
-                type: :function,
                 spec: (Manifest.Track.t() -> String.t()),
                 default: &Manifest.Track.default_segment_naming_fun/1,
                 description:
                   "A function that generates consequent segment names for a given track."
+              ],
+              cleanup_after: [
+                spec: nil | Membrane.Time.t(),
+                default: nil,
+                description: """
+                If not `nil`, time after a storage cleanup function should run.
+
+                The function will remove all manifests and segments stored during the stream.
+                """
               ]
 
   @impl true
-  def handle_init(options) do
-    options
-    |> Map.from_struct()
-    |> Map.drop([:manifest_name, :manifest_module])
-    |> Map.merge(%{
-      storage: Storage.new(options.storage),
-      manifest: %Manifest{name: options.manifest_name, module: options.manifest_module},
-      awaiting_first_segment: MapSet.new(),
-      # used to keep track of partial segments that should get merged
-      track_to_partial_segments: %{}
-    })
-    |> then(&{:ok, &1})
+  def handle_init(_ctx, options) do
+    state =
+      options
+      |> Map.from_struct()
+      |> Map.drop([:manifest_name, :manifest_module])
+      |> Map.merge(%{
+        storage: Storage.new(options.storage),
+        manifest: %Manifest{name: options.manifest_name, module: options.manifest_module},
+        awaiting_first_segment: MapSet.new(),
+        # used to keep track of partial segments that should get merged
+        track_to_partial_segments: %{}
+      })
+
+    {[], state}
   end
 
   @impl true
-  def handle_caps(Pad.ref(:input, track_id) = pad_ref, %CMAF.Track{} = caps, ctx, state) do
+  def handle_stream_format(
+        Pad.ref(:input, track_id) = pad_ref,
+        %CMAF.Track{} = stream_format,
+        ctx,
+        state
+      ) do
     {header_name, manifest} =
       if Manifest.has_track?(state.manifest, track_id) do
-        # Arrival of new caps for an already existing track indicate that stream parameters have changed.
+        # Arrival of new stream format for an already existing track indicate that stream parameters have changed.
         # According to section 4.3.2.3 of RFC 8216, discontinuity needs to be signaled and new header supplied.
         Manifest.discontinue_track(state.manifest, track_id)
       else
@@ -194,7 +203,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
           %Manifest.Track.Config{
             id: track_id,
             track_name: track_name,
-            content_type: caps.content_type,
+            content_type: stream_format.content_type,
             header_extension: ".mp4",
             segment_extension: ".m4s",
             header_naming_fun: state.header_naming_fun,
@@ -207,31 +216,35 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
         )
       end
 
-    {result, storage} = Storage.store_header(state.storage, track_id, header_name, caps.header)
+    case Storage.store_header(state.storage, track_id, header_name, stream_format.header) do
+      {:ok, storage} ->
+        {[], %{state | storage: storage, manifest: manifest}}
 
-    {result, %{state | storage: storage, manifest: manifest}}
+      {{:error, reason}, _storage} ->
+        raise "Failed to store the header for track #{inspect(track_id)} due to #{inspect(reason)}"
+    end
   end
 
   @impl true
-  def handle_prepared_to_playing(ctx, state) do
+  def handle_playing(ctx, state) do
     demands = ctx.pads |> Map.keys() |> Enum.map(&{:demand, &1})
-    {{:ok, demands}, state}
+    {demands, state}
   end
 
   @impl true
   def handle_pad_added(pad, %{playback_state: :playing}, state) do
-    {{:ok, demand: pad}, state}
+    {[demand: pad], state}
   end
 
   @impl true
   def handle_pad_added(_pad, _ctx, state) do
-    {:ok, state}
+    {[], state}
   end
 
   @impl true
   def handle_start_of_stream(Pad.ref(:input, id), _ctx, state) do
     awaiting_first_segment = MapSet.put(state.awaiting_first_segment, id)
-    {:ok, %{state | awaiting_first_segment: awaiting_first_segment}}
+    {[], %{state | awaiting_first_segment: awaiting_first_segment}}
   end
 
   @impl true
@@ -255,17 +268,15 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     with {:ok, storage} <-
            [changesets, buffers]
            |> Enum.zip()
-           |> Enum.reduce_while({:ok, storage}, fn {changeset, buffer}, {:ok, storage} ->
-             case Storage.apply_segment_changeset(storage, track_id, changeset, buffer) do
-               {:ok, storage} -> {:cont, {:ok, storage}}
-               other -> {:halt, other}
-             end
+           |> Bunch.Enum.try_reduce(storage, fn {changeset, buffer}, storage ->
+             Storage.apply_segment_changeset(storage, track_id, changeset, buffer)
            end),
          {:ok, storage} <- serialize_and_store_manifest(manifest, storage) do
       {notify, state} = maybe_notify_playable(track_id, state)
-      {{:ok, notify ++ [demand: pad]}, %{state | storage: storage}}
+      {notify ++ [demand: pad], %{state | storage: storage}}
     else
-      {error, storage} -> {error, %{state | storage: storage}}
+      {{:error, reason}, _storage} ->
+        raise "Failed to store a buffer for track #{inspect(track_id)} due to #{inspect(reason)}"
     end
   end
 
@@ -275,14 +286,18 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
 
     manifest = Manifest.finish(manifest, track_id)
 
-    {store_result, storage} = serialize_and_store_manifest(manifest, storage)
-    storage = Storage.clear_cache(storage)
-    state = %{state | storage: storage, manifest: manifest}
-    {store_result, state}
+    case serialize_and_store_manifest(manifest, storage) do
+      {:ok, storage} ->
+        storage = Storage.clear_cache(storage)
+        {[], %{state | storage: storage, manifest: manifest}}
+
+      {{:error, reason}, _storage} ->
+        raise "Failed to store the finalized manifest for track #{inspect(track_id)} due to #{inspect(reason)}"
+    end
   end
 
   @impl true
-  def handle_playing_to_prepared(ctx, state) do
+  def handle_terminate_request(ctx, state) do
     %{
       manifest: manifest,
       storage: storage,
@@ -295,16 +310,6 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
       |> Enum.map(fn
         Pad.ref(:input, track_id) -> track_id
       end)
-
-    to_remove = Manifest.all_segments_per_track(manifest)
-
-    # cleanup all data of the secondary playlist and the master one
-    cleanup = fn ->
-      with {:ok, storage} <- Storage.clean_all_track_segments(storage, to_remove),
-           {:ok, _storage} <- Storage.cleanup(storage, :master, []) do
-        :ok
-      end
-    end
 
     # prevent storing empty manifest, such situation can happen
     # when the sink goes from prepared -> playing -> prepared -> stopped
@@ -323,8 +328,14 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
         {:ok, state}
       end
 
-    with {:ok, state} <- result do
-      {{:ok, notify: {:cleanup, cleanup}}, state}
+    case result do
+      {:ok, state} ->
+        :ok = maybe_schedule_cleanup_task(state)
+
+        {[terminate: :normal], state}
+
+      {{:error, reason}, _state} ->
+        raise "Failed to persist the manifest due to #{inspect(reason)}"
     end
   end
 
@@ -408,8 +419,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     if String.match?(track_id, valid_filename_regex) do
       track_id
     else
-      raise ArgumentError,
-        message: "Manually defined track identifiers should be valid file names."
+      raise "The provided track identifier #{inspect(track_id)} is not a valid filename"
     end
   end
 
@@ -419,7 +429,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
 
   defp maybe_notify_playable(id, %{awaiting_first_segment: awaiting_first_segment} = state) do
     if MapSet.member?(awaiting_first_segment, id) do
-      {[notify: {:track_playable, id}],
+      {[notify_parent: {:track_playable, id}],
        %{state | awaiting_first_segment: MapSet.delete(awaiting_first_segment, id)}}
     else
       {[], state}
@@ -483,11 +493,39 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
           {storage, manifest}
 
         {{:error, reason}, _storage} ->
-          raise reason
+          raise "Failed to apply segment changeset for track #{inspect(track_id)} due to #{inspect(reason)}"
       end
     end
   end
 
   defp creation_time(:live), do: [{:creation_time, DateTime.utc_now()}]
   defp creation_time(:vod), do: []
+
+  defp maybe_schedule_cleanup_task(state)
+  defp maybe_schedule_cleanup_task(%{cleanup_after: nil}), do: :ok
+
+  defp maybe_schedule_cleanup_task(%{
+         manifest: manifest,
+         storage: storage,
+         cleanup_after: cleanup_after
+       }) do
+    {:ok, _pid} =
+      Task.start(fn ->
+        to_remove = Manifest.all_segments_per_track(manifest)
+        timeout = Membrane.Time.as_milliseconds(cleanup_after)
+
+        Process.sleep(timeout)
+
+        # cleanup all data of the secondary playlist and the master one
+        with {:ok, storage} <- Storage.clean_all_track_segments(storage, to_remove),
+             {:ok, _storage} <- Storage.cleanup(storage, :master, []) do
+          :ok
+        else
+          {{:error, reason}, _storage} ->
+            raise "Failed to cleanup the storage due to #{inspect(reason)}"
+        end
+      end)
+
+    :ok
+  end
 end
