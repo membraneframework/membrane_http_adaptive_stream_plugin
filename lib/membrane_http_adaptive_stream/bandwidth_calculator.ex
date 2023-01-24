@@ -13,10 +13,16 @@ defmodule Membrane.HTTPAdaptiveStream.BandwidthCalculator do
   # and risk that client will use track with actual bandwidth that is beyond its capabilities.
   @default_bandwidth 2_560_000
 
-  @spec calculate_bandwidth(Track.t()) :: integer()
-  def calculate_bandwidth(track) do
+  @spec calculate_bandwidth(Track.t(), integer()) :: integer()
+  def calculate_bandwidth(track, packets_number \\ 10) do
     target_duration = track.target_segment_duration / Time.second()
-    segments_sequences = generate_subsequences(track.segments |> Enum.to_list())
+
+    segments_sequences =
+      generate_subsequences(
+        track.segments
+        |> Enum.to_list()
+        |> Enum.take(-packets_number)
+      )
 
     segments_meta =
       segments_sequences
@@ -48,10 +54,10 @@ defmodule Membrane.HTTPAdaptiveStream.BandwidthCalculator do
         @default_bandwidth
 
       Enum.empty?(validated_segments_meta) ->
-        segments_bitrates |> Enum.max(&Ratio.>=/2) |> Ratio.floor()
+        segments_bitrates |> Enum.max(&Ratio.>=/2) |> Ratio.trunc()
 
       true ->
-        validated_segments_bitrates |> Enum.max(&Ratio.>=/2) |> Ratio.floor()
+        validated_segments_bitrates |> Enum.max(&Ratio.>=/2) |> Ratio.trunc()
     end
   end
 

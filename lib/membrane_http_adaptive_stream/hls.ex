@@ -128,11 +128,8 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
         |> String.trim()
 
       %Track{content_type: type} when type in [:video, :muxed] ->
-        {time, bandwidth} = :timer.tc(fn -> BandwidthCalculator.calculate_bandwidth(track) end)
-        IO.inspect(time / 1000, label: :bandwidth_calc_time)
-
         """
-        #EXT-X-STREAM-INF:BANDWIDTH=#{bandwidth},CODECS="avc1.42e00a"
+        #EXT-X-STREAM-INF:BANDWIDTH=#{BandwidthCalculator.calculate_bandwidth(track)},CODECS="avc1.42e00a"
         """
         |> String.trim()
     end
