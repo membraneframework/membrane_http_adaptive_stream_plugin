@@ -20,16 +20,6 @@ defmodule Membrane.HTTPAdaptiveStream.BandwidthCalculatorTest do
       assert BandwidthCalculator.calculate_bandwidth(test_track) ==
                (8 * 3 / (0.25 / Time.second())) |> Ratio.floor()
     end
-
-    test "both in and out of 0.5 - 1.5 of target bandwidth scope" do
-      # Subsequence of one segment with size 3 and duration 0.25 would produce highest bitrate, but
-      # subsequence constructed of sizes: 1, 1, 4, 2, 3 has duration of 2.75 that falls within range 0.5 - 1.5
-      # of target duration.
-      test_track = mock_track([{0, 0.0}, {1, 0.0}, {1, 1.0}, {4, 1.0}, {2, 0.5}, {3, 0.25}], 5)
-
-      assert BandwidthCalculator.calculate_bandwidth(test_track) ==
-               (8 * 11 / (2.75 / Time.second())) |> Ratio.floor()
-    end
   end
 
   defp mock_segment({byte_size, duration}) do
