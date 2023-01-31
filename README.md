@@ -13,7 +13,7 @@ In future, the support for MPEG-DASH is planned as well
 Add the following line to your `deps` in `mix.exs`. Run `mix deps.get`.
 
 ```elixir
-	{:membrane_http_adaptive_stream_plugin, "~> 0.10.0"}
+	{:membrane_http_adaptive_stream_plugin, "~> 0.10.1"}
 ```
 
 ## Usage Example

@@ -232,7 +232,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   end
 
   @impl true
-  def handle_pad_added(pad, %{playback_state: :playing}, state) do
+  def handle_pad_added(pad, %{playback: :playing}, state) do
     {[demand: pad], state}
   end
 
