@@ -6,19 +6,26 @@ defmodule Membrane.HTTPAdaptiveStream.BandwidthCalculatorTest do
   alias Membrane.HTTPAdaptiveStream.Manifest.Track
   alias Membrane.Time
 
-  describe "Test bandwidth calculation for track with segment subsequences with duration " do
-    test "equal to zero" do
-      # All duration are 0 so bandwidth calculation is impossible.
-      test_track = mock_track([{0, 0.0}, {1, 0.0}], 5)
-      assert BandwidthCalculator.calculate_bandwidth(test_track) == 2_560_000
-    end
+  @default_bandwidth 2_560_000
 
-    test "out of 0.5 - 1.5 of target bandwidth scope" do
-      # All segment subsequences have duration out of 0.5 - 1.5 target duration range.
-      test_track = mock_track([{0, 0.0}, {1, 0.0}, {1, 1}, {2, 0.5}, {3, 0.25}], 5)
+  describe "Bandwidth calculator calculates correct bandwidth" do
+    test "bandwidth equal to maximum segment bandwidth" do
+      test_track = mock_track([{1, 0.8}, {2, 1}, {1, 1}, {2, 1.3}, {3, 0.25}], 5)
 
       assert BandwidthCalculator.calculate_bandwidth(test_track) ==
                (8 * 3 / (0.25 / Time.second())) |> Ratio.floor()
+    end
+
+    test "equal to zero" do
+      # All duration are 0 so bandwidth calculation is impossible.
+      test_track = mock_track([{0, 0.0}, {1, 0.0}], 5)
+      assert BandwidthCalculator.calculate_bandwidth(test_track) == @default_bandwidth
+    end
+
+    test "no segments in track" do
+      test_track = mock_track([], 5)
+
+      assert BandwidthCalculator.calculate_bandwidth(test_track) == @default_bandwidth
     end
   end
 
