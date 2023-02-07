@@ -1,9 +1,8 @@
 defmodule Membrane.HTTPAdaptiveStream.BandwidthCalculator do
-  @moduledoc """
-  Functions to calculate multimedia track bandwidth according to: https://datatracker.ietf.org/doc/html/rfc8216#section-4.3.4.2
+  @moduledoc false
 
-  For a single track it comes down to finding a single segment with the highest bitrate, equal to byte_size to duration ratio.
-  """
+  # Function to calculate multimedia track bandwidth
+  # For a single track it comes down to finding a single segment with the highest bitrate, equal to byte_size to duration ratio.
 
   use Ratio, comparison: true
 
