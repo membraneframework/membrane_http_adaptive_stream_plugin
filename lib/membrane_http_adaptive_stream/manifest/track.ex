@@ -37,7 +37,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     @typedoc """
     Track configuration consists of the following fields:
     - `id` - identifies the track, will be serialized and attached to names of manifests, headers and segments
-    - `track_name` - the name of the track, determines how manifest files will be named 
+    - `track_name` - the name of the track, determines how manifest files will be named
     - `content_type` - either audio or video
     - `header_extension` - extension of the header file (for example .mp4 for CMAF)
     - `segment_extension` - extension of the segment files (for example .m4s for CMAF)
@@ -109,7 +109,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   - `stale_headers` - stale headers' names, kept empty unless `persist?` is set to true
   - `finished?` - determines whether the track is finished
   - `window_duration` - current window duration
-  - `discontinuities_counter` - the number of discontinuities that happened so far 
+  - `discontinuities_counter` - the number of discontinuities that happened so far
   - `next_segment_id` - the sequence number of the next segment that will be generated
   """
   @type t :: %__MODULE__{

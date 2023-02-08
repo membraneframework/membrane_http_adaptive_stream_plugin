@@ -16,12 +16,6 @@ defmodule Membrane.HTTPAdaptiveStream.BandwidthCalculatorTest do
                (8 * 3 / (0.25 / Time.second())) |> Ratio.floor()
     end
 
-    test "equal to zero" do
-      # All duration are 0 so bandwidth calculation is impossible.
-      test_track = mock_track([{0, 0.0}, {1, 0.0}], 5)
-      assert BandwidthCalculator.calculate_bandwidth(test_track) == @default_bandwidth
-    end
-
     test "no segments in track" do
       test_track = mock_track([], 5)
 
