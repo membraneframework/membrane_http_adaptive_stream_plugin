@@ -20,7 +20,7 @@ defmodule Membrane.HTTPAdaptiveStream.BandwidthCalculator do
       track.segments
       |> Enum.to_list()
       |> Enum.take(-segments_number)
-      |> Enum.filter(&(&1.duration > 0))
+      |> Enum.filter(&Map.get(&1, :complete?, true))
 
     if Enum.empty?(segments) do
       @default_bandwidth
