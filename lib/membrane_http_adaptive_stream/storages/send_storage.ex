@@ -31,7 +31,7 @@ defmodule Membrane.HTTPAdaptiveStream.Storages.SendStorage do
   def init(%__MODULE__{} = config), do: config
 
   @impl true
-  def store(parent_id, name, contents, metadata, context, %__MODULE__{destination: destination}) do
+  def store(parent_id, name, contents, metadata, context, %{destination: destination} = state) do
     send(
       destination,
       {__MODULE__, :store,
@@ -43,16 +43,16 @@ defmodule Membrane.HTTPAdaptiveStream.Storages.SendStorage do
        })}
     )
 
-    :ok
+    {:ok, state}
   end
 
   @impl true
-  def remove(parent_id, name, context, %__MODULE__{destination: destination}) do
+  def remove(parent_id, name, context, %{destination: destination} = state) do
     send(
       destination,
       {__MODULE__, :remove, Map.merge(context, %{parent_id: parent_id, name: name})}
     )
 
-    :ok
+    {:ok, state}
   end
 end
