@@ -37,7 +37,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     @typedoc """
     Track configuration consists of the following fields:
     - `id` - identifies the track, will be serialized and attached to names of manifests, headers and segments
-    - `track_name` - the name of the track, determines how manifest files will be named 
+    - `track_name` - the name of the track, determines how manifest files will be named
     - `content_type` - either audio or video
     - `header_extension` - extension of the header file (for example .mp4 for CMAF)
     - `segment_extension` - extension of the segment files (for example .m4s for CMAF)
@@ -109,7 +109,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   - `stale_headers` - stale headers' names, kept empty unless `persist?` is set to true
   - `finished?` - determines whether the track is finished
   - `window_duration` - current window duration
-  - `discontinuities_counter` - the number of discontinuities that happened so far 
+  - `discontinuities_counter` - the number of discontinuities that happened so far
   - `next_segment_id` - the sequence number of the next segment that will be generated
   """
   @type t :: %__MODULE__{
@@ -396,28 +396,30 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   defp maybe_pop_stale_segments_and_headers(track) do
     {stale_segments, stale_headers, track} = pop_stale_segments_and_headers(track)
 
-    {to_remove_segment_names, to_remove_header_names, stale_segments, stale_headers} =
-      if track.persist? do
-        {
-          [],
-          [],
-          Qex.join(track.stale_segments, Qex.new(stale_segments)),
-          Qex.join(track.stale_headers, Qex.new(stale_headers))
-        }
-      else
-        {
-          Enum.map(stale_segments, & &1.name),
-          stale_headers,
-          track.stale_segments,
-          track.stale_headers
-        }
-      end
+    new_seq_num = track.current_seq_num + Enum.count(stale_segments)
 
-    track = %{track | current_seq_num: Enum.count(stale_segments)}
+    {to_remove_segment_names, to_remove_header_names, stale_segments, stale_headers} =
+    if track.persist? do
+      {
+        [],
+        [],
+        Qex.join(track.stale_segments, Qex.new(stale_segments)),
+        Qex.join(track.stale_headers, Qex.new(stale_headers))
+      }
+    else
+      {
+        Enum.map(stale_segments, & &1.name),
+        stale_headers,
+        track.stale_segments,
+        track.stale_headers
+      }
+    end
+
+    track = %{track | current_seq_num: new_seq_num}
 
     {
       Enum.map(to_remove_header_names, &{:header, &1}) ++
-        Enum.map(to_remove_segment_names, &{:segment, &1}),
+      Enum.map(to_remove_segment_names, &{:segment, &1}),
       %__MODULE__{track | stale_segments: stale_segments, stale_headers: stale_headers}
     }
   end
@@ -446,22 +448,22 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
         {header_name, discontinuity_seq_number}
       )
 
-    # filter out `new_header_name` as it could have been carried by some segment
-    # that is about to be deleted but the header has become the main track header
-    headers_to_remove =
+      # filter out `new_header_name` as it could have been carried by some segment
+      # that is about to be deleted but the header has become the main track header
+      headers_to_remove =
       headers_to_remove
       |> Enum.filter(&(&1 != new_header_name))
 
-    track = %__MODULE__{
-      track
-      | segments: segments,
+      track = %__MODULE__{
+        track
+        | segments: segments,
         window_duration: window_duration,
         header_name: new_header_name,
         current_discontinuity_seq_num: discontinuity_seq_number
-    }
+      }
 
-    {segments_to_remove, headers_to_remove, track}
-  end
+      {segments_to_remove, headers_to_remove, track}
+    end
 
   defp do_pop_stale_segments(
          segments,
