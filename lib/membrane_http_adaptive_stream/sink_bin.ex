@@ -36,8 +36,9 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
                 """
               ],
               target_window_duration: [
-                spec: pos_integer | :infinity,
+                spec: Time.t() | :infinity,
                 default: Time.seconds(40),
+                inspector: &Time.inspect/1,
                 description: """
                 Manifest duration is kept above that time, while the oldest segments
                 are removed whenever possible.
@@ -91,7 +92,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
                 """
               ],
               cleanup_after: [
-                spec: nil | Membrane.Time.t(),
+                spec: nil | Time.t(),
                 default: nil,
                 description: """
                 Time after which a fire-and-forget storage cleanup function should run.
