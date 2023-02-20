@@ -122,6 +122,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
               target_window_duration: [
                 spec: Membrane.Time.t() | :infinity,
                 default: Membrane.Time.seconds(40),
+                inspector: &Membrane.Time.inspect/1,
                 description: """
                 Manifest duration is keept above that time, while the oldest segments
                 are removed whenever possible.
