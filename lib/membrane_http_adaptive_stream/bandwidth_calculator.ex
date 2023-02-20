@@ -2,7 +2,7 @@ defmodule Membrane.HTTPAdaptiveStream.BandwidthCalculator do
   @moduledoc false
 
   # Function to calculate multimedia track bandwidth
-  # For a single track it comes down to finding a single segment with the highest bitrate, equal to byte_size to duration ratio.
+  # For a single track it comes down to finding a single segment with the highest bitrate, equal to the size in bits to duration ratio.
 
   use Ratio, comparison: true
 
