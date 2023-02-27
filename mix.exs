@@ -1,7 +1,7 @@
 defmodule Membrane.HTTPAdaptiveStream.MixProject do
   use Mix.Project
 
-  @version "0.11.0"
+  @version "0.12.0"
   @github_url "https://github.com/membraneframework/membrane_http_adaptive_stream_plugin"
 
   def project do
@@ -20,7 +20,7 @@ defmodule Membrane.HTTPAdaptiveStream.MixProject do
 
       # docs
       name: "Membrane HTTP Adaptive Stream plugin",
-      homepage_url: "https://membraneframework.org",
+      homepage_url: "https://membrane.stream",
       source_url: @github_url,
       docs: docs()
     ]
@@ -56,7 +56,7 @@ defmodule Membrane.HTTPAdaptiveStream.MixProject do
       licenses: ["Apache-2.0"],
       links: %{
         "GitHub" => @github_url,
-        "Membrane Framework Homepage" => "https://membraneframework.org"
+        "Membrane Framework Homepage" => "https://membrane.stream"
       }
     ]
   end
@@ -66,7 +66,7 @@ defmodule Membrane.HTTPAdaptiveStream.MixProject do
       {:membrane_core, "~> 0.11.2"},
       {:membrane_cmaf_format, "~> 0.6.0"},
       {:membrane_tee_plugin, "~> 0.10.1"},
-      {:membrane_mp4_plugin, "~> 0.18.0"},
+      {:membrane_mp4_plugin, "~> 0.19.0"},
       {:bunch, "~> 1.5"},
       {:membrane_hackney_plugin, "~> 0.9.0", only: :test},
       {:membrane_h264_ffmpeg_plugin, "~> 0.25.1", only: :test},
