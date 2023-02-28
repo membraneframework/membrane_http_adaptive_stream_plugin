@@ -107,6 +107,8 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
       stored_manifests: stored_manifests
     } = storage
 
+    IO.inspect(manifest, label: :manifest)
+
     withl cache: false <- cache[name] == manifest,
           store:
             {:ok, impl_state} <-
@@ -166,13 +168,12 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   @spec apply_segment_changeset(
           t,
           track_id :: term(),
-          Changeset.t(),
-          buffer :: Membrane.Buffer.t()
+          Changeset.t()
         ) :: {callback_result_t, t}
-  def apply_segment_changeset(storage, track_id, changeset, buffer) do
+  def apply_segment_changeset(storage, track_id, changeset) do
     %__MODULE__{storage_impl: storage_impl, impl_state: impl_state} = storage
-
-    %Changeset{to_add: {to_add_type, to_add_name, metadata}, to_remove: to_remove} = changeset
+    # {to_add_type, to_add_name, metadata, payload}
+    %Changeset{to_add: to_add, to_remove: to_remove} = changeset
 
     grouped =
       Enum.group_by(
@@ -197,14 +198,17 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
              &storage_impl.remove(track_id, &1, %{type: :header}, &2)
            ) do
       {result, impl_state} =
-        storage_impl.store(
-          track_id,
-          to_add_name,
-          buffer.payload,
-          metadata,
-          %{mode: :binary, type: to_add_type},
-          impl_state
-        )
+        Bunch.Enum.try_reduce(to_add, impl_state, fn {to_add_type, to_add_name, metadata, payload},
+                                                     impl_state ->
+          storage_impl.store(
+            track_id,
+            to_add_name,
+            payload,
+            metadata,
+            %{mode: :binary, type: to_add_type},
+            impl_state
+          )
+        end)
 
       {result, %{storage | impl_state: impl_state}}
     end

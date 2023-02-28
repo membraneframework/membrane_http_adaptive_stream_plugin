@@ -149,14 +149,18 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
     structure =
       [
         child(:sink, %Sink{
-          manifest_name: opts.manifest_name,
-          manifest_module: opts.manifest_module,
+          manifest_config: %Sink.ManifestConfig{
+            name: opts.manifest_name,
+            module: opts.manifest_module
+          },
+          track_config: %Sink.TrackConfig{
+            target_window_duration: opts.target_window_duration,
+            persist?: opts.persist?,
+            header_naming_fun: opts.header_naming_fun,
+            segment_naming_fun: opts.segment_naming_fun,
+            mode: opts.mode
+          },
           storage: opts.storage,
-          target_window_duration: opts.target_window_duration,
-          persist?: opts.persist?,
-          header_naming_fun: opts.header_naming_fun,
-          segment_naming_fun: opts.segment_naming_fun,
-          mode: opts.mode,
           cleanup_after: opts.cleanup_after
         })
       ] ++

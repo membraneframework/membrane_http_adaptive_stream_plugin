@@ -4,7 +4,6 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
   """
   use Bunch.Access
 
-  alias __MODULE__.SegmentAttribute
   alias __MODULE__.Track
 
   @type serialized_manifest_t :: {manifest_name :: String.t(), manifest_content :: String.t()}
@@ -40,44 +39,29 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
   end
 
   @doc """
-  Add a new regular segment to the track with given `track_id`.
+  Add segment to the manifest in case of partial segment it will add also a full segment if needed.
+  Returns Changset.
   """
-  @spec add_segment(
+  @spec new_segment(
           t,
           track_id :: Track.id_t(),
-          list(Track.segment_opt_t()),
-          list(SegmentAttribute.t())
+          Membrane.Buffer.t()
         ) ::
           {Track.Changeset.t(), t}
-  def add_segment(%__MODULE__{} = manifest, track_id, opts, attributes \\ []) do
+  def new_segment(%__MODULE__{} = manifest, track_id, buffer) do
+    # creation_time chyba wystarczy wewnątrz dodawać jakiś time_now() nie ma sensu go liczyc tutaj
+    opts = %{
+      payload: buffer.payload,
+      byte_size: byte_size(buffer.payload),
+      independent?: Map.get(buffer.metadata, :independent?, true),
+      duration: buffer.metadata.duration,
+      complete?: true
+    }
+
     get_and_update_in(
       manifest,
       [:tracks, track_id],
-      &Track.add_segment(&1, opts, attributes)
-    )
-  end
-
-  @doc """
-  Add a new partial segment to the track with given `track_id`.
-
-  Partial segments gets appended to the latest regular segment
-  until `finalize_current_segment/2` gets called. After that, in order to
-  add new partial segments one must add an incomplete segment (a regular segment with
-  and option of `complete?` set to false).
-  """
-  @spec add_partial_segment(
-          t(),
-          Track.id_t(),
-          boolean(),
-          Track.segment_duration_t(),
-          Track.segment_byte_size_t()
-        ) ::
-          {Track.Changeset.t(), t}
-  def add_partial_segment(manifest, track_id, independent?, duration, byte_size) do
-    get_and_update_in(
-      manifest,
-      [:tracks, track_id],
-      &Track.add_partial_segment(&1, independent?, duration, byte_size)
+      &Track.new_segment(&1, opts)
     )
   end
 
@@ -112,19 +96,21 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
     )
   end
 
-  @spec finish(t, Track.id_t()) :: t
+  @spec finish(t, Track.id_t()) :: {Track.Changeset.t(), t}
   def finish(%__MODULE__{} = manifest, track_id) do
-    update_in(manifest, [:tracks, track_id], &Track.finish/1)
+    get_and_update_in(manifest, [:tracks, track_id], &Track.finish/1)
   end
 
   @doc """
-  Restores all the stale segments in all tracks.
-
-  All the tracks must be configured to be persisted beforehand, otherwise this function will raise
+  Restores all the stale segments in all tracks that have option persisted? set to true.
   """
   @spec from_beginning(t()) :: t
   def from_beginning(%__MODULE__{} = manifest) do
-    tracks = Bunch.Map.map_values(manifest.tracks, &Track.from_beginning/1)
+    tracks =
+      Bunch.Map.map_values(manifest.tracks, fn track ->
+        if Track.is_persisted?(track), do: Track.from_beginning(track), else: track
+      end)
+
     %__MODULE__{manifest | tracks: tracks}
   end
 

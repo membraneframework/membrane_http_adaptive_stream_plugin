@@ -24,6 +24,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       :header_extension,
       :segment_extension,
       :target_segment_duration,
+      :min_segment_duration,
       :target_partial_segment_duration,
       :header_naming_fun,
       :segment_naming_fun
@@ -31,7 +32,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     defstruct @enforce_keys ++
                 [
                   target_window_duration: nil,
-                  persist?: false
+                  persist?: false,
+                  mode: :vod
                 ]
 
     @typedoc """
@@ -58,9 +60,11 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
             header_naming_fun: (Track.t(), counter :: non_neg_integer() -> String.t()),
             segment_naming_fun: (Track.t() -> String.t()),
             target_segment_duration: Membrane.Time.t(),
+            min_segment_duration: Membrane.Time.t(),
             target_partial_segment_duration: Membrane.Time.t() | nil,
             target_window_duration: Membrane.Time.t(),
-            persist?: boolean
+            persist?: boolean(),
+            mode: :vod | :live
           }
   end
 
@@ -69,16 +73,21 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     Structure representing changes that has been applied to the track. What element has been added
     and what elements are to be removed.
     """
-
-    @enforce_keys [:to_add, :to_remove]
-    defstruct @enforce_keys
-
     @type element_type_t :: :header | :segment | :partial_segment
 
     @type t :: %__MODULE__{
-            to_add: {element_type_t(), name :: String.t(), metadata :: map()},
+            to_add: [{element_type_t(), name :: String.t(), metadata :: map(), payload: binary()}],
             to_remove: [{element_type_t(), name :: String.t()}]
           }
+    defstruct to_add: [],
+              to_remove: []
+
+    @spec merge(t(), t()) :: t()
+    def merge(%{to_add: to_add_a, to_remove: to_remove_a}, %{
+          to_add: to_add_b,
+          to_remove: to_remove_b
+        }),
+        do: %Changeset{to_add: to_add_a ++ to_add_b, to_remove: to_remove_a ++ to_remove_b}
   end
 
   @config_keys Config.__struct__() |> Map.from_struct() |> Map.keys()
@@ -119,6 +128,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
           segment_extension: String.t(),
           target_partial_segment_duration: segment_duration_t | nil,
           target_segment_duration: segment_duration_t,
+          min_segment_duration: segment_duration_t,
           header_naming_fun: (t, counter :: non_neg_integer() -> String.t()),
           segment_naming_fun: (t -> String.t()),
           target_window_duration: Membrane.Time.t() | Ratio.t(),
@@ -139,15 +149,19 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
 
   @type segments_t :: Qex.t(Segment.t())
 
-  @type segment_duration_t :: Membrane.Time.t() | Ratio.t()
+  @type segment_duration_t :: SegmentDuration.t()
 
   @type segment_byte_size_t :: non_neg_integer()
 
-  @type segment_opt_t ::
-          {:name, String.t()}
-          | {:complete?, boolean()}
-          | {:duration, segment_duration_t()}
-          | {:byte_size, segment_byte_size_t()}
+  @type segment_payload_t :: binary()
+
+  @type segment_opt_t :: %{
+          payload: segment_payload_t(),
+          complete?: boolean(),
+          independent?: boolean(),
+          duration: segment_duration_t(),
+          byte_size: segment_byte_size_t()
+        }
 
   @spec new(Config.t()) :: t
   def new(%Config{} = config) do
@@ -185,25 +199,42 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   def supports_partial_segments?(%__MODULE__{target_partial_segment_duration: duration}),
     do: duration != nil
 
-  @doc """
-  Add a segment of given duration to the track.
-  It is recommended not to pass discontinuity attribute manually but use `discontinue/1` function instead.
-  """
+  @spec is_persisted?(t()) :: boolean()
+  def is_persisted?(%{persist?: persist?}), do: persist?
+
+  @spec new_segment(
+          t(),
+          segment_opt_t(),
+          list(Manifest.SegmentAttribute.t())
+        ) :: {Changeset.t(), t()}
+  def new_segment(track, opts, attributes \\ [])
+
+  def new_segment(
+        %__MODULE__{target_partial_segment_duration: nil} = track,
+        opts,
+        attributes
+      ),
+      do: add_segment(track, opts, attributes)
+
+  def new_segment(track, opts, attributes),
+    do: new_partial_segment(track, opts, attributes)
+
   @spec add_segment(
           t,
-          list(segment_opt_t()),
+          segment_opt_t(),
           list(Manifest.SegmentAttribute.t())
         ) ::
           {Changeset.t(), t}
-  def add_segment(track, opts, attributes \\ [])
+  defp add_segment(track, opts, attributes \\ [])
 
-  def add_segment(%__MODULE__{finished?: false} = track, opts, attributes) do
+  defp add_segment(
+         %__MODULE__{finished?: false, mode: mode} = track,
+         %{duration: duration, byte_size: byte_size, complete?: complete?, payload: payload},
+         attributes
+       ) do
     use Ratio, comparison: true
 
-    name = Keyword.get(opts, :name, track.segment_naming_fun.(track) <> track.segment_extension)
-    duration = Keyword.get(opts, :duration, 0)
-    byte_size = Keyword.get(opts, :byte_size, 0)
-    complete? = Keyword.get(opts, :complete?, true)
+    name = track.segment_naming_fun.(track) <> track.segment_extension
 
     attributes =
       if is_nil(track.awaiting_discontinuity),
@@ -221,7 +252,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
           duration: duration,
           byte_size: byte_size,
           type: segment_type,
-          attributes: attributes
+          attributes: attributes ++ creation_time(mode)
         })
       )
       |> Map.update!(:next_segment_id, &(&1 + 1))
@@ -242,37 +273,38 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     }
 
     changeset = %Changeset{
-      to_add: {if(complete?, do: :segment, else: :partial_segment), name, metadata},
+      to_add: [{if(complete?, do: :segment, else: :partial_segment), name, metadata, payload}],
       to_remove: elements_to_remove
     }
 
     {changeset, track}
   end
 
-  def add_segment(%__MODULE__{finished?: true} = _track, _opts, _attributes),
+  defp add_segment(%__MODULE__{finished?: true} = _track, _opts, _attributes),
     do: raise("Cannot add new segments to finished track")
 
-  @doc """
-  Append a partial segment to the current incomplete segment.
-
-  The current segment is supposed to be of type `:partial`, meaning that it is still in a phase
-  of gathering partial segments before being finalized into a full segment. There can only be
-  a single such segment and it must be the last one.
-  """
-  @spec add_partial_segment(t, boolean, segment_duration_t, segment_byte_size_t) ::
+  @spec add_partial_segment(
+          t,
+          segment_payload_t(),
+          boolean,
+          segment_duration_t,
+          segment_byte_size_t
+        ) ::
           {Changeset.t(), t()}
-  def add_partial_segment(
-        %__MODULE__{finished?: false} = track,
-        independent?,
-        duration,
-        byte_size
-      ) do
+  defp add_partial_segment(
+         %__MODULE__{finished?: false} = track,
+         payload,
+         independent?,
+         duration,
+         byte_size
+       ) do
     use Ratio
 
     partial_segment = %{
       independent?: independent?,
       duration: duration,
-      byte_size: byte_size
+      byte_size: byte_size,
+      payload: payload
     }
 
     {%Segment{type: :partial} = last_segment, segments} = Qex.pop_back!(track.segments)
@@ -289,12 +321,114 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     }
 
     changeset = %Changeset{
-      to_add: {:partial_segment, last_segment.name, metadata},
+      to_add: [{:partial_segment, last_segment.name, metadata, payload}],
       to_remove: []
     }
 
     {changeset, Map.replace(track, :segments, Qex.push(segments, last_segment))}
   end
+
+  @spec new_partial_segment(
+          t,
+          segment_opt_t(),
+          list(Manifest.SegmentAttribute.t())
+        ) ::
+          {Changeset.t(), t}
+  defp new_partial_segment(
+         %__MODULE__{
+           finished?: false,
+           min_segment_duration: min_segment_duration,
+           segments: segments
+         } = track,
+         %{
+           duration: duration,
+           independent?: independent?,
+           byte_size: byte_size,
+           payload: payload
+         },
+         _attributes
+       ) do
+    partials =
+      case Qex.pop_back(segments) do
+        {:empty, _segments} -> []
+        {{:value, %Segment{type: :partial} = last_segment}, _segments} -> last_segment.parts
+        _else -> []
+      end
+
+    partials_duration =
+      Enum.reduce(partials, 0, fn part, total_duration ->
+        total_duration + part.duration
+      end)
+
+    {changeset, track, partials} =
+      if should_finalize_segment?(
+           independent?,
+           duration,
+           partials,
+           partials_duration,
+           min_segment_duration
+         ) do
+        {changeset, track} = finalize_current_segment(track)
+        # zamienić na update w tracku
+        {changeset, track, []}
+      else
+        {%Changeset{}, track, partials}
+      end
+
+    new_segment_necessary? = Enum.empty?(partials)
+
+    track =
+      if new_segment_necessary? do
+        {_changeset, track} =
+          add_segment(
+            track,
+            %{
+              payload: payload,
+              complete?: false,
+              duration: duration,
+              byte_size: byte_size,
+              independent?: true
+            }
+          )
+
+        track
+      else
+        track
+      end
+
+    {new_changeset, track} =
+      add_partial_segment(
+        track,
+        payload,
+        independent?,
+        duration,
+        byte_size(payload)
+      )
+
+    {Changeset.merge(changeset, new_changeset), track}
+  end
+
+  defp should_finalize_segment?(
+         independent?,
+         duration,
+         partials,
+         partials_duration,
+         min_segment_duration
+       ) do
+    partials != [] and independent? and duration + partials_duration > min_segment_duration
+  end
+
+  @spec maybe_finalize_current_segment(t()) :: {Changeset.t(), t}
+  defp maybe_finalize_current_segment(%__MODULE__{finished?: false, segments: segments} = track) do
+    case Qex.pop_back(segments) do
+      {:empty, _segments} -> {%Changeset{}, track}
+      {{:value, %Segment{parts: []}}, _segments} -> {%Changeset{}, track}
+      {{:value, %Segment{type: :partial}}, _segments} -> finalize_current_segment(track)
+      _else -> {%Changeset{}, track}
+    end
+  end
+
+  defp maybe_finalize_current_segment(track), do: {%Changeset{}, track}
 
   @doc """
   Finalize current segment.
@@ -313,16 +447,20 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     {%Segment{type: :partial, parts: parts} = last_segment, segments} =
       Qex.pop_back!(track.segments)
 
-    {byte_size, duration} =
-      Enum.reduce(parts, {0, 0}, fn part, {size, duration} ->
-        {size + part.byte_size, duration + part.duration}
+    {byte_size, duration, payload} =
+      Enum.reduce(parts, {0, 0, <<>>}, fn part, {size, duration, payload} ->
+        {size + part.byte_size, duration + part.duration,
+         IO.iodata_to_binary([payload, part.payload])}
       end)
+
+    parts = Enum.map(parts, &Map.put(&1, :payload, nil))
 
     last_segment = %Segment{
       last_segment
       | duration: duration,
         byte_size: byte_size,
-        type: :full
+        type: :full,
+        parts: parts
     }
 
     {elements_to_remove, track} =
@@ -333,7 +471,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       |> maybe_pop_stale_segments_and_headers()
 
     changeset = %Changeset{
-      to_add: {:segment, last_segment.name, %{duration: duration}},
+      to_add: [{:segment, last_segment.name, %{duration: duration}, payload}],
       to_remove: elements_to_remove
     }
 
@@ -364,9 +502,10 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   @doc """
   Marks the track as finished. After this action, it won't be possible to add any new segments to the track.
   """
-  @spec finish(t) :: t
+  @spec finish(t) :: {Changeset.t(), t()}
   def finish(track) do
-    %__MODULE__{track | finished?: true}
+    {changset, track} = maybe_finalize_current_segment(track)
+    {changset, %__MODULE__{track | finished?: true}}
   end
 
   @doc """
@@ -505,4 +644,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       {Enum.reverse(segments_acc), Enum.reverse(headers_acc), segments, window_duration, header}
     end
   end
+
+  defp creation_time(:live), do: [{:creation_time, DateTime.utc_now()}]
+  defp creation_time(:vod), do: []
 end
