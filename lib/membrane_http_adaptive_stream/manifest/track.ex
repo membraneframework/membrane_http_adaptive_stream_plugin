@@ -73,10 +73,38 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     Structure representing changes that has been applied to the track. What element has been added
     and what elements are to be removed.
     """
-    @type element_type_t :: :header | :segment | :partial_segment
 
+    defmodule Segment do
+      @type t :: %__MODULE__{
+              metadata: %{
+                duration: Membrane.Time.t() | Ratio.t(),
+                sequence_number: non_neg_integer()
+              },
+              name: String.t(),
+              payload: binary()
+            }
+      @enforce_keys [:metadata, :name, :payload]
+      defstruct @enforce_keys
+    end
+
+    defmodule PartialSegment do
+      @type t :: %__MODULE__{
+              metadata: %{
+                duration: Membrane.Time.t() | Ration.t(),
+                sequence_number: non_neg_integer(),
+                independent?: boolean(),
+                byte_offset: non_neg_integer()
+              },
+              name: String.t(),
+              payload: binary()
+            }
+      @enforce_keys [:metadata, :name, :payload]
+      defstruct @enforce_keys
+    end
+
+    @type element_type_t :: :segment | :partial_segment | :header
     @type t :: %__MODULE__{
-            to_add: [{element_type_t(), name :: String.t(), metadata :: map(), payload: binary()}],
+            to_add: [Segment | PartialSegment],
             to_remove: [{element_type_t(), name :: String.t()}]
           }
     defstruct to_add: [],
@@ -103,7 +131,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
                 window_duration: 0,
                 discontinuities_counter: 0,
                 awaiting_discontinuity: nil,
-                next_segment_id: 0
+                next_segment_id: 0,
+                segment_sequencer: {0, 0}
               ]
 
   @typedoc """
@@ -142,14 +171,15 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
           finished?: boolean,
           window_duration: non_neg_integer,
           discontinuities_counter: non_neg_integer,
-          next_segment_id: non_neg_integer()
+          next_segment_id: non_neg_integer(),
+          segment_sequencer: {non_neg_integer(), non_neg_integer}
         }
 
   @type id_t :: any
 
   @type segments_t :: Qex.t(Segment.t())
 
-  @type segment_duration_t :: SegmentDuration.t()
+  @type segment_duration_t :: Membrane.Time.t() | Ratio.t()
 
   @type segment_byte_size_t :: non_neg_integer()
 
@@ -232,8 +262,6 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
          %{duration: duration, byte_size: byte_size, complete?: complete?, payload: payload},
          attributes
        ) do
-    use Ratio, comparison: true
-
     name = track.segment_naming_fun.(track) <> track.segment_extension
 
     attributes =
@@ -268,12 +296,28 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       |> Map.put(:awaiting_discontinuity, nil)
       |> maybe_pop_stale_segments_and_headers()
 
-    metadata = %{
-      duration: duration
-    }
+    {to_add, track} =
+      if complete? do
+        {segment_sn, track} = get_segment_sn(track, true)
+        metadata = %{duration: duration, sequence_number: segment_sn}
+        to_add = %Changeset.Segment{metadata: metadata, name: name, payload: payload}
+        {to_add, track}
+      else
+        {partial_sn, track} = get_partial_sn(track, false)
+
+        metadata = %{
+          duration: duration,
+          sequence_number: partial_sn,
+          byte_offset: byte_size(payload),
+          independent?: true
+        }
+
+        to_add = %Changeset.PartialSegment{metadata: metadata, name: name, payload: payload}
+        {to_add, track}
+      end
 
     changeset = %Changeset{
-      to_add: [{if(complete?, do: :segment, else: :partial_segment), name, metadata, payload}],
+      to_add: [to_add],
       to_remove: elements_to_remove
     }
 
@@ -309,10 +353,13 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
 
     {%Segment{type: :partial} = last_segment, segments} = Qex.pop_back!(track.segments)
 
+    {partial_sn, track} = get_partial_sn(track, true)
+
     metadata = %{
-      byte_offset: Enum.map(last_segment.parts, & &1.byte_size) |> Enum.sum(),
       duration: duration,
-      independent: independent?
+      sequence_number: partial_sn,
+      byte_offset: Enum.map(last_segment.parts, & &1.byte_size) |> Enum.sum(),
+      independent?: independent?
     }
 
     last_segment = %Segment{
@@ -321,7 +368,9 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     }
 
     changeset = %Changeset{
-      to_add: [{:partial_segment, last_segment.name, metadata, payload}],
+      to_add: [
+        %Changeset.PartialSegment{metadata: metadata, name: last_segment.name, payload: payload}
+      ],
       to_remove: []
     }
 
@@ -430,20 +479,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
 
   defp maybe_finalize_current_segment(track), do: {%Changeset{}, track}
 
-  @doc """
-  Finalize current segment.
-
-  With low latency, a regular segments gets created gradually. Each partial
-  segment gets appended to a regular one, if all parts are collected then
-  the regular segment is said to be complete.
-
-  This function aims to finalize the current (latest) segment
-  that is still incomplete so it can live on its own and so a new segment can
-  get started.
-
-  """
   @spec finalize_current_segment(t()) :: {Changeset.t(), t}
-  def finalize_current_segment(%__MODULE__{finished?: false} = track) do
+  defp finalize_current_segment(%__MODULE__{finished?: false} = track) do
     {%Segment{type: :partial, parts: parts} = last_segment, segments} =
       Qex.pop_back!(track.segments)
 
@@ -470,8 +507,11 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       |> Map.update!(:target_segment_duration, &if(&1 > duration, do: &1, else: duration))
       |> maybe_pop_stale_segments_and_headers()
 
+    {segment_sn, track} = get_segment_sn(track, true)
+    metadata = %{duration: duration, sequence_number: segment_sn}
+
     changeset = %Changeset{
-      to_add: [{:segment, last_segment.name, %{duration: duration}, payload}],
+      to_add: [%Changeset.Segment{metadata: metadata, name: last_segment.name, payload: payload}],
       to_remove: elements_to_remove
     }
 
@@ -647,4 +687,16 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
 
   defp creation_time(:live), do: [{:creation_time, DateTime.utc_now()}]
   defp creation_time(:vod), do: []
+
+  defp get_partial_sn(%{segment_sequencer: {segment_sn, partial_sn}} = track, true),
+    do: {partial_sn, %{track | segment_sequencer: {segment_sn, partial_sn + 1}}}
+
+  defp get_partial_sn(%{segment_sequencer: {_segment_sn, partial_sn}} = track, _update?),
+    do: {partial_sn, track}
+
+  defp get_segment_sn(%{segment_sequencer: {segment_sn, _partial_sn}} = track, true),
+    do: {segment_sn, %{track | segment_sequencer: {segment_sn + 1, 0}}}
+
+  defp get_segment_sn(%{segment_sequencer: {segment_sn, _partial_sn}} = track, _update?),
+    do: {segment_sn, track}
 end

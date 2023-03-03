@@ -49,7 +49,6 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
         ) ::
           {Track.Changeset.t(), t}
   def new_segment(%__MODULE__{} = manifest, track_id, buffer) do
-    # creation_time chyba wystarczy wewnątrz dodawać jakiś time_now() nie ma sensu go liczyc tutaj
     opts = %{
       payload: buffer.payload,
       byte_size: byte_size(buffer.payload),
@@ -63,14 +62,6 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
       [:tracks, track_id],
       &Track.new_segment(&1, opts)
     )
-  end
-
-  @doc """
-  Finalizes current segment of given track when serving partial segments.
-  """
-  @spec finalize_current_segment(t(), Track.id_t()) :: {Track.Changeset.t(), t()}
-  def finalize_current_segment(manifest, track_id) do
-    get_and_update_in(manifest, [:tracks, track_id], &Track.finalize_current_segment/1)
   end
 
   @spec serialize(t) :: serialized_manifests_t()

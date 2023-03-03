@@ -107,8 +107,6 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
       stored_manifests: stored_manifests
     } = storage
 
-    IO.inspect(manifest, label: :manifest)
-
     withl cache: false <- cache[name] == manifest,
           store:
             {:ok, impl_state} <-
@@ -172,7 +170,6 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
         ) :: {callback_result_t, t}
   def apply_segment_changeset(storage, track_id, changeset) do
     %__MODULE__{storage_impl: storage_impl, impl_state: impl_state} = storage
-    # {to_add_type, to_add_name, metadata, payload}
     %Changeset{to_add: to_add, to_remove: to_remove} = changeset
 
     grouped =
@@ -198,8 +195,24 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
              &storage_impl.remove(track_id, &1, %{type: :header}, &2)
            ) do
       {result, impl_state} =
-        Bunch.Enum.try_reduce(to_add, impl_state, fn {to_add_type, to_add_name, metadata, payload},
+        Bunch.Enum.try_reduce(to_add, impl_state, fn %{
+                                                       name: to_add_name,
+                                                       metadata: metadata,
+                                                       payload: payload
+                                                     } = segment,
                                                      impl_state ->
+          to_add_type =
+            case segment do
+              %Changeset.PartialSegment{} ->
+                :partial_segment
+
+              %Changeset.Segment{} ->
+                :segment
+
+              _unknown ->
+                raise "Unknown type of segment changeset"
+            end
+
           storage_impl.store(
             track_id,
             to_add_name,
