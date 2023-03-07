@@ -14,9 +14,8 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
 
   The following configuration:
 
-      %#{inspect(__MODULE__)}{
-        manifest_name: "manifest",
-        manifest_module: Membrane.HTTPAdaptiveStream.HLS,
+  %#{inspect(__MODULE__)}{
+        manifest_config: %ManifestConfig{name: "manifest", module: Membrane.HTTPAdaptiveStream.HLS}
         storage: %Membrane.HTTPAdaptiveStream.Storages.FileStorage{directory: "output"}
       }
 
@@ -33,6 +32,9 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   alias Membrane.HTTPAdaptiveStream.Storage
 
   defmodule TrackConfig do
+    @moduledoc """
+    Track configuration. For more information checkout `Membrane.HTTPAdaptiveStream.Manifest.Track.Config`
+    """
     @type t() :: %__MODULE__{
             target_window_duration: Membrane.Time.t() | :infinity,
             mode: :live | :vod,
@@ -49,6 +51,9 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   end
 
   defmodule ManifestConfig do
+    @moduledoc """
+    `Membrane.HTTPAdaptiveStream.Manifest` configuration.
+    """
     @type t() :: %__MODULE__{
             name: String.t(),
             module: module()
@@ -56,43 +61,6 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
 
     @enforce_keys [:module]
     defstruct @enforce_keys ++ [name: "index"]
-  end
-
-  defmodule SegmentDuration do
-    @moduledoc """
-    Module representing a segment duration range that should appear
-    in a playlist.
-
-    The minimum and target durations are relevant if sink
-    is set to work in low latency mode as the durations of partial
-    segment can greatly vary.
-    """
-
-    alias Membrane.Time
-
-    @enforce_keys [:min, :target]
-    defstruct @enforce_keys
-
-    @type t :: %__MODULE__{
-            min: Time.t(),
-            target: Time.t()
-          }
-
-    @doc """
-    Creates a new segment duration with a minimum and target duration.
-    """
-    @spec new(Time.t(), Time.t()) :: t()
-    def new(min, target) when min <= target,
-      do: %__MODULE__{min: min, target: target}
-
-    @doc """
-    Creates a new segment duration with a target duration.
-
-    The minimum duration is set to the target one.
-    """
-    @spec new(Time.t()) :: t()
-    def new(target),
-      do: %__MODULE__{min: target, target: target}
   end
 
   def_input_pad :input,
@@ -109,7 +77,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
         """
       ],
       segment_duration: [
-        spec: SegmentDuration.t(),
+        spec: Manifest.Track.SegmentDuration.t(),
         description: """
         The expected minimum and target duration of media segments produced by this particular track.
 
@@ -188,23 +156,24 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
         track_options = ctx.pads[pad_ref].options
         track_name = serialize_track_name(track_options[:track_name] || track_id)
 
-        Manifest.add_track(
-          state.manifest,
-          %Manifest.Track.Config{
+        track_config_params =
+          state.track_config
+          |> Map.from_struct()
+          |> Map.merge(%{
             id: track_id,
             track_name: track_name,
             content_type: stream_format.content_type,
             header_extension: ".mp4",
             segment_extension: ".m4s",
-            header_naming_fun: state.track_config.header_naming_fun,
-            segment_naming_fun: state.track_config.segment_naming_fun,
-            target_window_duration: state.track_config.target_window_duration,
-            target_segment_duration: track_options.segment_duration.target,
-            min_segment_duration: track_options.segment_duration.min,
-            target_partial_segment_duration: track_options.target_partial_segment_duration,
-            persist?: state.track_config.persist?,
-            mode: state.track_config.mode
-          }
+            segment_duration: track_options.segment_duration,
+            target_partial_segment_duration: track_options.target_partial_segment_duration
+          })
+
+        track_config = struct!(Manifest.Track.Config, track_config_params)
+
+        Manifest.add_track(
+          state.manifest,
+          track_config
         )
       end
 
@@ -235,9 +204,9 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
 
   @impl true
   def handle_write(Pad.ref(:input, track_id) = pad, buffer, _ctx, %{storage: storage} = state) do
-    {changeset, manifest} = Manifest.new_segment(state.manifest, track_id, buffer)
+    {changeset, manifest} = Manifest.new_buffer(state.manifest, track_id, buffer)
 
-    with {:ok, storage} <- Storage.apply_segment_changeset(storage, track_id, changeset),
+    with {:ok, storage} <- Storage.apply_track_changeset(storage, track_id, changeset),
          {:ok, storage} <- serialize_and_store_manifest(manifest, storage) do
       {notify, state} = maybe_notify_playable(track_id, state)
       {notify ++ [demand: pad], %{state | manifest: manifest, storage: storage}}
@@ -255,7 +224,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
       ) do
     {changeset, manifest} = Manifest.finish(manifest, track_id)
 
-    with {:ok, storage} <- Storage.apply_segment_changeset(storage, track_id, changeset),
+    with {:ok, storage} <- Storage.apply_track_changeset(storage, track_id, changeset),
          {:ok, storage} <- serialize_and_store_manifest(manifest, storage) do
       storage = Storage.clear_cache(storage)
       {[], %{state | storage: storage, manifest: manifest}}

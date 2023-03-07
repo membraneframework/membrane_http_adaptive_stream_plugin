@@ -163,12 +163,12 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   @doc """
   Stores a new segment and removes stale ones.
   """
-  @spec apply_segment_changeset(
+  @spec apply_track_changeset(
           t,
           track_id :: term(),
           Changeset.t()
         ) :: {callback_result_t, t}
-  def apply_segment_changeset(storage, track_id, changeset) do
+  def apply_track_changeset(storage, track_id, changeset) do
     %__MODULE__{storage_impl: storage_impl, impl_state: impl_state} = storage
     %Changeset{to_add: to_add, to_remove: to_remove} = changeset
 
@@ -196,29 +196,29 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
            ) do
       {result, impl_state} =
         Bunch.Enum.try_reduce(to_add, impl_state, fn %{
-                                                       name: to_add_name,
-                                                       metadata: metadata,
+                                                       type: type,
+                                                       name: name,
+                                                       duration: duration,
+                                                       sequence_number: sequence_number,
+                                                       independent?: independent?,
+                                                       byte_offset: byte_offset,
                                                        payload: payload
-                                                     } = segment,
+                                                     },
                                                      impl_state ->
-          to_add_type =
-            case segment do
-              %Changeset.PartialSegment{} ->
-                :partial_segment
-
-              %Changeset.Segment{} ->
-                :segment
-
-              _unknown ->
-                raise "Unknown type of segment changeset"
-            end
+          # TODO: think twice about Changeset.Segment
+          metadata = %{
+            duration: duration,
+            sequence_number: sequence_number,
+            independent?: independent?,
+            byte_offset: byte_offset
+          }
 
           storage_impl.store(
             track_id,
-            to_add_name,
+            name,
             payload,
             metadata,
-            %{mode: :binary, type: to_add_type},
+            %{mode: :binary, type: type},
             impl_state
           )
         end)

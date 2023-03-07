@@ -40,15 +40,15 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
 
   @doc """
   Add segment to the manifest in case of partial segment it will add also a full segment if needed.
-  Returns Changset.
+  Returns `Membrane.HTTPAdaptiveStream.Manifest.Track.Changeset`.
   """
-  @spec new_segment(
+  @spec new_buffer(
           t,
           track_id :: Track.id_t(),
           Membrane.Buffer.t()
         ) ::
           {Track.Changeset.t(), t}
-  def new_segment(%__MODULE__{} = manifest, track_id, buffer) do
+  def new_buffer(%__MODULE__{} = manifest, track_id, buffer) do
     opts = %{
       payload: buffer.payload,
       byte_size: byte_size(buffer.payload),

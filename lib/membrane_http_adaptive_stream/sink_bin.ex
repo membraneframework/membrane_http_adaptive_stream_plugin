@@ -129,13 +129,13 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
         """
       ],
       segment_duration: [
-        spec: Sink.SegmentDuration.t(),
+        spec: Manifest.Track.SegmentDuration.t(),
         description: """
         The segment duration range  of the regular segments.
         """
       ],
       partial_segment_duration: [
-        spec: Sink.SegmentDuration.t() | nil,
+        spec: Manifest.Track.SegmentDuration.t() | nil,
         default: nil,
         description: """
         The segment duration range  of the partial segments.
@@ -329,8 +329,11 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
   defp convert_segment_duration_for_muxer(nil), do: nil
 
-  defp convert_segment_duration_for_muxer(%Sink.SegmentDuration{min: min, target: target}),
-    do: %CMAF.SegmentDurationRange{min: min, target: target}
+  defp convert_segment_duration_for_muxer(%Manifest.Track.SegmentDuration{
+         min: min,
+         target: target
+       }),
+       do: %CMAF.SegmentDurationRange{min: min, target: target}
 
   defp get_payloader(encoding, state) do
     if encoding == :AAC,
