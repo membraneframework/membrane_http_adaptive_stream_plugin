@@ -30,8 +30,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     ]
     defstruct @enforce_keys ++
                 [
-                  # TODO: czy moze być null?
-                  target_window_duration: nil,
+                  target_window_duration: :infinity,
                   persist?: false,
                   mode: :vod
                 ]
@@ -74,8 +73,6 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     Structure representing changes that has been applied to the track. What element has been added
     and what elements are to be removed.
     """
-
-    # TODO: think of a better name
     defmodule Segment do
       @moduledoc false
       @type t :: %__MODULE__{
@@ -262,21 +259,21 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   Recognize if its regular or partial segment and then update the track appropriately.
   Returns `Changeset`.
   """
-  @spec new_segment(
+  @spec add_chunk(
           t(),
           segment_opt_t(),
           list(Manifest.SegmentAttribute.t())
         ) :: {Changeset.t(), t()}
-  def new_segment(track, opts, attributes \\ [])
+  def add_chunk(track, opts, attributes \\ [])
 
-  def new_segment(
+  def add_chunk(
         %__MODULE__{finished?: false, target_partial_segment_duration: nil} = track,
         opts,
         attributes
       ),
       do: add_segment(track, opts, attributes)
 
-  def new_segment(
+  def add_chunk(
         %__MODULE__{
           finished?: false,
           segment_duration: %{min: min_segment_duration},
@@ -293,7 +290,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     partials =
       case Qex.pop_back(segments) do
         {:empty, _segments} -> []
-        {{:value, %Segment{type: :partial} = last_segment}, _segments} -> last_segment.parts
+        {{:value, %Segment{type: :partial, parts: parts}}, _segments} -> parts
         _else -> []
       end
 
@@ -311,7 +308,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
            min_segment_duration
          ) do
         {changeset, track} = finalize_current_segment(track)
-        # TODO: zamienić na update w tracku
+
         {changeset, track, []}
       else
         {%Changeset{}, track, partials}
@@ -350,7 +347,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     {Changeset.merge(changeset, new_changeset), track}
   end
 
-  def new_segment(%__MODULE__{finished?: true} = _track, _opts, _attributes),
+  def add_chunk(%__MODULE__{finished?: true} = _track, _opts, _attributes),
     do: raise("Cannot add new segments to finished track")
 
   @doc """
@@ -464,7 +461,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
 
     {to_add, track} =
       if complete? do
-        {segment_sequence_number, track} = get_segment_sequence_number(track, true)
+        {segment_sequence_number, track} = get_segment_sequence_number(track)
 
         new_segment = %Changeset.Segment{
           type: :segment,
@@ -615,7 +612,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       )
       |> maybe_pop_stale_segments_and_headers()
 
-    {segment_sequence_number, track} = get_segment_sequence_number(track, true)
+    {segment_sequence_number, track} = get_segment_sequence_number(track)
 
     new_segment = %Changeset.Segment{
       type: :segment,
@@ -746,33 +743,26 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     end
   end
 
-  defp creation_time(:live), do: [{:creation_time, DateTime.utc_now()}]
-  defp creation_time(:vod), do: []
+  defp creation_time(mode) do
+    case mode do
+      :live -> [{:creation_time, DateTime.utc_now()}]
+      :vod -> []
+    end
+  end
 
   defp get_partial_sequence_number(
-         %{segment_sequencer: {segment_sequence_number, partial_sequence_number}} = track,
-         true
-       ),
-       do:
-         {partial_sequence_number,
-          %{track | segment_sequencer: {segment_sequence_number, partial_sequence_number + 1}}}
+         %{segment_sequencer: {segment_sn, partial_sn}} = track,
+         update?
+       ) do
+    case update? do
+      true ->
+        {partial_sn, %{track | segment_sequencer: {segment_sn, partial_sn + 1}}}
 
-  defp get_partial_sequence_number(
-         %{segment_sequencer: {_segment_sequence_number, partial_sequence_number}} = track,
-         _update?
-       ),
-       do: {partial_sequence_number, track}
+      false ->
+        {partial_sn, track}
+    end
+  end
 
-  defp get_segment_sequence_number(
-         %{segment_sequencer: {segment_sequence_number, _partial_sequence_number}} = track,
-         true
-       ),
-       do:
-         {segment_sequence_number, %{track | segment_sequencer: {segment_sequence_number + 1, 0}}}
-
-  defp get_segment_sequence_number(
-         %{segment_sequencer: {segment_sequence_number, _partial_sequence_number}} = track,
-         _update?
-       ),
-       do: {segment_sequence_number, track}
+  defp get_segment_sequence_number(%{segment_sequencer: {segment_sn, _partial_sn}} = track),
+    do: {segment_sn, %{track | segment_sequencer: {segment_sn + 1, 0}}}
 end

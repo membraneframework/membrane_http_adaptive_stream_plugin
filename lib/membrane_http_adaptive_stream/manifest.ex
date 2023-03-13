@@ -42,13 +42,13 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
   Add segment to the manifest in case of partial segment it will add also a full segment if needed.
   Returns `Membrane.HTTPAdaptiveStream.Manifest.Track.Changeset`.
   """
-  @spec new_buffer(
+  @spec add_chunk(
           t,
           track_id :: Track.id_t(),
           Membrane.Buffer.t()
         ) ::
           {Track.Changeset.t(), t}
-  def new_buffer(%__MODULE__{} = manifest, track_id, buffer) do
+  def add_chunk(%__MODULE__{} = manifest, track_id, buffer) do
     opts = %{
       payload: buffer.payload,
       byte_size: byte_size(buffer.payload),
@@ -60,7 +60,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
     get_and_update_in(
       manifest,
       [:tracks, track_id],
-      &Track.new_segment(&1, opts)
+      &Track.add_chunk(&1, opts)
     )
   end
 
@@ -71,6 +71,10 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
 
   @spec has_track?(t(), Track.id_t()) :: boolean()
   def has_track?(%__MODULE__{tracks: tracks}, track_id), do: Map.has_key?(tracks, track_id)
+
+  @spec is_persisted?(t(), Track.id_t()) :: boolean()
+  def is_persisted?(%__MODULE__{tracks: tracks}, track_id),
+    do: Track.is_persisted?(Map.get(tracks, track_id))
 
   @doc """
   Append a discontinuity to the track.

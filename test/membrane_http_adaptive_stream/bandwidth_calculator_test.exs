@@ -10,7 +10,11 @@ defmodule Membrane.HTTPAdaptiveStream.BandwidthCalculatorTest do
 
   describe "Bandwidth calculator calculates correct bandwidth" do
     test "bandwidth equal to maximum segment bandwidth" do
-      test_track = mock_track([{1, 0.8}, {2, 1}, {1, 1}, {2, 1.3}, {3, 0.25}], 5)
+      test_track =
+        mock_track([{1, 0.8}, {2, 1}, {1, 1}, {2, 1.3}, {3, 0.25}], %Track.SegmentDuration{
+          min: 4,
+          target: 5
+        })
 
       assert BandwidthCalculator.calculate_bandwidth(test_track) ==
                (8 * 3 / (0.25 / Time.second())) |> Ratio.floor()
@@ -32,7 +36,7 @@ defmodule Membrane.HTTPAdaptiveStream.BandwidthCalculatorTest do
     }
   end
 
-  defp mock_track(segments_meta, target_segment_duration) do
+  defp mock_track(segments_meta, segment_duration) do
     segments = segments_meta |> Enum.map(&mock_segment(&1)) |> Qex.new()
 
     %Track{
@@ -41,7 +45,7 @@ defmodule Membrane.HTTPAdaptiveStream.BandwidthCalculatorTest do
       content_type: :video,
       header_extension: ".mp4",
       segment_extension: ".m4s",
-      target_segment_duration: target_segment_duration,
+      segment_duration: segment_duration,
       segments: segments
     }
   end

@@ -204,7 +204,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
 
   @impl true
   def handle_write(Pad.ref(:input, track_id) = pad, buffer, _ctx, %{storage: storage} = state) do
-    {changeset, manifest} = Manifest.new_buffer(state.manifest, track_id, buffer)
+    {changeset, manifest} = Manifest.add_chunk(state.manifest, track_id, buffer)
 
     with {:ok, storage} <- Storage.apply_track_changeset(storage, track_id, changeset),
          {:ok, storage} <- serialize_and_store_manifest(manifest, storage) do
@@ -251,7 +251,10 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     # prevent storing empty manifest, such situation can happen
     # when the sink goes from prepared -> playing -> prepared -> stopped
     # and in the meantime no media has flown through input pads
-    any_track_persisted? = Enum.any?(track_ids, &Manifest.has_track?(manifest, &1))
+    any_track_persisted? =
+      Enum.any?(track_ids, fn track_id ->
+        Manifest.has_track?(manifest, track_id) and Manifest.is_persisted?(manifest, track_id)
+      end)
 
     result =
       if any_track_persisted? do
