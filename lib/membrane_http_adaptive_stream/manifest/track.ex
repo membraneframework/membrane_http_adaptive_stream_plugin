@@ -300,13 +300,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       end)
 
     {changeset, track, partials} =
-      if should_finalize_segment?(
-           independent?,
-           duration,
-           partials,
-           partials_duration,
-           min_segment_duration
-         ) do
+      if partials != [] and independent? and duration + partials_duration > min_segment_duration do
         {changeset, track} = finalize_current_segment(track)
 
         {changeset, track, []}
@@ -549,17 +543,6 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     }
 
     {changeset, Map.replace(track, :segments, Qex.push(segments, last_segment))}
-  end
-
-  # Helper function for `new_segment/3`. Decides if agregated partial segments are enough to finish current segment and start new one.
-  defp should_finalize_segment?(
-         independent?,
-         duration,
-         partials,
-         partials_duration,
-         min_segment_duration
-       ) do
-    partials != [] and independent? and duration + partials_duration > min_segment_duration
   end
 
   # Finalize current segment, if it's possible. Otherwise do nothing.

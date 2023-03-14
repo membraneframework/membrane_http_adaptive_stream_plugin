@@ -5,6 +5,7 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   use Bunch
   use Bunch.Access
 
+  alias Membrane.HTTPAdaptiveStream.Manifest
   alias Membrane.HTTPAdaptiveStream.Manifest.Track.Changeset
 
   @type config_t :: struct
@@ -92,9 +93,13 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   @doc """
   Stores serialized manifest files
   """
-  @spec store_manifests(t, [{id :: :master | term(), {name :: String.t(), content :: String.t()}}]) ::
+  @spec store_manifests(t, Manifest.serialized_manifests_t()) ::
           {callback_result_t, t}
-  def store_manifests(storage, manifests) do
+  def store_manifests(storage, %{
+        master_manifest: master_manifest,
+        manifest_per_track: manifest_per_track
+      }) do
+    manifests = [{:master, master_manifest} | Map.to_list(manifest_per_track)]
     Bunch.Enum.try_reduce(manifests, storage, &store_manifest/2)
   end
 
@@ -205,7 +210,6 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
                                                        payload: payload
                                                      },
                                                      impl_state ->
-          # TODO: think twice about Changeset.Segment
           metadata = %{
             duration: duration,
             sequence_number: sequence_number,

@@ -97,14 +97,16 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
   end
 
   @doc """
-  Restores all the stale segments in all tracks that have option persisted? set to true.
+  Filter all tracks that have option persisted? set to true then
+  restores all the stale segments in those tracks.
   """
   @spec from_beginning(t()) :: t
   def from_beginning(%__MODULE__{} = manifest) do
     tracks =
-      Bunch.Map.map_values(manifest.tracks, fn track ->
-        if Track.is_persisted?(track), do: Track.from_beginning(track), else: track
-      end)
+      manifest.tracks
+      |> Enum.filter(fn {_track_id, track} -> Track.is_persisted?(track) end)
+      |> Enum.map(fn {_track_id, track} -> Track.from_beginning(track) end)
+      |> Enum.into(%{})
 
     %__MODULE__{manifest | tracks: tracks}
   end

@@ -303,12 +303,8 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   end
 
   defp serialize_and_store_manifest(manifest, storage) do
-    %{master_manifest: master_manifest, manifest_per_track: manifest_per_track} =
-      Manifest.serialize(manifest)
-
-    manifest_files = [{:master, master_manifest} | Map.to_list(manifest_per_track)]
-
-    Storage.store_manifests(storage, manifest_files)
+    serialized_manifest = Manifest.serialize(manifest)
+    Storage.store_manifests(storage, serialized_manifest)
   end
 
   defp maybe_schedule_cleanup_task(%{cleanup_after: nil}), do: :ok
