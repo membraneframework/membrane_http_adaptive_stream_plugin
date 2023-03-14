@@ -134,7 +134,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
           name: options.manifest_config.name,
           module: options.manifest_config.module
         },
-        awaiting_first_segment: MapSet.new()
+        playlist_playable_sent: MapSet.new()
       })
 
     {[], state}
@@ -197,10 +197,6 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
 
   @impl true
   def handle_pad_added(_pad, _ctx, state), do: {[], state}
-
-  @impl true
-  def handle_start_of_stream(Pad.ref(:input, id), _ctx, state),
-    do: {[], %{state | awaiting_first_segment: MapSet.put(state.awaiting_first_segment, id)}}
 
   @impl true
   def handle_write(Pad.ref(:input, track_id) = pad, buffer, _ctx, %{storage: storage} = state) do
@@ -293,12 +289,12 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     track_id |> :erlang.term_to_binary() |> Base.url_encode64(padding: false)
   end
 
-  defp maybe_notify_playable(id, %{awaiting_first_segment: awaiting_first_segment} = state) do
-    if MapSet.member?(awaiting_first_segment, id) do
-      {[notify_parent: {:track_playable, id}],
-       %{state | awaiting_first_segment: MapSet.delete(awaiting_first_segment, id)}}
-    else
+  defp maybe_notify_playable(track_id, %{playlist_playable_sent: playlist_playable_sent} = state) do
+    if MapSet.member?(playlist_playable_sent, track_id) do
       {[], state}
+    else
+      {[notify_parent: {:track_playable, track_id}],
+       %{state | playlist_playable_sent: MapSet.put(playlist_playable_sent, track_id)}}
     end
   end
 

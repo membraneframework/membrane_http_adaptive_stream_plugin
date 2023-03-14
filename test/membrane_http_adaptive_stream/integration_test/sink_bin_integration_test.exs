@@ -19,7 +19,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
      :H264, "video_track"}
   ]
   @audio_video_tracks_ref_path "./test/membrane_http_adaptive_stream/integration_test/fixtures/audio_video_tracks/"
-  @audio_video_tracks_test_path "/tmp/membrane_http_adaptive_stream_audio_video_test/"
 
   @audio_multiple_video_tracks_sources [
     {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s.aac",
@@ -32,7 +31,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
      :H264, "video_720x480"}
   ]
   @audio_multiple_video_tracks_ref_path "./test/membrane_http_adaptive_stream/integration_test/fixtures/audio_multiple_video_tracks/"
-  @audio_multiple_video_tracks_test_path "/tmp/membrane_http_adaptive_stream_audio_multiple_video_test/"
 
   @muxed_av_sources [
     {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s.aac",
@@ -45,7 +43,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
      :H264, "video_720x480"}
   ]
   @muxed_av_ref_path "./test/membrane_http_adaptive_stream/integration_test/fixtures/muxed_av/"
-  @muxed_av_test_path "/tmp/membrane_http_adaptive_stream_muxed_av_test/"
 
   defmodule TestPipeline do
     use Membrane.Pipeline
@@ -134,40 +131,34 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
   end
 
   describe "Test HLS content creation for " do
-    setup %{test_directory: test_directory} do
-      File.mkdir_p!(test_directory)
-      :ok
-    end
-
-    @tag test_directory: @audio_video_tracks_test_path
-    test "audio and video tracks" do
+    @tag :tmp_dir
+    test "audio and video tracks", %{tmp_dir: tmp_dir} do
       test_pipeline(
         @audio_video_tracks_sources,
         @audio_video_tracks_ref_path,
-        @audio_video_tracks_test_path
+        tmp_dir
       )
     end
 
-    @tag test_directory: @audio_multiple_video_tracks_test_path
-    test "audio and multiple video tracks" do
+    @tag :tmp_dir
+    test "audio and multiple video tracks", %{tmp_dir: tmp_dir} do
       test_pipeline(
         @audio_multiple_video_tracks_sources,
         @audio_multiple_video_tracks_ref_path,
-        @audio_multiple_video_tracks_test_path
+        tmp_dir
       )
     end
 
-    @tag test_directory: @muxed_av_test_path
-    test "audio and multiple video tracks - muxed AV" do
+    @tag :tmp_dir
+    test "audio and multiple video tracks - muxed AV", %{tmp_dir: tmp_dir} do
       test_pipeline(
         @muxed_av_sources,
         @muxed_av_ref_path,
-        @muxed_av_test_path,
+        tmp_dir,
         :muxed_av
       )
     end
 
-    @tag test_directory: @audio_video_tracks_test_path
     test "audio and video tracks with partial segments" do
       alias Membrane.HTTPAdaptiveStream.Storages.SendStorage
 
@@ -280,10 +271,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
          encoding, name}
       end)
 
-    on_exit(fn ->
-      File.rm_rf!(test_directory)
-    end)
-
     if @create_fixtures do
       File.rm_rf(reference_directory)
       File.mkdir(reference_directory)
@@ -293,13 +280,15 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
 
       {:ok, reference_playlist_content} = File.ls(reference_directory)
 
-      for file_name <- reference_playlist_content,
-          do:
-            assert(
-              File.read!(reference_directory <> file_name) ==
-                File.read!(test_directory <> file_name),
-              "Contents of file #{reference_directory <> file_name} differ from contents of file #{test_directory <> file_name}"
-            )
+      for file_name <- reference_playlist_content do
+        test_file_path = Path.join(test_directory, file_name)
+        reference_file_path = Path.join(reference_directory, file_name)
+
+        assert(
+          File.read!(reference_file_path) == File.read!(test_file_path),
+          "Contents of file #{Path.join(reference_directory, file_name)} differ from contents of file #{Path.join(test_directory, file_name)}"
+        )
+      end
     end
   end
 end
