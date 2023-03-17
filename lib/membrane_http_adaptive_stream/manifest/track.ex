@@ -616,6 +616,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   defp maybe_pop_stale_segments_and_headers(track) do
     {stale_segments, stale_headers, track} = pop_stale_segments_and_headers(track)
 
+    track = %{track | current_seq_num: track.current_seq_num + Enum.count(stale_segments)}
+
     {to_remove_segment_names, to_remove_header_names, stale_segments, stale_headers} =
       if track.persist? do
         {
@@ -632,8 +634,6 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
           track.stale_headers
         }
       end
-
-    track = %{track | current_seq_num: Enum.count(stale_segments)}
 
     {
       Enum.map(to_remove_header_names, &{:header, &1}) ++

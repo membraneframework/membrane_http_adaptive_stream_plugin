@@ -105,7 +105,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
     tracks =
       manifest.tracks
       |> Enum.filter(fn {_track_id, track} -> Track.is_persisted?(track) end)
-      |> Enum.map(fn {_track_id, track} -> Track.from_beginning(track) end)
+      |> Enum.map(fn {track_id, track} -> {track_id, Track.from_beginning(track)} end)
       |> Enum.into(%{})
 
     %__MODULE__{manifest | tracks: tracks}
