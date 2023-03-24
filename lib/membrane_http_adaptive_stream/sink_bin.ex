@@ -129,13 +129,13 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
         """
       ],
       segment_duration: [
-        spec: Manifest.Track.SegmentDuration.t(),
+        spec: Manifest.SegmentDuration.t(),
         description: """
         The segment duration range  of the regular segments.
         """
       ],
       partial_segment_duration: [
-        spec: Manifest.Track.SegmentDuration.t() | nil,
+        spec: Manifest.SegmentDuration.t() | nil,
         default: nil,
         description: """
         The segment duration range  of the partial segments.
@@ -329,7 +329,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
   defp convert_segment_duration_for_muxer(nil), do: nil
 
-  defp convert_segment_duration_for_muxer(%Manifest.Track.SegmentDuration{
+  defp convert_segment_duration_for_muxer(%Manifest.SegmentDuration{
          min: min,
          target: target
        }),

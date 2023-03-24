@@ -6,7 +6,7 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   use Bunch.Access
 
   alias Membrane.HTTPAdaptiveStream.Manifest
-  alias Membrane.HTTPAdaptiveStream.Manifest.Track.Changeset
+  alias Membrane.HTTPAdaptiveStream.Manifest.Changeset
 
   @type config_t :: struct
   @type state_t :: any

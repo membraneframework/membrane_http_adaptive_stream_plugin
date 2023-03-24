@@ -55,7 +55,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
     use Membrane.Pipeline
 
     alias Membrane.HTTPAdaptiveStream
-    alias Membrane.HTTPAdaptiveStream.Manifest.Track.SegmentDuration
+    alias Membrane.HTTPAdaptiveStream.Manifest.SegmentDuration
     alias Membrane.HTTPAdaptiveStream.Storages.FileStorage
     alias Membrane.Time
 

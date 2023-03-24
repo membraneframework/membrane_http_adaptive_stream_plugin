@@ -4,7 +4,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
   """
   use Bunch.Access
 
-  alias __MODULE__.Track
+  alias __MODULE__.{Changeset, Track}
 
   @type serialized_manifest_t :: {manifest_name :: String.t(), manifest_content :: String.t()}
 
@@ -39,7 +39,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
   end
 
   @doc """
-  Add segment to the manifest in case of partial segment it will add also a full segment if needed.
+  Adds segment to the manifest. In case of ll-hls it will add partial segment, and also full segment if needed.
   Returns `Membrane.HTTPAdaptiveStream.Manifest.Track.Changeset`.
   """
   @spec add_chunk(
@@ -47,11 +47,11 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
           track_id :: Track.id_t(),
           Membrane.Buffer.t()
         ) ::
-          {Track.Changeset.t(), t}
+          {Changeset.t(), t}
   def add_chunk(%__MODULE__{} = manifest, track_id, buffer) do
     opts = %{
       payload: buffer.payload,
-      byte_size: byte_size(buffer.payload),
+      size: byte_size(buffer.payload),
       independent?: Map.get(buffer.metadata, :independent?, true),
       duration: buffer.metadata.duration,
       complete?: true
@@ -72,9 +72,9 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
   @spec has_track?(t(), Track.id_t()) :: boolean()
   def has_track?(%__MODULE__{tracks: tracks}, track_id), do: Map.has_key?(tracks, track_id)
 
-  @spec is_persisted?(t(), Track.id_t()) :: boolean()
-  def is_persisted?(%__MODULE__{tracks: tracks}, track_id),
-    do: Track.is_persisted?(Map.get(tracks, track_id))
+  @spec persisted?(t(), Track.id_t()) :: boolean()
+  def persisted?(%__MODULE__{tracks: tracks}, track_id),
+    do: Track.persisted?(Map.get(tracks, track_id))
 
   @doc """
   Append a discontinuity to the track.
@@ -91,20 +91,20 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
     )
   end
 
-  @spec finish(t, Track.id_t()) :: {Track.Changeset.t(), t}
+  @spec finish(t, Track.id_t()) :: {Changeset.t(), t}
   def finish(%__MODULE__{} = manifest, track_id) do
     get_and_update_in(manifest, [:tracks, track_id], &Track.finish/1)
   end
 
   @doc """
-  Filter all tracks that have option persisted? set to true then
+  Filter all tracks that have option `:persisted?` set to true, then
   restores all the stale segments in those tracks.
   """
   @spec from_beginning(t()) :: t
   def from_beginning(%__MODULE__{} = manifest) do
     tracks =
       manifest.tracks
-      |> Enum.filter(fn {_track_id, track} -> Track.is_persisted?(track) end)
+      |> Enum.filter(fn {_track_id, track} -> Track.persisted?(track) end)
       |> Map.new(fn {track_id, track} -> {track_id, Track.from_beginning(track)} end)
 
     %__MODULE__{manifest | tracks: tracks}

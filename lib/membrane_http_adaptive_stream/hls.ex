@@ -243,11 +243,11 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
       time = Ratio.to_float(part.duration / Time.second())
 
       serialized =
-        "#EXT-X-PART:DURATION=#{time},URI=\"#{segment.name}\",BYTERANGE=\"#{part.byte_size}@#{total_bytes}\""
+        "#EXT-X-PART:DURATION=#{time},URI=\"#{segment.name}\",BYTERANGE=\"#{part.size}@#{total_bytes}\""
 
       serialized = if part.independent?, do: serialized <> ",INDEPENDENT=true", else: serialized
 
-      {serialized, part.byte_size + total_bytes}
+      {serialized, part.size + total_bytes}
     end)
     |> then(fn {parts, _acc} -> parts end)
 

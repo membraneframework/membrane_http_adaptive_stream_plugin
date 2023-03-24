@@ -35,7 +35,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     @moduledoc """
     Track configuration. For more information checkout `Membrane.HTTPAdaptiveStream.Manifest.Track.Config`
     """
-    @type t() :: %__MODULE__{
+    @type t :: %__MODULE__{
             target_window_duration: Membrane.Time.t() | :infinity,
             mode: :live | :vod,
             header_naming_fun: (Manifest.Track.t(), counter :: non_neg_integer -> String.t()),
@@ -77,7 +77,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
         """
       ],
       segment_duration: [
-        spec: Manifest.Track.SegmentDuration.t(),
+        spec: Manifest.SegmentDuration.t(),
         description: """
         The expected minimum and target duration of media segments produced by this particular track.
 
@@ -249,7 +249,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     # and in the meantime no media has flown through input pads
     any_track_persisted? =
       Enum.any?(track_ids, fn track_id ->
-        Manifest.has_track?(manifest, track_id) and Manifest.is_persisted?(manifest, track_id)
+        Manifest.has_track?(manifest, track_id) and Manifest.persisted?(manifest, track_id)
       end)
 
     result =

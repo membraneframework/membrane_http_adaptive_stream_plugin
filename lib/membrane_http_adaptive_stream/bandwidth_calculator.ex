@@ -26,7 +26,7 @@ defmodule Membrane.HTTPAdaptiveStream.BandwidthCalculator do
       @default_bandwidth
     else
       segments
-      |> Enum.map(fn sg -> 8 * sg.byte_size / (sg.duration / Time.second()) end)
+      |> Enum.map(fn sg -> 8 * sg.size / (sg.duration / Time.second()) end)
       |> Enum.max(&Ratio.>=/2)
       |> Ratio.trunc()
     end
