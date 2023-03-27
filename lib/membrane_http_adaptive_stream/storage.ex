@@ -200,16 +200,17 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
              &storage_impl.remove(track_id, &1, %{type: :header}, &2)
            ) do
       {result, impl_state} =
-        Bunch.Enum.try_reduce(to_add, impl_state, fn %{
-                                                       type: type,
-                                                       name: name,
-                                                       duration: duration,
-                                                       sequence_number: sequence_number,
-                                                       independent?: independent?,
-                                                       byte_offset: byte_offset,
-                                                       payload: payload
-                                                     },
-                                                     impl_state ->
+        Bunch.Enum.try_reduce(to_add, impl_state, fn segment, impl_state ->
+          %{
+            type: type,
+            name: name,
+            duration: duration,
+            sequence_number: sequence_number,
+            independent?: independent?,
+            byte_offset: byte_offset,
+            payload: payload
+          } = segment
+
           metadata = %{
             duration: duration,
             sequence_number: sequence_number,

@@ -670,14 +670,14 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   defp get_segment_sequence_number(%{segment_sequencer: {msn, _part_sn}} = track),
     do: {msn, %{track | segment_sequencer: {msn + 1, 0}}}
 
-  defp udpate_segment_duation(segment, duration),
-    do:
-      Map.update!(
-        segment,
-        :segment_duration,
-        &if(&1.target > duration,
-          do: &1,
-          else: %{&1 | target: duration}
-        )
+  defp udpate_segment_duation(segment, duration) do
+    Map.update!(
+      segment,
+      :segment_duration,
+      &if(&1.target > duration,
+        do: &1,
+        else: %{&1 | target: duration}
       )
+    )
+  end
 end

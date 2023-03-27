@@ -54,6 +54,12 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     @moduledoc """
     `Membrane.HTTPAdaptiveStream.Manifest` configuration.
     """
+
+    @typedoc """
+    Manifest configuration consists of the following fields:
+    - `name` - name of the main manifest file.
+    - `module` - implementation of the `Membrane.HTTPAdaptiveStream.Manifest` behaviour.
+    """
     @type t() :: %__MODULE__{
             name: String.t(),
             module: module()

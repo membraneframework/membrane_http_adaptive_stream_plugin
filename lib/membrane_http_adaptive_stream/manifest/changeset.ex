@@ -4,7 +4,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Changeset do
   and what elements are to be removed.
   """
   defmodule Segment do
-    @moduledoc false
+    @moduledoc """
+     """
     @type t :: %__MODULE__{
             type: :segment | :partial_segment,
             duration: Membrane.Time.t() | Ratio.t(),
