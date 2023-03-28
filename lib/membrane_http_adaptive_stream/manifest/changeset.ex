@@ -5,7 +5,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Changeset do
   """
   defmodule Segment do
     @moduledoc """
-     """
+    Type used to recognize `to_add` segments in Changeset.
+    """
     @type t :: %__MODULE__{
             type: :segment | :partial_segment,
             duration: Membrane.Time.t() | Ratio.t(),
