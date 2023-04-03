@@ -4,8 +4,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
   """
   use Bunch.Access
 
-  alias __MODULE__.SegmentAttribute
-  alias __MODULE__.Track
+  alias __MODULE__.{Changeset, Track}
 
   @type serialized_manifest_t :: {manifest_name :: String.t(), manifest_content :: String.t()}
 
@@ -40,53 +39,29 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
   end
 
   @doc """
-  Add a new regular segment to the track with given `track_id`.
+  Adds segment to the manifest. In case of ll-hls it will add partial segment, and also full segment if needed.
+  Returns `Membrane.HTTPAdaptiveStream.Manifest.Track.Changeset`.
   """
-  @spec add_segment(
+  @spec add_chunk(
           t,
           track_id :: Track.id_t(),
-          list(Track.segment_opt_t()),
-          list(SegmentAttribute.t())
+          Membrane.Buffer.t()
         ) ::
-          {Track.Changeset.t(), t}
-  def add_segment(%__MODULE__{} = manifest, track_id, opts, attributes \\ []) do
+          {Changeset.t(), t}
+  def add_chunk(%__MODULE__{} = manifest, track_id, buffer) do
+    opts = %{
+      payload: buffer.payload,
+      size: byte_size(buffer.payload),
+      independent?: Map.get(buffer.metadata, :independent?, true),
+      duration: buffer.metadata.duration,
+      complete?: true
+    }
+
     get_and_update_in(
       manifest,
       [:tracks, track_id],
-      &Track.add_segment(&1, opts, attributes)
+      &Track.add_chunk(&1, opts)
     )
-  end
-
-  @doc """
-  Add a new partial segment to the track with given `track_id`.
-
-  Partial segments gets appended to the latest regular segment
-  until `finalize_current_segment/2` gets called. After that, in order to
-  add new partial segments one must add an incomplete segment (a regular segment with
-  and option of `complete?` set to false).
-  """
-  @spec add_partial_segment(
-          t(),
-          Track.id_t(),
-          boolean(),
-          Track.segment_duration_t(),
-          Track.segment_byte_size_t()
-        ) ::
-          {Track.Changeset.t(), t}
-  def add_partial_segment(manifest, track_id, independent?, duration, byte_size) do
-    get_and_update_in(
-      manifest,
-      [:tracks, track_id],
-      &Track.add_partial_segment(&1, independent?, duration, byte_size)
-    )
-  end
-
-  @doc """
-  Finalizes current segment of given track when serving partial segments.
-  """
-  @spec finalize_current_segment(t(), Track.id_t()) :: {Track.Changeset.t(), t()}
-  def finalize_current_segment(manifest, track_id) do
-    get_and_update_in(manifest, [:tracks, track_id], &Track.finalize_current_segment/1)
   end
 
   @spec serialize(t) :: serialized_manifests_t()
@@ -96,6 +71,10 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
 
   @spec has_track?(t(), Track.id_t()) :: boolean()
   def has_track?(%__MODULE__{tracks: tracks}, track_id), do: Map.has_key?(tracks, track_id)
+
+  @spec persisted?(t(), Track.id_t()) :: boolean()
+  def persisted?(%__MODULE__{tracks: tracks}, track_id),
+    do: Track.persisted?(Map.get(tracks, track_id))
 
   @doc """
   Append a discontinuity to the track.
@@ -112,19 +91,22 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
     )
   end
 
-  @spec finish(t, Track.id_t()) :: t
+  @spec finish(t, Track.id_t()) :: {Changeset.t(), t}
   def finish(%__MODULE__{} = manifest, track_id) do
-    update_in(manifest, [:tracks, track_id], &Track.finish/1)
+    get_and_update_in(manifest, [:tracks, track_id], &Track.finish/1)
   end
 
   @doc """
-  Restores all the stale segments in all tracks.
-
-  All the tracks must be configured to be persisted beforehand, otherwise this function will raise
+  Filter all tracks that have option `:persisted?` set to true, then
+  restores all the stale segments in those tracks.
   """
   @spec from_beginning(t()) :: t
   def from_beginning(%__MODULE__{} = manifest) do
-    tracks = Bunch.Map.map_values(manifest.tracks, &Track.from_beginning/1)
+    tracks =
+      manifest.tracks
+      |> Enum.filter(fn {_track_id, track} -> Track.persisted?(track) end)
+      |> Map.new(fn {track_id, track} -> {track_id, Track.from_beginning(track)} end)
+
     %__MODULE__{manifest | tracks: tracks}
   end
 

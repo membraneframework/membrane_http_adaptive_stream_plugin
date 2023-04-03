@@ -129,13 +129,13 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
         """
       ],
       segment_duration: [
-        spec: Sink.SegmentDuration.t(),
+        spec: Manifest.SegmentDuration.t(),
         description: """
         The segment duration range  of the regular segments.
         """
       ],
       partial_segment_duration: [
-        spec: Sink.SegmentDuration.t() | nil,
+        spec: Manifest.SegmentDuration.t() | nil,
         default: nil,
         description: """
         The segment duration range  of the partial segments.
@@ -149,14 +149,18 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
     structure =
       [
         child(:sink, %Sink{
-          manifest_name: opts.manifest_name,
-          manifest_module: opts.manifest_module,
+          manifest_config: %Sink.ManifestConfig{
+            name: opts.manifest_name,
+            module: opts.manifest_module
+          },
+          track_config: %Sink.TrackConfig{
+            target_window_duration: opts.target_window_duration,
+            persist?: opts.persist?,
+            header_naming_fun: opts.header_naming_fun,
+            segment_naming_fun: opts.segment_naming_fun,
+            mode: opts.mode
+          },
           storage: opts.storage,
-          target_window_duration: opts.target_window_duration,
-          persist?: opts.persist?,
-          header_naming_fun: opts.header_naming_fun,
-          segment_naming_fun: opts.segment_naming_fun,
-          mode: opts.mode,
           cleanup_after: opts.cleanup_after
         })
       ] ++
@@ -325,8 +329,11 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
   defp convert_segment_duration_for_muxer(nil), do: nil
 
-  defp convert_segment_duration_for_muxer(%Sink.SegmentDuration{min: min, target: target}),
-    do: %CMAF.SegmentDurationRange{min: min, target: target}
+  defp convert_segment_duration_for_muxer(%Manifest.SegmentDuration{
+         min: min,
+         target: target
+       }),
+       do: %CMAF.SegmentDurationRange{min: min, target: target}
 
   defp get_payloader(encoding, state) do
     if encoding == :AAC,

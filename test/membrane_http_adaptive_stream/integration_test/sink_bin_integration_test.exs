@@ -10,6 +10,11 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
   # that will cause CI to fail if this flag happens to be set on remote repository. Every new version of reference HSL content must
   # be manually verified by its creator by using some player e.g. ffplay command.
 
+  @pipeline_config %{
+    hls_mode: :separate_av,
+    target_window_duration: Membrane.Time.seconds(30),
+    persist?: false
+  }
   @create_fixtures false
 
   @audio_video_tracks_sources [
@@ -19,7 +24,8 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
      :H264, "video_track"}
   ]
   @audio_video_tracks_ref_path "./test/membrane_http_adaptive_stream/integration_test/fixtures/audio_video_tracks/"
-  @audio_video_tracks_test_path "/tmp/membrane_http_adaptive_stream_audio_video_test/"
+  @live_stream_ref_path "./test/membrane_http_adaptive_stream/integration_test/fixtures/live/"
+  @persisted_stream_ref_path "./test/membrane_http_adaptive_stream/integration_test/fixtures/persisted/"
 
   @audio_multiple_video_tracks_sources [
     {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s.aac",
@@ -32,7 +38,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
      :H264, "video_720x480"}
   ]
   @audio_multiple_video_tracks_ref_path "./test/membrane_http_adaptive_stream/integration_test/fixtures/audio_multiple_video_tracks/"
-  @audio_multiple_video_tracks_test_path "/tmp/membrane_http_adaptive_stream_audio_multiple_video_test/"
 
   @muxed_av_sources [
     {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s.aac",
@@ -45,13 +50,12 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
      :H264, "video_720x480"}
   ]
   @muxed_av_ref_path "./test/membrane_http_adaptive_stream/integration_test/fixtures/muxed_av/"
-  @muxed_av_test_path "/tmp/membrane_http_adaptive_stream_muxed_av_test/"
 
   defmodule TestPipeline do
     use Membrane.Pipeline
 
     alias Membrane.HTTPAdaptiveStream
-    alias Membrane.HTTPAdaptiveStream.Sink.SegmentDuration
+    alias Membrane.HTTPAdaptiveStream.Manifest.SegmentDuration
     alias Membrane.HTTPAdaptiveStream.Storages.FileStorage
     alias Membrane.Time
 
@@ -60,12 +64,14 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
           sources: sources,
           storage: storage,
           hls_mode: hls_mode,
-          partial_segments: partial_segments
+          target_window_duration: target_window_duration,
+          partial_segments: partial_segments,
+          persist?: persist?
         }) do
       sink_bin = %HTTPAdaptiveStream.SinkBin{
         manifest_module: HTTPAdaptiveStream.HLS,
-        target_window_duration: 30 |> Membrane.Time.seconds(),
-        persist?: false,
+        target_window_duration: target_window_duration,
+        persist?: persist?,
         storage: storage,
         hls_mode: hls_mode,
         mode: if(partial_segments, do: :live, else: :vod)
@@ -134,40 +140,64 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
   end
 
   describe "Test HLS content creation for " do
-    setup %{test_directory: test_directory} do
-      File.mkdir_p!(test_directory)
-      :ok
-    end
-
-    @tag test_directory: @audio_video_tracks_test_path
-    test "audio and video tracks" do
+    @tag :tmp_dir
+    test "audio and video tracks", %{tmp_dir: tmp_dir} do
       test_pipeline(
         @audio_video_tracks_sources,
         @audio_video_tracks_ref_path,
-        @audio_video_tracks_test_path
+        tmp_dir
       )
     end
 
-    @tag test_directory: @audio_multiple_video_tracks_test_path
-    test "audio and multiple video tracks" do
+    @tag :tmp_dir
+    test "audio and multiple video tracks", %{tmp_dir: tmp_dir} do
       test_pipeline(
         @audio_multiple_video_tracks_sources,
         @audio_multiple_video_tracks_ref_path,
-        @audio_multiple_video_tracks_test_path
+        tmp_dir
       )
     end
 
-    @tag test_directory: @muxed_av_test_path
-    test "audio and multiple video tracks - muxed AV" do
+    @tag :tmp_dir
+    test "audio and multiple video tracks live playlist", %{tmp_dir: tmp_dir} do
+      pipeline_config = %{@pipeline_config | target_window_duration: Membrane.Time.seconds(10)}
+
+      test_pipeline(
+        @audio_multiple_video_tracks_sources,
+        @live_stream_ref_path,
+        tmp_dir,
+        pipeline_config
+      )
+    end
+
+    @tag :tmp_dir
+    test "audio and multiple video tracks persisted mode", %{tmp_dir: tmp_dir} do
+      pipeline_config = %{
+        @pipeline_config
+        | target_window_duration: Membrane.Time.seconds(10),
+          persist?: true
+      }
+
+      test_pipeline(
+        @audio_multiple_video_tracks_sources,
+        @persisted_stream_ref_path,
+        tmp_dir,
+        pipeline_config
+      )
+    end
+
+    @tag :tmp_dir
+    test "audio and multiple video tracks - muxed AV", %{tmp_dir: tmp_dir} do
+      pipeline_config = %{@pipeline_config | hls_mode: :muxed_av}
+
       test_pipeline(
         @muxed_av_sources,
         @muxed_av_ref_path,
-        @muxed_av_test_path,
-        :muxed_av
+        tmp_dir,
+        pipeline_config
       )
     end
 
-    @tag test_directory: @audio_video_tracks_test_path
     test "audio and video tracks with partial segments" do
       alias Membrane.HTTPAdaptiveStream.Storages.SendStorage
 
@@ -183,13 +213,19 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
           module: TestPipeline,
           custom_args: %{
             sources: hackney_sources,
-            hls_mode: :separate_av,
+            hls_mode: @pipeline_config.hls_mode,
             partial_segments: true,
+            target_window_duration: @pipeline_config.target_window_duration,
+            persist?: @pipeline_config.persist?,
             storage: %SendStorage{destination: self()}
           }
         )
 
       assert_pipeline_play(pipeline)
+      assert_pipeline_notified(pipeline, :sink_bin, :end_of_stream, 10_000)
+
+      # Give some time to save all of the files to disk
+      Process.sleep(1_000)
 
       assert_receive {SendStorage, :store, %{type: :manifest, name: "index.m3u8"}}, 1_000
 
@@ -239,13 +275,15 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
                         }}
       end
 
-      assert_pipeline_notified(pipeline, :sink_bin, :end_of_stream)
-
       :ok = Testing.Pipeline.terminate(pipeline, blocking?: true)
     end
   end
 
-  defp run_pipeline(sources, result_directory, hls_mode) do
+  defp run_pipeline(sources, result_directory, %{
+         hls_mode: hls_mode,
+         persist?: persist?,
+         target_window_duration: target_window_duration
+       }) do
     alias Membrane.HTTPAdaptiveStream.Storages.FileStorage
 
     pipeline =
@@ -254,7 +292,9 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
         custom_args: %{
           sources: sources,
           hls_mode: hls_mode,
+          target_window_duration: target_window_duration,
           partial_segments: false,
+          persist?: persist?,
           storage: %FileStorage{
             directory: result_directory
           }
@@ -264,7 +304,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
 
     assert_pipeline_play(pipeline)
 
-    assert_pipeline_notified(pipeline, :sink_bin, :end_of_stream, 5_000)
+    assert_pipeline_notified(pipeline, :sink_bin, :end_of_stream, 10_000)
 
     # Give some time to save all of the files to disk
     Process.sleep(1_000)
@@ -272,7 +312,12 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
     :ok = Testing.Pipeline.terminate(pipeline, blocking?: true)
   end
 
-  defp test_pipeline(sources, reference_directory, test_directory, hls_mode \\ :separate_av) do
+  defp test_pipeline(
+         sources,
+         reference_directory,
+         test_directory,
+         pipeline_config \\ @pipeline_config
+       ) do
     hackney_sources =
       sources
       |> Enum.map(fn {path, encoding, name} ->
@@ -280,26 +325,24 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
          encoding, name}
       end)
 
-    on_exit(fn ->
-      File.rm_rf!(test_directory)
-    end)
-
     if @create_fixtures do
       File.rm_rf(reference_directory)
       File.mkdir(reference_directory)
-      run_pipeline(hackney_sources, reference_directory, hls_mode)
+      run_pipeline(hackney_sources, reference_directory, pipeline_config)
     else
-      run_pipeline(hackney_sources, test_directory, hls_mode)
+      run_pipeline(hackney_sources, test_directory, pipeline_config)
 
       {:ok, reference_playlist_content} = File.ls(reference_directory)
 
-      for file_name <- reference_playlist_content,
-          do:
-            assert(
-              File.read!(reference_directory <> file_name) ==
-                File.read!(test_directory <> file_name),
-              "Contents of file #{reference_directory <> file_name} differ from contents of file #{test_directory <> file_name}"
-            )
+      for file_name <- reference_playlist_content do
+        test_file_path = Path.join(test_directory, file_name)
+        reference_file_path = Path.join(reference_directory, file_name)
+
+        assert(
+          File.read!(reference_file_path) == File.read!(test_file_path),
+          "Contents of file #{Path.join(reference_directory, file_name)} differ from contents of file #{Path.join(test_directory, file_name)}"
+        )
+      end
     end
   end
 end

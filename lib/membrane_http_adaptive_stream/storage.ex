@@ -5,7 +5,8 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   use Bunch
   use Bunch.Access
 
-  alias Membrane.HTTPAdaptiveStream.Manifest.Track.Changeset
+  alias Membrane.HTTPAdaptiveStream.Manifest
+  alias Membrane.HTTPAdaptiveStream.Manifest.Changeset
 
   @type config_t :: struct
   @type state_t :: any
@@ -92,9 +93,13 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   @doc """
   Stores serialized manifest files
   """
-  @spec store_manifests(t, [{id :: :master | term(), {name :: String.t(), content :: String.t()}}]) ::
+  @spec store_manifests(t, Manifest.serialized_manifests_t()) ::
           {callback_result_t, t}
-  def store_manifests(storage, manifests) do
+  def store_manifests(storage, %{
+        master_manifest: master_manifest,
+        manifest_per_track: manifest_per_track
+      }) do
+    manifests = [{:master, master_manifest} | Map.to_list(manifest_per_track)]
     Bunch.Enum.try_reduce(manifests, storage, &store_manifest/2)
   end
 
@@ -163,16 +168,14 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   @doc """
   Stores a new segment and removes stale ones.
   """
-  @spec apply_segment_changeset(
+  @spec apply_track_changeset(
           t,
           track_id :: term(),
-          Changeset.t(),
-          buffer :: Membrane.Buffer.t()
+          Changeset.t()
         ) :: {callback_result_t, t}
-  def apply_segment_changeset(storage, track_id, changeset, buffer) do
+  def apply_track_changeset(storage, track_id, changeset) do
     %__MODULE__{storage_impl: storage_impl, impl_state: impl_state} = storage
-
-    %Changeset{to_add: {to_add_type, to_add_name, metadata}, to_remove: to_remove} = changeset
+    %Changeset{to_add: to_add, to_remove: to_remove} = changeset
 
     grouped =
       Enum.group_by(
@@ -197,14 +200,33 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
              &storage_impl.remove(track_id, &1, %{type: :header}, &2)
            ) do
       {result, impl_state} =
-        storage_impl.store(
-          track_id,
-          to_add_name,
-          buffer.payload,
-          metadata,
-          %{mode: :binary, type: to_add_type},
-          impl_state
-        )
+        Bunch.Enum.try_reduce(to_add, impl_state, fn segment, impl_state ->
+          %{
+            type: type,
+            name: name,
+            duration: duration,
+            sequence_number: sequence_number,
+            independent?: independent?,
+            byte_offset: byte_offset,
+            payload: payload
+          } = segment
+
+          metadata = %{
+            duration: duration,
+            sequence_number: sequence_number,
+            independent?: independent?,
+            byte_offset: byte_offset
+          }
+
+          storage_impl.store(
+            track_id,
+            name,
+            payload,
+            metadata,
+            %{mode: :binary, type: type},
+            impl_state
+          )
+        end)
 
       {result, %{storage | impl_state: impl_state}}
     end

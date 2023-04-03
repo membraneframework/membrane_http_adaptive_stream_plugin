@@ -14,9 +14,8 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
 
   The following configuration:
 
-      %#{inspect(__MODULE__)}{
-        manifest_name: "manifest",
-        manifest_module: Membrane.HTTPAdaptiveStream.HLS,
+  %#{inspect(__MODULE__)}{
+        manifest_config: %ManifestConfig{name: "manifest", module: Membrane.HTTPAdaptiveStream.HLS}
         storage: %Membrane.HTTPAdaptiveStream.Storages.FileStorage{directory: "output"}
       }
 
@@ -32,41 +31,42 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   alias Membrane.HTTPAdaptiveStream.Manifest
   alias Membrane.HTTPAdaptiveStream.Storage
 
-  defmodule SegmentDuration do
+  defmodule TrackConfig do
     @moduledoc """
-    Module representing a segment duration range that should appear
-    in a playlist.
-
-    The minimum and target durations are relevant if sink
-    is set to work in low latency mode as the durations of partial
-    segment can greatly vary.
+    Track configuration. For more information checkout `Membrane.HTTPAdaptiveStream.Manifest.Track.Config`
     """
-
-    alias Membrane.Time
-
-    @enforce_keys [:min, :target]
-    defstruct @enforce_keys
-
     @type t :: %__MODULE__{
-            min: Time.t(),
-            target: Time.t()
+            target_window_duration: Membrane.Time.t() | :infinity,
+            mode: :live | :vod,
+            header_naming_fun: (Manifest.Track.t(), counter :: non_neg_integer -> String.t()),
+            segment_naming_fun: (Manifest.Track.t() -> String.t()),
+            persist?: boolean()
           }
 
-    @doc """
-    Creates a new segment duration with a minimum and target duration.
-    """
-    @spec new(Time.t(), Time.t()) :: t()
-    def new(min, target) when min <= target,
-      do: %__MODULE__{min: min, target: target}
+    defstruct target_window_duration: Membrane.Time.seconds(40),
+              mode: :vod,
+              header_naming_fun: &Manifest.Track.default_header_naming_fun/2,
+              segment_naming_fun: &Manifest.Track.default_segment_naming_fun/1,
+              persist?: false
+  end
 
-    @doc """
-    Creates a new segment duration with a target duration.
-
-    The minimum duration is set to the target one.
+  defmodule ManifestConfig do
+    @moduledoc """
+    `Membrane.HTTPAdaptiveStream.Manifest` configuration.
     """
-    @spec new(Time.t()) :: t()
-    def new(target),
-      do: %__MODULE__{min: target, target: target}
+
+    @typedoc """
+    Manifest configuration consists of the following fields:
+    - `name` - name of the main manifest file.
+    - `module` - implementation of the `Membrane.HTTPAdaptiveStream.Manifest` behaviour.
+    """
+    @type t() :: %__MODULE__{
+            name: String.t(),
+            module: module()
+          }
+
+    @enforce_keys [:module]
+    defstruct @enforce_keys ++ [name: "index"]
   end
 
   def_input_pad :input,
@@ -83,7 +83,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
         """
       ],
       segment_duration: [
-        spec: SegmentDuration.t(),
+        spec: Manifest.SegmentDuration.t(),
         description: """
         The expected minimum and target duration of media segments produced by this particular track.
 
@@ -102,15 +102,15 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
       ]
     ]
 
-  def_options manifest_name: [
-                spec: String.t(),
-                default: "index",
-                description: "Name of the main manifest file."
+  def_options manifest_config: [
+                spec: ManifestConfig.t(),
+                description: """
+                """
               ],
-              manifest_module: [
-                spec: module(),
-                description:
-                  "Implementation of the `Membrane.HTTPAdaptiveStream.Manifest` behaviour."
+              track_config: [
+                spec: TrackConfig.t(),
+                description: """
+                """
               ],
               storage: [
                 spec: Storage.config_t(),
@@ -118,43 +118,6 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
                 Storage configuration. May be one of `Membrane.HTTPAdaptiveStream.Storages.*`.
                 See `Membrane.HTTPAdaptiveStream.Storage` behaviour.
                 """
-              ],
-              target_window_duration: [
-                spec: Membrane.Time.t() | :infinity,
-                default: Membrane.Time.seconds(40),
-                inspector: &Membrane.Time.inspect/1,
-                description: """
-                Manifest duration is keept above that time, while the oldest segments
-                are removed whenever possible.
-                """
-              ],
-              persist?: [
-                spec: boolean(),
-                default: false,
-                description: """
-                If true, stale segments are removed from the manifest only. Once
-                playback finishes, they are put back into the manifest.
-                """
-              ],
-              mode: [
-                spec: :live | :vod,
-                default: :vod,
-                description: """
-                Tells if the session is live or a VOD type of broadcast. It can influence type of metadata
-                inserted into the playlist's manifest.
-                """
-              ],
-              header_naming_fun: [
-                spec: (Manifest.Track.t(), counter :: non_neg_integer -> String.t()),
-                default: &Manifest.Track.default_header_naming_fun/2,
-                description:
-                  "A function that generates consequent header names for a given track."
-              ],
-              segment_naming_fun: [
-                spec: (Manifest.Track.t() -> String.t()),
-                default: &Manifest.Track.default_segment_naming_fun/1,
-                description:
-                  "A function that generates consequent segment names for a given track."
               ],
               cleanup_after: [
                 spec: nil | Membrane.Time.t(),
@@ -171,13 +134,13 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     state =
       options
       |> Map.from_struct()
-      |> Map.drop([:manifest_name, :manifest_module])
       |> Map.merge(%{
         storage: Storage.new(options.storage),
-        manifest: %Manifest{name: options.manifest_name, module: options.manifest_module},
-        awaiting_first_segment: MapSet.new(),
-        # used to keep track of partial segments that should get merged
-        track_to_partial_segments: %{}
+        manifest: %Manifest{
+          name: options.manifest_config.name,
+          module: options.manifest_config.module
+        },
+        playlist_playable_sent: MapSet.new()
       })
 
     {[], state}
@@ -199,21 +162,24 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
         track_options = ctx.pads[pad_ref].options
         track_name = serialize_track_name(track_options[:track_name] || track_id)
 
-        Manifest.add_track(
-          state.manifest,
-          %Manifest.Track.Config{
+        track_config_params =
+          state.track_config
+          |> Map.from_struct()
+          |> Map.merge(%{
             id: track_id,
             track_name: track_name,
             content_type: stream_format.content_type,
             header_extension: ".mp4",
             segment_extension: ".m4s",
-            header_naming_fun: state.header_naming_fun,
-            segment_naming_fun: state.segment_naming_fun,
-            target_window_duration: state.target_window_duration,
-            target_segment_duration: track_options.segment_duration.target,
-            target_partial_segment_duration: track_options.target_partial_segment_duration,
-            persist?: state.persist?
-          }
+            segment_duration: track_options.segment_duration,
+            target_partial_segment_duration: track_options.target_partial_segment_duration
+          })
+
+        track_config = struct!(Manifest.Track.Config, track_config_params)
+
+        Manifest.add_track(
+          state.manifest,
+          track_config
         )
       end
 
@@ -233,48 +199,19 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   end
 
   @impl true
-  def handle_pad_added(pad, %{playback: :playing}, state) do
-    {[demand: pad], state}
-  end
+  def handle_pad_added(pad, %{playback: :playing}, state), do: {[demand: pad], state}
 
   @impl true
-  def handle_pad_added(_pad, _ctx, state) do
-    {[], state}
-  end
+  def handle_pad_added(_pad, _ctx, state), do: {[], state}
 
   @impl true
-  def handle_start_of_stream(Pad.ref(:input, id), _ctx, state) do
-    awaiting_first_segment = MapSet.put(state.awaiting_first_segment, id)
-    {[], %{state | awaiting_first_segment: awaiting_first_segment}}
-  end
+  def handle_write(Pad.ref(:input, track_id) = pad, buffer, _ctx, %{storage: storage} = state) do
+    {changeset, manifest} = Manifest.add_chunk(state.manifest, track_id, buffer)
 
-  @impl true
-  def handle_write(Pad.ref(:input, track_id) = pad, buffer, ctx, state) do
-    %{
-      target_partial_segment_duration: target_partial_segment_duration,
-      segment_duration: segment_duration
-    } = ctx.pads[pad].options
-
-    supports_partial_segments? = target_partial_segment_duration != nil
-
-    {changesets, buffers, state} =
-      if supports_partial_segments? do
-        handle_partial_segment(buffer, track_id, segment_duration, state)
-      else
-        handle_segment(buffer, track_id, state)
-      end
-
-    %{storage: storage, manifest: manifest} = state
-
-    with {:ok, storage} <-
-           [changesets, buffers]
-           |> Enum.zip()
-           |> Bunch.Enum.try_reduce(storage, fn {changeset, buffer}, storage ->
-             Storage.apply_segment_changeset(storage, track_id, changeset, buffer)
-           end),
+    with {:ok, storage} <- Storage.apply_track_changeset(storage, track_id, changeset),
          {:ok, storage} <- serialize_and_store_manifest(manifest, storage) do
       {notify, state} = maybe_notify_playable(track_id, state)
-      {notify ++ [demand: pad], %{state | storage: storage}}
+      {notify ++ [demand: pad], %{state | manifest: manifest, storage: storage}}
     else
       {{:error, reason}, _storage} ->
         raise "Failed to store a buffer for track #{inspect(track_id)} due to #{inspect(reason)}"
@@ -282,16 +219,18 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   end
 
   @impl true
-  def handle_end_of_stream(Pad.ref(:input, track_id), _ctx, state) do
-    {storage, manifest} = maybe_finalize_segment_on_eos(track_id, state)
+  def handle_end_of_stream(
+        Pad.ref(:input, track_id),
+        _ctx,
+        %{manifest: manifest, storage: storage} = state
+      ) do
+    {changeset, manifest} = Manifest.finish(manifest, track_id)
 
-    manifest = Manifest.finish(manifest, track_id)
-
-    case serialize_and_store_manifest(manifest, storage) do
-      {:ok, storage} ->
-        storage = Storage.clear_cache(storage)
-        {[], %{state | storage: storage, manifest: manifest}}
-
+    with {:ok, storage} <- Storage.apply_track_changeset(storage, track_id, changeset),
+         {:ok, storage} <- serialize_and_store_manifest(manifest, storage) do
+      storage = Storage.clear_cache(storage)
+      {[], %{state | storage: storage, manifest: manifest}}
+    else
       {{:error, reason}, _storage} ->
         raise "Failed to store the finalized manifest for track #{inspect(track_id)} due to #{inspect(reason)}"
     end
@@ -301,8 +240,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   def handle_terminate_request(ctx, state) do
     %{
       manifest: manifest,
-      storage: storage,
-      persist?: persist?
+      storage: storage
     } = state
 
     track_ids =
@@ -315,10 +253,13 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     # prevent storing empty manifest, such situation can happen
     # when the sink goes from prepared -> playing -> prepared -> stopped
     # and in the meantime no media has flown through input pads
-    any_track_persisted? = Enum.any?(track_ids, &Manifest.has_track?(manifest, &1))
+    any_track_persisted? =
+      Enum.any?(track_ids, fn track_id ->
+        Manifest.has_track?(manifest, track_id) and Manifest.persisted?(manifest, track_id)
+      end)
 
     result =
-      if persist? and any_track_persisted? do
+      if any_track_persisted? do
         {result, storage} =
           manifest
           |> Manifest.from_beginning()
@@ -340,84 +281,6 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     end
   end
 
-  # we are operating on partial segments which may require
-  # assembling previous partial segments and creating regular one
-  # before processing the current segment
-  defp handle_partial_segment(
-         buffer,
-         track_id,
-         segment_duration,
-         %{mode: :live} = state
-       ) do
-    {partials, partials_duration} = partial_segments_for_track(track_id, state)
-
-    {full_segment, changeset, manifest, partials} =
-      if should_finalize_segment?(buffer, partials, partials_duration, segment_duration) do
-        {segment, changeset, manifest} =
-          finalize_segment_for_track(track_id, partials, partials_duration, state.manifest)
-
-        {segment, changeset, manifest, []}
-      else
-        {nil, nil, state.manifest, partials}
-      end
-
-    new_segment_necessary? = Enum.empty?(partials)
-
-    state = put_in(state, [:track_to_partial_segments, track_id], [buffer | partials])
-
-    manifest =
-      if new_segment_necessary? do
-        {_changeset, manifest} =
-          Manifest.add_segment(
-            manifest,
-            track_id,
-            [
-              complete?: false,
-              duration: buffer.metadata.duration,
-              byte_size: byte_size(buffer.payload)
-            ],
-            creation_time(state.mode)
-          )
-
-        manifest
-      else
-        manifest
-      end
-
-    manifest
-    |> Manifest.add_partial_segment(
-      track_id,
-      buffer.metadata.independent?,
-      buffer.metadata.duration,
-      byte_size(buffer.payload)
-    )
-    |> then(fn {new_changeset, manifest} ->
-      changesets = if is_nil(changeset), do: [new_changeset], else: [changeset, new_changeset]
-      segments = if is_nil(full_segment), do: [buffer], else: [full_segment, buffer]
-
-      {changesets, segments, %{state | manifest: manifest}}
-    end)
-  end
-
-  # we are operating on regular segments
-  defp handle_segment(
-         buffer,
-         track_id,
-         state
-       ) do
-    duration = buffer.metadata.duration
-
-    {changeset, manifest} =
-      Manifest.add_segment(
-        state.manifest,
-        track_id,
-        [duration: duration, byte_size: byte_size(buffer.payload)],
-        creation_time(state.mode)
-      )
-
-    {[changeset], [buffer], %{state | manifest: manifest}}
-  end
-
   defp serialize_track_name(track_id) when is_binary(track_id) do
     valid_filename_regex = ~r/^[^\/:*?"<>|]+$/
 
@@ -432,81 +295,20 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
     track_id |> :erlang.term_to_binary() |> Base.url_encode64(padding: false)
   end
 
-  defp maybe_notify_playable(id, %{awaiting_first_segment: awaiting_first_segment} = state) do
-    if MapSet.member?(awaiting_first_segment, id) do
-      {[notify_parent: {:track_playable, id}],
-       %{state | awaiting_first_segment: MapSet.delete(awaiting_first_segment, id)}}
-    else
+  defp maybe_notify_playable(track_id, %{playlist_playable_sent: playlist_playable_sent} = state) do
+    if MapSet.member?(playlist_playable_sent, track_id) do
       {[], state}
+    else
+      {[notify_parent: {:track_playable, track_id}],
+       %{state | playlist_playable_sent: MapSet.put(playlist_playable_sent, track_id)}}
     end
   end
 
   defp serialize_and_store_manifest(manifest, storage) do
-    %{master_manifest: master_manifest, manifest_per_track: manifest_per_track} =
-      Manifest.serialize(manifest)
-
-    manifest_files = [{:master, master_manifest} | Map.to_list(manifest_per_track)]
-
-    Storage.store_manifests(storage, manifest_files)
+    serialized_manifest = Manifest.serialize(manifest)
+    Storage.store_manifests(storage, serialized_manifest)
   end
 
-  defp total_partial_segments_duration(partials),
-    do: Enum.reduce(partials, 0, &(&1.metadata.duration + &2))
-
-  defp partial_segments_for_track(track_id, state) do
-    partial_segments = Map.get(state.track_to_partial_segments, track_id, [])
-
-    {partial_segments, total_partial_segments_duration(partial_segments)}
-  end
-
-  defp should_finalize_segment?(partial_buffer, partials, partials_duration, segment_duration) do
-    %{independent?: independent?, duration: duration} = partial_buffer.metadata
-
-    partials != [] and independent? and duration + partials_duration > segment_duration.min
-  end
-
-  defp finalize_segment_for_track(track_id, partials, partials_duration, manifest) do
-    payload =
-      partials
-      |> Enum.map(& &1.payload)
-      |> Enum.reverse()
-      |> IO.iodata_to_binary()
-
-    segment = %Membrane.Buffer{
-      payload: payload,
-      metadata: %{duration: partials_duration}
-    }
-
-    {changeset, manifest} = Manifest.finalize_current_segment(manifest, track_id)
-
-    {segment, changeset, manifest}
-  end
-
-  defp maybe_finalize_segment_on_eos(track_id, state) do
-    %{manifest: manifest, storage: storage} = state
-
-    {partials, partials_duration} = partial_segments_for_track(track_id, state)
-
-    if partials == [] do
-      {storage, manifest}
-    else
-      {segment, changeset, manifest} =
-        finalize_segment_for_track(track_id, partials, partials_duration, manifest)
-
-      case Storage.apply_segment_changeset(storage, track_id, changeset, segment) do
-        {:ok, storage} ->
-          {storage, manifest}
-
-        {{:error, reason}, _storage} ->
-          raise "Failed to apply segment changeset for track #{inspect(track_id)} due to #{inspect(reason)}"
-      end
-    end
-  end
-
-  defp creation_time(:live), do: [{:creation_time, DateTime.utc_now()}]
-  defp creation_time(:vod), do: []
-
-  defp maybe_schedule_cleanup_task(state)
   defp maybe_schedule_cleanup_task(%{cleanup_after: nil}), do: :ok
 
   defp maybe_schedule_cleanup_task(%{
