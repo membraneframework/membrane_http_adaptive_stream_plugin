@@ -444,11 +444,6 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
 
     {partial_sequence_number, track} = get_partial_sequence_number(track, true)
 
-    last_segment = %Segment{
-      last_segment
-      | parts: last_segment.parts ++ [partial_segment]
-    }
-
     new_partial_segment = %Changeset.Segment{
       type: :partial_segment,
       duration: duration,
@@ -462,6 +457,11 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     changeset = %Changeset{
       to_add: [new_partial_segment],
       to_remove: []
+    }
+
+    last_segment = %Segment{
+      last_segment
+      | parts: last_segment.parts ++ [partial_segment]
     }
 
     {changeset, Map.replace(track, :segments, Qex.push(segments, last_segment))}
