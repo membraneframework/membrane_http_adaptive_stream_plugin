@@ -245,7 +245,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
       serialized =
         "#EXT-X-PART:DURATION=#{time},URI=\"#{segment.name}\",BYTERANGE=\"#{part.size}@#{total_bytes}\""
 
-      serialized = if part.independent?, do: serialized <> ",INDEPENDENT=true", else: serialized
+      serialized = if part.independent?, do: serialized <> ",INDEPENDENT=YES", else: serialized
 
       {serialized, part.size + total_bytes}
     end)
