@@ -83,15 +83,15 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
         """
       ],
       segment_duration: [
-        spec: Manifest.SegmentDuration.t(),
+        spec: Membrane.Time.t(),
         description: """
-        The expected minimum and target duration of media segments produced by this particular track.
+        The expected target duration of media segments produced by this particular track.
 
         In case of regular paced streams the parameter may not have any impact, but when
         partial segments gets used it may decide when regular segments gets finalized and new gets started.
         """
       ],
-      target_partial_segment_duration: [
+      partial_segment_duration: [
         spec: Membrane.Time.t() | nil,
         default: nil,
         description: """
@@ -172,7 +172,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
             header_extension: ".mp4",
             segment_extension: ".m4s",
             segment_duration: track_options.segment_duration,
-            target_partial_segment_duration: track_options.target_partial_segment_duration
+            partial_segment_duration: track_options.partial_segment_duration
           })
 
         track_config = struct!(Manifest.Track.Config, track_config_params)
