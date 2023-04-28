@@ -139,6 +139,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
           payload: segment_payload_t(),
           complete?: boolean(),
           independent?: boolean(),
+          last_chunk?: boolean(),
           duration: segment_duration_t(),
           size: segment_size_t()
         }
@@ -230,6 +231,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
               payload: payload,
               complete?: false,
               duration: duration,
+              last_chunk?: true,
               size: size,
               independent?: true
             }

@@ -6,7 +6,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
   require Membrane.Pad
 
   alias Membrane.{Buffer, Pad, Testing, Time}
-  alias Membrane.HTTPAdaptiveStream.Manifest.{SegmentDuration, Track}
+  alias Membrane.HTTPAdaptiveStream.Manifest.Track
   alias Membrane.HTTPAdaptiveStream.Sink
   alias Membrane.HTTPAdaptiveStream.Storages.SendStorage
 
@@ -199,7 +199,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
         {{:source, source_id}, %Source{content_type: content_type, source_id: source_id}}
       end)
 
-    segment_duration = SegmentDuration.new(Time.seconds(5))
+    segment_duration = Time.seconds(5)
 
     manifest_config = %Sink.ManifestConfig{module: Membrane.HTTPAdaptiveStream.HLS}
     track_config = %Sink.TrackConfig{target_window_duration: Time.seconds(5), mode: :vod}
@@ -231,7 +231,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
   defp send_buf(pipeline, source_id, duration) do
     buffer = %Buffer{
       payload: "test_payload",
-      metadata: %{duration: Time.seconds(duration), independent?: true}
+      metadata: %{duration: Time.seconds(duration), independent?: true, last_chunk?: true}
     }
 
     Testing.Pipeline.message_child(pipeline, {:source, source_id}, {:buffer, buffer})
