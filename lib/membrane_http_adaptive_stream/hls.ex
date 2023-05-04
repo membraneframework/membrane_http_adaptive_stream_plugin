@@ -194,6 +194,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
       #EXT-X-DISCONTINUITY-SEQUENCE:#{track.current_discontinuity_seq_num}
       #EXT-X-MAP:URI="#{track.header_name}"
       #{serialize_segments(track)}
+      #{serialize_preload_hint_tag(supports_ll_hls?, track)}
       #{if track.finished?, do: "#EXT-X-ENDLIST", else: ""}
       """
   end
@@ -263,4 +264,22 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   end
 
   defp serialize_ll_hls_tags(false, _target_partial_duration), do: ""
+
+  defp serialize_preload_hint_tag(true, track) do
+    # should we handle case, when theres no segments?
+    {last_segment, _segments} = Qex.pop_back!(track.segments)
+
+    {name, bytes} =
+      case last_segment do
+        %Segment{type: :partial, name: name, parts: parts} ->
+          {name, Enum.reduce(parts, 0, fn part, acc -> acc + part.size end)}
+
+        %Segment{type: :full} ->
+          {track.segment_naming_fun.(track) <> track.segment_extension, 0}
+      end
+
+    "#EXT-X-PRELOAD-HINT:TYPE=PART,URI=\"#{name}\",BYTERANGE-START=#{bytes}"
+  end
+
+  defp serialize_preload_hint_tag(false, _track), do: ""
 end
