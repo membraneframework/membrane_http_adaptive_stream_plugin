@@ -66,7 +66,7 @@ defmodule Membrane.HTTPAdaptiveStream.MixProject do
       {:membrane_core, "~> 0.11.2"},
       {:membrane_cmaf_format, "~> 0.6.1"},
       {:membrane_tee_plugin, "~> 0.10.1"},
-      {:membrane_mp4_plugin, "~> 0.19.0"},
+      {:membrane_mp4_plugin, "~> 0.21.0"},
       {:membrane_aac_plugin, "~> 0.13.0", only: :test},
       {:membrane_hackney_plugin, "~> 0.9.0", only: :test},
       {:membrane_h264_ffmpeg_plugin, "~> 0.26.2", only: :test},

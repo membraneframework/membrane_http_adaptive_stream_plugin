@@ -53,6 +53,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
       payload: buffer.payload,
       size: byte_size(buffer.payload),
       independent?: Map.get(buffer.metadata, :independent?, true),
+      last_chunk?: Map.fetch!(buffer.metadata, :last_chunk?),
       duration: buffer.metadata.duration,
       complete?: true
     }

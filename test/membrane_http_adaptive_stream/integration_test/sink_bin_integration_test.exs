@@ -55,7 +55,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
     use Membrane.Pipeline
 
     alias Membrane.HTTPAdaptiveStream
-    alias Membrane.HTTPAdaptiveStream.Manifest.SegmentDuration
     alias Membrane.HTTPAdaptiveStream.Storages.FileStorage
     alias Membrane.Time
 
@@ -123,16 +122,16 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
     end
 
     defp segment_duration_for(:AAC),
-      do: SegmentDuration.new(Time.milliseconds(2000), Time.milliseconds(2000))
+      do: Time.milliseconds(2000)
 
     defp segment_duration_for(:H264),
-      do: SegmentDuration.new(Time.milliseconds(1500), Time.milliseconds(2000))
+      do: Time.milliseconds(2000)
 
     defp partial_segment_duration_for(:AAC),
-      do: SegmentDuration.new(Time.milliseconds(250), Time.milliseconds(500))
+      do: Time.milliseconds(500)
 
     defp partial_segment_duration_for(:H264),
-      do: SegmentDuration.new(Time.milliseconds(250), Time.milliseconds(500))
+      do: Time.milliseconds(500)
   end
 
   test "check if fixture creation is disabled" do
@@ -239,12 +238,11 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
       expected_segments = [
         {:video, 0, 21},
         {:video, 1, 5},
-        {:audio, 0, 4},
-        {:audio, 1, 4},
-        {:audio, 2, 4},
-        {:audio, 3, 4},
-        {:audio, 4, 4},
-        {:audio, 5, 1}
+        {:audio, 0, 5},
+        {:audio, 1, 5},
+        {:audio, 2, 5},
+        {:audio, 3, 5},
+        {:audio, 4, 1}
       ]
 
       for {type, segment_idx, parts} <- expected_segments do

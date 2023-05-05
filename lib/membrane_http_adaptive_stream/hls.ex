@@ -172,13 +172,13 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   end
 
   defp serialize_track(%Track{} = track) do
-    target_duration = Ratio.ceil(track.segment_duration.target / Time.second()) |> trunc()
+    target_duration = Ratio.ceil(track.segment_duration / Time.second()) |> trunc()
 
     supports_ll_hls? = Track.supports_partial_segments?(track)
 
     target_partial_duration =
       if supports_ll_hls? do
-        Float.ceil(Ratio.to_float(track.target_partial_segment_duration / Time.second()), 3)
+        Float.ceil(Ratio.to_float(track.partial_segment_duration / Time.second()), 3)
       else
         nil
       end
