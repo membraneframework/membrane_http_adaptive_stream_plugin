@@ -85,7 +85,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
       segment_duration: [
         spec: Membrane.Time.t(),
         description: """
-        The expected target duration of media segments produced by this particular track.
+        The minimal duration of media segments produced by this particular track.
 
         In case of regular paced streams the parameter may not have any impact, but when
         partial segments gets used it may decide when regular segments gets finalized and new gets started.
