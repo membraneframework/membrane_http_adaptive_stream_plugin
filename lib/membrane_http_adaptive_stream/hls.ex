@@ -94,13 +94,13 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
       %{muxed: tracks} ->
         serialize_tracks(tracks)
 
-      %{audio: [audio], video: videos} ->
-        videos
-        |> serialize_tracks()
-        |> Map.put(audio.id, {build_media_playlist_path(audio), serialize_track(audio)})
+      %{audio: audios, video: videos} ->
+        serialized_videos = serialize_tracks(videos)
+        serialized_audios = serialize_tracks(audios)
+        Map.merge(serialized_videos, serialized_audios)
 
-      %{audio: [audio]} ->
-        %{audio.id => {build_media_playlist_path(audio), serialize_track(audio)}}
+      %{audio: audios} ->
+        serialize_tracks(audios)
 
       %{video: videos} ->
         serialize_tracks(videos)

@@ -228,10 +228,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
 
       assert_receive {SendStorage, :store, %{type: :manifest, name: "index.m3u8"}}, 1_000
 
-      assert_receive {SendStorage, :store, %{type: :manifest, name: "video_track.m3u8"}}, 500
-
-      assert_receive {SendStorage, :store, %{type: :manifest, name: "audio_track.m3u8"}}, 500
-
       # the values below define a set of expected partial segments
       # that should be followed by regular segments containing all previous parts
       # (belonging to the current segment)
@@ -274,6 +270,10 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
       end
 
       :ok = Testing.Pipeline.terminate(pipeline, blocking?: true)
+
+      # last manifests after EoS is received by the sink
+      assert_receive {SendStorage, :store, %{type: :manifest, name: "video_track.m3u8"}}, 500
+      assert_receive {SendStorage, :store, %{type: :manifest, name: "audio_track.m3u8"}}, 500
     end
   end
 
