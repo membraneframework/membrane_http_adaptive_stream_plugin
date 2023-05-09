@@ -94,13 +94,13 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
       %{muxed: tracks} ->
         serialize_tracks(tracks)
 
-      %{audio: [audio], video: videos} ->
-        videos
-        |> serialize_tracks()
-        |> Map.put(audio.id, {build_media_playlist_path(audio), serialize_track(audio)})
+      %{audio: audios, video: videos} ->
+        serialized_videos = serialize_tracks(videos)
+        serialized_audios = serialize_tracks(audios)
+        Map.merge(serialized_videos, serialized_audios)
 
-      %{audio: [audio]} ->
-        %{audio.id => {build_media_playlist_path(audio), serialize_track(audio)}}
+      %{audio: audios} ->
+        serialize_tracks(audios)
 
       %{video: videos} ->
         serialize_tracks(videos)
@@ -194,7 +194,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
       #EXT-X-DISCONTINUITY-SEQUENCE:#{track.current_discontinuity_seq_num}
       #EXT-X-MAP:URI="#{track.header_name}"
       #{serialize_segments(track)}
-      #{if track.finished?, do: "#EXT-X-ENDLIST", else: ""}
+      #{if track.finished?, do: "#EXT-X-ENDLIST", else: serialize_preload_hint_tag(supports_ll_hls?, track)}
       """
   end
 
@@ -250,9 +250,6 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
       {serialized, part.size + total_bytes}
     end)
     |> then(fn {parts, _acc} -> parts end)
-
-    # NOTE: we may want to support the EXT-X-PRELOAD-HINT as some point to further reduce latency
-    # for now hls.js (most common HLS backend for browsers) does not support those
   end
 
   defp serialize_ll_hls_tags(true, target_partial_duration) do
@@ -263,4 +260,25 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   end
 
   defp serialize_ll_hls_tags(false, _target_partial_duration), do: ""
+
+  defp serialize_preload_hint_tag(true, track) do
+    get_tag = fn name, bytes ->
+      "#EXT-X-PRELOAD-HINT:TYPE=PART,URI=\"#{name}\",BYTERANGE-START=#{bytes}"
+    end
+
+    case Qex.last(track.segments) do
+      :empty ->
+        ""
+
+      {:value, %Segment{type: :partial, name: name, parts: parts}} ->
+        bytes = Enum.reduce(parts, 0, fn part, acc -> acc + part.size end)
+        get_tag.(name, bytes)
+
+      {:value, %Segment{type: :full}} ->
+        name = track.segment_naming_fun.(track) <> track.segment_extension
+        get_tag.(name, 0)
+    end
+  end
+
+  defp serialize_preload_hint_tag(false, _track), do: ""
 end
