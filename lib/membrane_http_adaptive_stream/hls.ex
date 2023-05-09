@@ -262,22 +262,21 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   defp serialize_ll_hls_tags(false, _target_partial_duration), do: ""
 
   defp serialize_preload_hint_tag(true, track) do
-    # hls.js currently does not support EXT-X-PRELOAD_HINT tag
-    case Qex.pop_back(track.segments) do
-      {:empty, _segments} ->
+    get_tag = fn name, bytes ->
+      "#EXT-X-PRELOAD-HINT:TYPE=PART,URI=\"#{name}\",BYTERANGE-START=#{bytes}"
+    end
+
+    case Qex.last(track.segments) do
+      :empty ->
         ""
 
-      {{:value, last_segment}, _segments} ->
-        {name, bytes} =
-          case last_segment do
-            %Segment{type: :partial, name: name, parts: parts} ->
-              {name, Enum.reduce(parts, 0, fn part, acc -> acc + part.size end)}
+      {:value, %Segment{type: :partial, name: name, parts: parts}} ->
+        bytes = Enum.reduce(parts, 0, fn part, acc -> acc + part.size end)
+        get_tag.(name, bytes)
 
-            %Segment{type: :full} ->
-              {track.segment_naming_fun.(track) <> track.segment_extension, 0}
-          end
-
-        "#EXT-X-PRELOAD-HINT:TYPE=PART,URI=\"#{name}\",BYTERANGE-START=#{bytes}"
+      {:value, %Segment{type: :full}} ->
+        name = track.segment_naming_fun.(track) <> track.segment_extension
+        get_tag.(name, 0)
     end
   end
 
