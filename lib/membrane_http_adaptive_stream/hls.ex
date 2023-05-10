@@ -26,6 +26,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   @default_audio_track_name "audio_default_name"
 
   @keep_latest_n_segment_parts 4
+  @min_segments_in_delta_playlist 6
 
   defmodule SegmentAttribute do
     @moduledoc """
@@ -93,15 +94,12 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     case tracks do
       %{muxed: tracks} ->
         serialize_tracks(tracks)
-
       %{audio: audios, video: videos} ->
         serialized_videos = serialize_tracks(videos)
         serialized_audios = serialize_tracks(audios)
         Map.merge(serialized_videos, serialized_audios)
-
       %{audio: audios} ->
         serialize_tracks(audios)
-
       %{video: videos} ->
         serialize_tracks(videos)
     end
@@ -110,12 +108,33 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   defp serialize_tracks(tracks) do
     tracks
     |> Enum.filter(&(&1.segments != @empty_segments))
-    |> Map.new(fn track ->
-      {track.id, {build_media_playlist_path(track), serialize_track(track)}}
-    end)
+    |> Enum.reduce(%{}, &add_serialized_track(&2, &1))
   end
 
-  defp build_media_playlist_path(%Track{} = track) do
+  defp add_serialized_track(tracks_map, track) do
+    tracks_map
+    |> Map.put(
+      track.id,
+      {build_media_playlist_path(track, delta?: false), serialize_track(track)}
+    )
+    |> then(
+      &if(should_generate_delta_playlist?(track),
+        do:
+          Map.put(
+            &1,
+            :"#{Atom.to_string(track.id)}_delta",
+            {build_media_playlist_path(track, delta?: true), serialize_track(track, delta?: true)}
+          ),
+        else: &1
+      )
+    )
+  end
+
+  defp build_media_playlist_path(%Track{} = track, delta?: true) do
+    track.track_name <> "_delta.m3u8"
+  end
+
+  defp build_media_playlist_path(%Track{} = track, _opts \\ []) do
     track.track_name <> ".m3u8"
   end
 
@@ -171,10 +190,19 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     end
   end
 
-  defp serialize_track(%Track{} = track) do
-    target_duration = Ratio.ceil(track.segment_duration / Time.second()) |> trunc()
-
+  defp serialize_track(%Track{} = track, [delta?: delta?] \\ [delta?: false]) do
+    target_duration = Ratio.ceil(track.segment_duration.target / Time.second()) |> trunc()
     supports_ll_hls? = Track.supports_partial_segments?(track)
+
+    can_skip_segments_duration =
+      if supports_ll_hls? do
+        track.segments
+        |> Enum.drop(-6)
+        |> Enum.reduce(0, &(&1.duration + &2))
+        |> then(&Ratio.to_float(&1 / Time.second()))
+      else
+        nil
+      end
 
     target_partial_duration =
       if supports_ll_hls? do
@@ -188,20 +216,38 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     #EXT-X-VERSION:#{@version}
     #EXT-X-TARGETDURATION:#{target_duration}
     """ <>
-      serialize_ll_hls_tags(supports_ll_hls?, target_partial_duration) <>
+      serialize_ll_hls_tags(supports_ll_hls?, target_partial_duration, can_skip_segments_duration) <>
       """
       #EXT-X-MEDIA-SEQUENCE:#{track.current_seq_num}
       #EXT-X-DISCONTINUITY-SEQUENCE:#{track.current_discontinuity_seq_num}
       #EXT-X-MAP:URI="#{track.header_name}"
-      #{serialize_segments(track)}
+      #{serialize_segments(track.segments, supports_ll_hls?: supports_ll_hls?, delta?: delta?)}
       #{if track.finished?, do: "#EXT-X-ENDLIST", else: serialize_preload_hint_tag(supports_ll_hls?, track)}
       """
   end
 
-  defp serialize_segments(track) do
-    supports_ll_hls? = Track.supports_partial_segments?(track)
+  defp should_generate_delta_playlist?(track) do
+    Track.supports_partial_segments?(track) &&
+      Enum.count(track.segments) > @min_segments_in_delta_playlist
+  end
 
-    track.segments
+  defp serialize_segments(segments, supports_ll_hls?: supports_ll_hls?, delta?: true) do
+    segments_to_skip_count = Enum.count(segments) - @min_segments_in_delta_playlist
+
+    prefix = """
+    #EXT-X-SKIP:SKIPPED-SEGMENTS=#{segments_to_skip_count}
+    """
+
+    serialized_segments =
+      segments
+      |> Enum.drop(segments_to_skip_count)
+      |> serialize_segments(supports_ll_hls?: supports_ll_hls?, delta?: false)
+
+    prefix <> serialized_segments
+  end
+
+  defp serialize_segments(segments, supports_ll_hls?: supports_ll_hls?, delta?: false) do
+    segments
     |> Enum.split(-@keep_latest_n_segment_parts)
     |> then(fn {regular_segments, ll_segments} ->
       regular = Enum.flat_map(regular_segments, &do_serialize_segment(&1, false))
@@ -252,14 +298,14 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     |> then(fn {parts, _acc} -> parts end)
   end
 
-  defp serialize_ll_hls_tags(true, target_partial_duration) do
+  defp serialize_ll_hls_tags(true, target_partial_duration, can_skip_segments_duration) do
     """
-    #EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=#{2 * target_partial_duration}
+    #EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=#{2 * target_partial_duration}#{can_skip_until(can_skip_segments_duration)}
     #EXT-X-PART-INF:PART-TARGET=#{target_partial_duration}
     """
   end
 
-  defp serialize_ll_hls_tags(false, _target_partial_duration), do: ""
+  defp serialize_ll_hls_tags(false, _target_partial_duration, _can_skip_segments_duration), do: ""
 
   defp serialize_preload_hint_tag(true, track) do
     get_tag = fn name, bytes ->
@@ -281,4 +327,9 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   end
 
   defp serialize_preload_hint_tag(false, _track), do: ""
+
+  defp can_skip_until(can_skip_segments_duration) when can_skip_segments_duration > 0,
+    do: ",CAN-SKIP-UNTIL=#{can_skip_segments_duration}"
+
+  defp can_skip_until(_can_skip_segments_duration), do: ""
 end
