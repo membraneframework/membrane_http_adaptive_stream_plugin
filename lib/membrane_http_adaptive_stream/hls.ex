@@ -94,12 +94,15 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     case tracks do
       %{muxed: tracks} ->
         serialize_tracks(tracks)
+
       %{audio: audios, video: videos} ->
         serialized_videos = serialize_tracks(videos)
         serialized_audios = serialize_tracks(audios)
         Map.merge(serialized_videos, serialized_audios)
+
       %{audio: audios} ->
         serialize_tracks(audios)
+
       %{video: videos} ->
         serialize_tracks(videos)
     end
