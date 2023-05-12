@@ -133,11 +133,13 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     )
   end
 
+  defp build_media_playlist_path(track, opts \\ [delta?: false])
+
   defp build_media_playlist_path(%Track{} = track, delta?: true) do
     track.track_name <> "_delta.m3u8"
   end
 
-  defp build_media_playlist_path(%Track{} = track, _opts \\ []) do
+  defp build_media_playlist_path(%Track{} = track, delta?: false) do
     track.track_name <> ".m3u8"
   end
 
@@ -194,7 +196,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   end
 
   defp serialize_track(%Track{} = track, [delta?: delta?] \\ [delta?: false]) do
-    target_duration = Ratio.ceil(track.segment_duration.target / Time.second()) |> trunc()
+    target_duration = Ratio.ceil(track.segment_duration / Time.second()) |> trunc()
     supports_ll_hls? = Track.supports_partial_segments?(track)
 
     can_skip_segments_duration =
