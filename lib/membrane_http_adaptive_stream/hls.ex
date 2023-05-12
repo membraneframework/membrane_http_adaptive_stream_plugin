@@ -202,7 +202,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     can_skip_segments_duration =
       if supports_ll_hls? do
         track.segments
-        |> Enum.drop(-6)
+        |> Enum.drop(-@min_segments_in_delta_playlist)
         |> Enum.reduce(0, &(&1.duration + &2))
         |> then(&Ratio.to_float(&1 / Time.second()))
       else
