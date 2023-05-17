@@ -115,22 +115,21 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   end
 
   defp add_serialized_track(tracks_map, track) do
-    tracks_map
-    |> Map.put(
-      track.id,
-      {build_media_playlist_path(track, delta?: false), serialize_track(track)}
-    )
-    |> then(
-      &if(should_generate_delta_playlist?(track),
-        do:
-          Map.put(
-            &1,
-            :"#{track.id}_delta",
-            {build_media_playlist_path(track, delta?: true), serialize_track(track, delta?: true)}
-          ),
-        else: &1
-      )
-    )
+    playlist_path = build_media_playlist_path(track)
+    serialized_track = {playlist_path, serialize_track(track)}
+    tracks_map = Map.put(tracks_map, track.id, serialized_track)
+
+    should_generate_delta_playlist? =
+      Track.supports_partial_segments?(track) &&
+        Enum.count(track.segments) > @min_segments_in_delta_playlist
+
+    if should_generate_delta_playlist? do
+      delta_path = build_media_playlist_path(track, delta?: true)
+      serialized_delta_track = {delta_path, serialize_track(track, delta?: true)}
+      Map.put(tracks_map, track.id, serialized_delta_track)
+    else
+      tracks_map
+    end
   end
 
   defp build_media_playlist_path(track, opts \\ [delta?: false])
@@ -199,29 +198,12 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     target_duration = Ratio.ceil(track.segment_duration / Time.second()) |> trunc()
     supports_ll_hls? = Track.supports_partial_segments?(track)
 
-    can_skip_segments_duration =
-      if supports_ll_hls? do
-        track.segments
-        |> Enum.drop(-@min_segments_in_delta_playlist)
-        |> Enum.reduce(0, &(&1.duration + &2))
-        |> then(&Ratio.to_float(&1 / Time.second()))
-      else
-        nil
-      end
-
-    target_partial_duration =
-      if supports_ll_hls? do
-        Float.ceil(Ratio.to_float(track.partial_segment_duration / Time.second()), 3)
-      else
-        nil
-      end
-
     """
     #EXTM3U
     #EXT-X-VERSION:#{@version}
     #EXT-X-TARGETDURATION:#{target_duration}
     """ <>
-      serialize_ll_hls_tags(supports_ll_hls?, target_partial_duration, can_skip_segments_duration) <>
+      serialize_ll_hls_tags(track) <>
       """
       #EXT-X-MEDIA-SEQUENCE:#{track.current_seq_num}
       #EXT-X-DISCONTINUITY-SEQUENCE:#{track.current_discontinuity_seq_num}
@@ -229,11 +211,6 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
       #{serialize_segments(track.segments, supports_ll_hls?: supports_ll_hls?, delta?: delta?)}
       #{if track.finished?, do: "#EXT-X-ENDLIST", else: serialize_preload_hint_tag(supports_ll_hls?, track)}
       """
-  end
-
-  defp should_generate_delta_playlist?(track) do
-    Track.supports_partial_segments?(track) &&
-      Enum.count(track.segments) > @min_segments_in_delta_playlist
   end
 
   defp serialize_segments(segments, supports_ll_hls?: supports_ll_hls?, delta?: true) do
@@ -303,14 +280,27 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     |> then(fn {parts, _acc} -> parts end)
   end
 
-  defp serialize_ll_hls_tags(true, target_partial_duration, can_skip_segments_duration) do
-    """
-    #EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=#{2 * target_partial_duration}#{can_skip_until(can_skip_segments_duration)}
-    #EXT-X-PART-INF:PART-TARGET=#{target_partial_duration}
-    """
-  end
+  defp serialize_ll_hls_tags(track) do
+    supports_ll_hls? = Track.supports_partial_segments?(track)
 
-  defp serialize_ll_hls_tags(false, _target_partial_duration, _can_skip_segments_duration), do: ""
+    if supports_ll_hls? do
+      can_skip_segments_duration =
+        track.segments
+        |> Enum.drop(-@min_segments_in_delta_playlist)
+        |> Enum.reduce(0, &(&1.duration + &2))
+        |> then(&Ratio.to_float(&1 / Time.second()))
+
+      target_partial_duration =
+        Float.ceil(Ratio.to_float(track.partial_segment_duration / Time.second()), 3)
+
+      """
+      #EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=#{2 * target_partial_duration}#{can_skip_until(can_skip_segments_duration)}
+      #EXT-X-PART-INF:PART-TARGET=#{target_partial_duration}
+      """
+    else
+      ""
+    end
+  end
 
   defp serialize_preload_hint_tag(true, track) do
     get_tag = fn name, bytes ->
@@ -333,8 +323,8 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
 
   defp serialize_preload_hint_tag(false, _track), do: ""
 
-  defp can_skip_until(can_skip_segments_duration) when can_skip_segments_duration > 0,
-    do: ",CAN-SKIP-UNTIL=#{can_skip_segments_duration}"
+  defp can_skip_until(duration) when duration > 0,
+    do: ",CAN-SKIP-UNTIL=#{duration}"
 
-  defp can_skip_until(_can_skip_segments_duration), do: ""
+  defp can_skip_until(_duration), do: ""
 end
