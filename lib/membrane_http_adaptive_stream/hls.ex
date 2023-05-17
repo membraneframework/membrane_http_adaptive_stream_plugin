@@ -125,7 +125,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
         do:
           Map.put(
             &1,
-            :"#{Atom.to_string(track.id)}_delta",
+            :"#{track.id}_delta",
             {build_media_playlist_path(track, delta?: true), serialize_track(track, delta?: true)}
           ),
         else: &1

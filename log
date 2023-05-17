@@ -1,0 +1,38 @@
+..........[
+  ["#EXTINF:2.8,\nvideo_segment_3_video_720x480.m4s"],
+  ["#EXTINF:3.0,\nvideo_segment_4_video_720x480.m4s"],
+  ["#EXTINF:2.0,\nvideo_segment_5_video_720x480.m4s"],
+  ["#EXTINF:3.92,\nvideo_segment_6_video_720x480.m4s"],
+  ["#EXTINF:5.04,\nvideo_segment_7_video_720x480.m4s"],
+  ["#EXTINF:2.52,\nvideo_segment_8_video_720x480.m4s"]
+]
+[
+  ["#EXTINF:2.8,\nvideo_segment_4_video_480x270.m4s"],
+  ["#EXTINF:2.88,\nvideo_segment_5_video_480x270.m4s"],
+  ["#EXTINF:4.8,\nvideo_segment_6_video_480x270.m4s"],
+  ["#EXTINF:2.32,\nvideo_segment_7_video_480x270.m4s"],
+  ["#EXTINF:3.96,\nvideo_segment_8_video_480x270.m4s"],
+  ["#EXTINF:2.52,\nvideo_segment_9_video_480x270.m4s"]
+]
+[
+  ["#EXTINF:2.8,\nvideo_segment_3_video_540x360.m4s"],
+  ["#EXTINF:2.96,\nvideo_segment_4_video_540x360.m4s"],
+  ["#EXTINF:2.0,\nvideo_segment_5_video_540x360.m4s"],
+  ["#EXTINF:3.96,\nvideo_segment_6_video_540x360.m4s"],
+  ["#EXTINF:5.04,\nvideo_segment_7_video_540x360.m4s"],
+  ["#EXTINF:2.52,\nvideo_segment_8_video_540x360.m4s"]
+]
+[
+  ["#EXTINF:2.438095235,\naudio_segment_8_audio_track.m4s"],
+  ["#EXTINF:2.438095235,\naudio_segment_9_audio_track.m4s"],
+  ["#EXTINF:2.438095235,\naudio_segment_10_audio_track.m4s"],
+  ["#EXTINF:2.438095235,\naudio_segment_11_audio_track.m4s"],
+  ["#EXTINF:2.438095235,\naudio_segment_12_audio_track.m4s"],
+  ["#EXTINF:1.346757368,\naudio_segment_13_audio_track.m4s"]
+]
+....
+
+Finished in 37.3 seconds (37.3s async, 0.00s sync)
+14 tests, 0 failures
+
+Randomized with seed 379020
