@@ -126,7 +126,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     if should_generate_delta_playlist? do
       delta_path = build_media_playlist_path(track, delta?: true)
       serialized_delta_track = {delta_path, serialize_track(track, delta?: true)}
-      Map.put(tracks_map, track.id, serialized_delta_track)
+      Map.put(tracks_map, :"#{track.id}_delta", serialized_delta_track)
     else
       tracks_map
     end
