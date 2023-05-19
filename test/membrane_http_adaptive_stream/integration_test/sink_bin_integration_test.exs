@@ -228,9 +228,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
       assert_pipeline_play(pipeline)
       assert_pipeline_notified(pipeline, :sink_bin, :end_of_stream, 10_000)
 
-      # Give some time to save all of the files to disk
-      Process.sleep(10_000)
-
       File.ls!(tmp_dir)
       |> Enum.filter(&String.match?(&1, ~r/.*(?<!index|delta)\.m3u8$/))
       |> Enum.each(fn manifest_filename ->
@@ -300,9 +297,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
 
       assert_pipeline_play(pipeline)
       assert_pipeline_notified(pipeline, :sink_bin, :end_of_stream, 10_000)
-
-      # Give some time to save all of the files to disk
-      Process.sleep(1_000)
 
       assert_receive {SendStorage, :store, %{type: :manifest, name: "index.m3u8"}}, 1_000
 
@@ -381,9 +375,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
     assert_pipeline_play(pipeline)
 
     assert_pipeline_notified(pipeline, :sink_bin, :end_of_stream, 10_000)
-
-    # Give some time to save all of the files to disk
-    Process.sleep(1_000)
 
     :ok = Testing.Pipeline.terminate(pipeline, blocking?: true)
   end
