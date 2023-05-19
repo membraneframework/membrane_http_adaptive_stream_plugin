@@ -17,6 +17,8 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
   }
   @create_fixtures false
 
+  @expected_number_of_segments_in_delta_playlist 6
+
   @audio_video_tracks_sources [
     {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/test-audio.aac",
      :AAC, "audio_track"},
@@ -197,6 +199,79 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
       )
     end
 
+    @tag :tmp_dir
+    test "test creation of delta playlist", %{tmp_dir: tmp_dir} do
+      alias Membrane.HTTPAdaptiveStream.Storages.FileStorage
+
+      hackney_sources =
+        @audio_multiple_video_tracks_sources
+        |> Enum.map(fn {path, encoding, name} ->
+          {%Membrane.Hackney.Source{location: path, hackney_opts: [follow_redirect: true]},
+           encoding, name}
+        end)
+
+      pipeline =
+        Testing.Pipeline.start_link_supervised!(
+          module: TestPipeline,
+          custom_args: %{
+            sources: hackney_sources,
+            hls_mode: @pipeline_config.hls_mode,
+            partial_segments: true,
+            target_window_duration: @pipeline_config.target_window_duration,
+            persist?: @pipeline_config.persist?,
+            storage: %FileStorage{
+              directory: tmp_dir
+            }
+          }
+        )
+
+      assert_pipeline_play(pipeline)
+      assert_pipeline_notified(pipeline, :sink_bin, :end_of_stream, 10_000)
+
+      File.ls!(tmp_dir)
+      |> Enum.filter(&String.match?(&1, ~r/.*(?<!index|delta)\.m3u8$/))
+      |> Enum.each(fn manifest_filename ->
+        manifest_file = File.read!(Path.join(tmp_dir, manifest_filename))
+
+        segments_in_manifest =
+          Regex.scan(~r/#EXTINF:\d+\.\d+,\s\w+segment_\d+_.+.m4s/, manifest_file)
+
+        number_of_segments_in_manifest = Enum.count(segments_in_manifest)
+        # delta manifest will be generated when plailist is longer then 6 segments
+        if number_of_segments_in_manifest > @expected_number_of_segments_in_delta_playlist do
+          # check if manifest contains CAN-SKIP-UNTIL tag
+          assert Regex.match?(~r/CAN-SKIP-UNTIL=\d+\.*\d*/, manifest_file)
+
+          # check if delta file exists
+          delta_manifest_filename = String.replace(manifest_filename, ".m3u8", "_delta.m3u8")
+          assert File.exists?(Path.join(tmp_dir, delta_manifest_filename))
+
+          delta_manifest_file = File.read!(Path.join(tmp_dir, delta_manifest_filename))
+
+          segments_in_delta_manifest =
+            Regex.scan(~r/#EXTINF:\d+\.\d+,\s\w+segment_\d+_.+.m4s/, delta_manifest_file)
+
+          number_of_segments_in_delta_manifest = Enum.count(segments_in_delta_manifest)
+          # check if delta manifest contains exected number of segments
+          assert number_of_segments_in_delta_manifest ==
+                   @expected_number_of_segments_in_delta_playlist
+
+          # check if delta manifest contains last 6 segments from manifest
+          assert Enum.take(segments_in_manifest, -@expected_number_of_segments_in_delta_playlist) ==
+                   segments_in_delta_manifest
+
+          # check if delta manifest contains #EXT-X-SKIP tag with correct value
+          [_match, skipped_segments] =
+            Regex.run(~r/EXT-X-SKIP:SKIPPED-SEGMENTS=(\d+)/, delta_manifest_file)
+
+          {skipped_segments, _rest} = Integer.parse(skipped_segments)
+
+          assert skipped_segments + number_of_segments_in_delta_manifest ==
+                   number_of_segments_in_manifest
+        end
+      end)
+    end
+
     test "audio and video tracks with partial segments" do
       alias Membrane.HTTPAdaptiveStream.Storages.SendStorage
 
@@ -222,9 +297,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
 
       assert_pipeline_play(pipeline)
       assert_pipeline_notified(pipeline, :sink_bin, :end_of_stream, 10_000)
-
-      # Give some time to save all of the files to disk
-      Process.sleep(1_000)
 
       assert_receive {SendStorage, :store, %{type: :manifest, name: "index.m3u8"}}, 1_000
 
@@ -303,9 +375,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
     assert_pipeline_play(pipeline)
 
     assert_pipeline_notified(pipeline, :sink_bin, :end_of_stream, 10_000)
-
-    # Give some time to save all of the files to disk
-    Process.sleep(1_000)
 
     :ok = Testing.Pipeline.terminate(pipeline, blocking?: true)
   end
