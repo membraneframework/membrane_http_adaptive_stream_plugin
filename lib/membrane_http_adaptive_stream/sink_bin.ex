@@ -164,9 +164,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
       })
     ]
 
-    # ++
-    # if(opts.hls_mode == :muxed_av, do: [child(:audio_tee, Membrane.Tee.Parallel)], else: [])
-
     state = %{
       mode: opts.hls_mode,
       streams_to_start: 0,
@@ -178,6 +175,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   end
 
   @impl true
+  # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
   def handle_pad_added(Pad.ref(:input, ref) = pad, context, state) do
     %{
       encoding: encoding,
@@ -215,8 +213,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
             bin_input(pad)
             |> child({:payloader, ref}, payloader)
             |> child({:cmaf_muxer, ref}, muxer)
-            # get_child(:audio_tee)
-            # |> get_child({:cmaf_muxer, ref})
             |> via_in(pad, options: track_options(context))
             |> get_child(:sink)
           ] ++ audio_tee_links
