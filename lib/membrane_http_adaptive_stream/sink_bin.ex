@@ -146,25 +146,26 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
   @impl true
   def handle_init(_ctx, opts) do
-    structure =
-      [
-        child(:sink, %Sink{
-          manifest_config: %Sink.ManifestConfig{
-            name: opts.manifest_name,
-            module: opts.manifest_module
-          },
-          track_config: %Sink.TrackConfig{
-            target_window_duration: opts.target_window_duration,
-            persist?: opts.persist?,
-            header_naming_fun: opts.header_naming_fun,
-            segment_naming_fun: opts.segment_naming_fun,
-            mode: opts.mode
-          },
-          storage: opts.storage,
-          cleanup_after: opts.cleanup_after
-        })
-      ] ++
-        if(opts.hls_mode == :muxed_av, do: [child(:audio_tee, Membrane.Tee.Parallel)], else: [])
+    structure = [
+      child(:sink, %Sink{
+        manifest_config: %Sink.ManifestConfig{
+          name: opts.manifest_name,
+          module: opts.manifest_module
+        },
+        track_config: %Sink.TrackConfig{
+          target_window_duration: opts.target_window_duration,
+          persist?: opts.persist?,
+          header_naming_fun: opts.header_naming_fun,
+          segment_naming_fun: opts.segment_naming_fun,
+          mode: opts.mode
+        },
+        storage: opts.storage,
+        cleanup_after: opts.cleanup_after
+      })
+    ]
+
+    # ++
+    # if(opts.hls_mode == :muxed_av, do: [child(:audio_tee, Membrane.Tee.Parallel)], else: [])
 
     state = %{
       mode: opts.hls_mode,
@@ -203,26 +204,41 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
           ]
 
         state.mode == :muxed_av and encoding == :H264 ->
+          audio_tee_links =
+            if Map.has_key?(context.children, :audio_tee) do
+              [get_child(:audio_tee) |> get_child({:cmaf_muxer, ref})]
+            else
+              []
+            end
+
           [
             bin_input(pad)
             |> child({:payloader, ref}, payloader)
-            |> child({:cmaf_muxer, ref}, muxer),
-            get_child(:audio_tee)
-            |> get_child({:cmaf_muxer, ref})
+            |> child({:cmaf_muxer, ref}, muxer)
+            # get_child(:audio_tee)
+            # |> get_child({:cmaf_muxer, ref})
             |> via_in(pad, options: track_options(context))
             |> get_child(:sink)
-          ]
+          ] ++ audio_tee_links
 
         state.mode == :muxed_av and encoding == :AAC ->
           if count_audio_tracks(context) > 1,
             do: raise("In :muxed_av mode, only one audio input is accepted")
 
+          audio_tee_output_links =
+            Map.keys(context.children)
+            |> Enum.filter(&match?({:cmaf_muxer, _ref}, &1))
+            |> Enum.map(fn cmaf_muxer ->
+              get_child(:audio_tee)
+              |> get_child(cmaf_muxer)
+            end)
+
           [
             child({:payloader, ref}, payloader),
             bin_input(pad)
             |> get_child({:payloader, ref})
-            |> get_child(:audio_tee)
-          ]
+            |> child(:audio_tee, Membrane.Tee.Parallel)
+          ] ++ audio_tee_output_links
       end
 
     update_streams_count = fn count ->
