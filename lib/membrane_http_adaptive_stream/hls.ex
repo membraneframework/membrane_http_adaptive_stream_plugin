@@ -152,10 +152,17 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
 
       %Track{content_type: type} when type in [:video, :muxed] ->
         """
-        #EXT-X-STREAM-INF:BANDWIDTH=#{BandwidthCalculator.calculate_bandwidth(track)},CODECS="avc1.42e00a"
+        #EXT-X-STREAM-INF:BANDWIDTH=#{BandwidthCalculator.calculate_bandwidth(track)}
         """
         |> String.trim()
     end
+    <> serialize_encoding(track)
+  end
+
+  defp serialize_encoding(%Track{encoding: []}), do: ""
+
+  defp serialize_encoding(%Track{encoding: encoding}) do
+    ",CODECS=\"" <> Enum.join(Keyword.values(encoding), ",") <> "\""
   end
 
   defp build_master_playlist(tracks) do

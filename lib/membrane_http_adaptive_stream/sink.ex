@@ -30,6 +30,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   alias Membrane.CMAF
   alias Membrane.HTTPAdaptiveStream.Manifest
   alias Membrane.HTTPAdaptiveStream.Storage
+  alias Membrane.HTTPAdaptiveStream.CMAFHeaderParser
 
   defmodule TrackConfig do
     @moduledoc """
@@ -153,6 +154,11 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
         ctx,
         state
       ) do
+
+    encoding = stream_format.header
+      |> CMAFHeaderParser.parse()
+      |> Enum.map(fn {key, value} -> {key, CMAFHeaderParser.codec_string(value)} end)
+
     {header_name, manifest} =
       if Manifest.has_track?(state.manifest, track_id) do
         # Arrival of new stream format for an already existing track indicate that stream parameters have changed.
@@ -172,7 +178,8 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
             header_extension: ".mp4",
             segment_extension: ".m4s",
             segment_duration: track_options.segment_duration,
-            partial_segment_duration: track_options.partial_segment_duration
+            partial_segment_duration: track_options.partial_segment_duration,
+            encoding: encoding
           })
 
         track_config = struct!(Manifest.Track.Config, track_config_params)
