@@ -32,7 +32,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
                 [
                   target_window_duration: :infinity,
                   persist?: false,
-                  mode: :vod
+                  mode: :vod,
+                  encoding: []
                 ]
 
     @typedoc """
@@ -49,9 +50,12 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     - `target_window_duration` - track manifest duration is kept above that time, while the oldest segments
                 are removed whenever possible
     - `persist?` - determines whether the entire track contents should be available after the streaming finishes
-    - `mode`-   track's mode that dictates type of metadata inserted into playlist's manifest
+    - `mode` - track's mode that dictates type of metadata inserted into playlist's manifest
+    - `encoding` - keyword of strings representing encoding of content_type
 
     """
+    @type encoding_t :: {:audio, String.t()} | {:video, String.t()}
+
     @type t :: %__MODULE__{
             id: Track.id_t(),
             track_name: String.t(),
@@ -64,7 +68,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
             partial_segment_duration: Membrane.Time.t() | nil,
             target_window_duration: Membrane.Time.t(),
             persist?: boolean(),
-            mode: :vod | :live
+            mode: :vod | :live,
+            encoding: [encoding_t] | []
           }
   end
 
@@ -104,6 +109,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   @type t :: %__MODULE__{
           id: id_t,
           content_type: :audio | :video | :muxed,
+          encoding: [Config.encoding_t] | [],
           header_extension: String.t(),
           segment_extension: String.t(),
           partial_segment_duration: segment_duration_t | nil,
