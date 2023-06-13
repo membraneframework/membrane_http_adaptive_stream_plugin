@@ -109,7 +109,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   @type t :: %__MODULE__{
           id: id_t,
           content_type: :audio | :video | :muxed,
-          encoding: [Config.encoding_t] | [],
+          encoding: [Config.encoding_t()] | [],
           header_extension: String.t(),
           segment_extension: String.t(),
           partial_segment_duration: segment_duration_t | nil,
