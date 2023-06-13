@@ -175,39 +175,32 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
   @impl true
   def handle_pad_added(pad, ctx, state) do
-    spec = cmaf_spec(pad, ctx.options, state, ctx)
+    do_handle_pad_added(pad, ctx.options, ctx, state)
+  end
 
-    state =
-      if state.mode == :separate_av or ctx.options.encoding == :H264 do
-        state
-        |> Map.update!(:streams_to_start, &(&1 + 1))
-        |> Map.update!(:streams_to_end, &(&1 + 1))
-      else
-        state
-      end
+  defp do_handle_pad_added(pad, pad_options, ctx, state)
 
+  defp do_handle_pad_added(pad, pad_options, ctx, %{mode: :separate_av} = state) do
+    Pad.ref(:input, ref) = pad
+
+    spec =
+      bin_input(pad)
+      |> child({:payloader, ref}, get_payloader(pad_options.encoding, state))
+      |> child({:cmaf_muxer, ref}, cmaf_child_definiton(pad_options))
+      |> via_in(pad, options: track_options(ctx))
+      |> get_child(:sink)
+
+    state = increment_streams_counters(state)
     {[spec: spec], state}
   end
 
-  defp cmaf_spec(pad, pad_options, state, ctx)
-
-  defp cmaf_spec(pad, pad_options, %{mode: :separate_av} = state, ctx) do
-    Pad.ref(:input, ref) = pad
-
-    bin_input(pad)
-    |> child({:payloader, ref}, get_payloader(pad_options.encoding, state))
-    |> child({:cmaf_muxer, ref}, cmaf_child_definiton(pad_options))
-    |> via_in(pad, options: track_options(ctx))
-    |> get_child(:sink)
-  end
-
-  defp cmaf_spec(pad, %{encoding: :H264} = pad_options, %{mode: :muxed_av} = state, ctx)
+  defp do_handle_pad_added(pad, %{encoding: :H264} = pad_options, ctx, %{mode: :muxed_av} = state)
        when is_map_key(ctx.children, :audio_tee) do
     Pad.ref(:input, ref) = pad
     payloader = get_payloader(:H264, state)
     muxer = cmaf_child_definiton(pad_options)
 
-    [
+    spec = [
       bin_input(pad)
       |> child({:payloader, ref}, payloader)
       |> child({:cmaf_muxer, ref}, muxer)
@@ -216,13 +209,17 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
       get_child(:audio_tee)
       |> get_child({:cmaf_muxer, ref})
     ]
+
+    state = increment_streams_counters(state)
+    {[spec: spec], state}
   end
 
-  defp cmaf_spec(_pad, %{encoding: :H264}, %{mode: :muxed_av}, _ctx) do
-    []
+  defp do_handle_pad_added(_pad, %{encoding: :H264}, _ctx, %{mode: :muxed_av} = state) do
+    state = increment_streams_counters(state)
+    {[], state}
   end
 
-  defp cmaf_spec(pad, %{encoding: :AAC} = pad_options, %{mode: :muxed_av} = state, ctx) do
+  defp do_handle_pad_added(pad, %{encoding: :AAC} = pad_options, ctx, %{mode: :muxed_av} = state) do
     if count_audio_tracks(ctx) > 1,
       do: raise("In :muxed_av mode, only one audio input is accepted")
 
@@ -240,11 +237,14 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
     Pad.ref(:input, ref) = pad
     payloader = get_payloader(:AAC, state)
 
-    [
-      bin_input(pad)
-      |> child({:payloader, ref}, payloader)
-      |> child(:audio_tee, Membrane.Tee.Parallel)
-    ] ++ postponed_cmaf_muxers
+    spec =
+      [
+        bin_input(pad)
+        |> child({:payloader, ref}, payloader)
+        |> child(:audio_tee, Membrane.Tee.Parallel)
+      ] ++ postponed_cmaf_muxers
+
+    {[spec: spec], state}
   end
 
   defp cmaf_child_definiton(pad_options) do
@@ -252,6 +252,12 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
       segment_min_duration: pad_options.segment_duration,
       chunk_target_duration: pad_options.partial_segment_duration
     }
+  end
+
+  defp increment_streams_counters(state) do
+    state
+    |> Map.update!(:streams_to_start, &(&1 + 1))
+    |> Map.update!(:streams_to_end, &(&1 + 1))
   end
 
   @impl true
