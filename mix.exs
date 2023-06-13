@@ -63,7 +63,7 @@ defmodule Membrane.HTTPAdaptiveStream.MixProject do
 
   defp deps do
     [
-      {:membrane_core, "~> 0.12.0", override: true},
+      {:membrane_core, "~> 0.12.1", override: true},
       {:membrane_cmaf_format, "~> 0.6.1"},
       {:membrane_tee_plugin, "~> 0.10.1"},
       {:membrane_mp4_plugin, "~> 0.19.0"},
