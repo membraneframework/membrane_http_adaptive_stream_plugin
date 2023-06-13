@@ -24,7 +24,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
 
     @impl true
     def handle_playing(_ctx, state) do
-      stream_format = %Track{content_type: state.content_type, header: "test_header"}
+      stream_format = %Track{content_type: state.content_type, header: <<>>}
       {[stream_format: {:output, stream_format}], state}
     end
 
