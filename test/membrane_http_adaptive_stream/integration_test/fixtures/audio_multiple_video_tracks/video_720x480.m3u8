@@ -10,9 +10,9 @@ video_segment_0_video_720x480.m4s
 video_segment_1_video_720x480.m4s
 #EXTINF:2.0,
 video_segment_2_video_720x480.m4s
-#EXTINF:1.8,
+#EXTINF:2.8,
 video_segment_3_video_720x480.m4s
-#EXTINF:4.0,
+#EXTINF:3.0,
 video_segment_4_video_720x480.m4s
 #EXTINF:2.0,
 video_segment_5_video_720x480.m4s

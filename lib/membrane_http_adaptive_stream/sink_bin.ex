@@ -14,7 +14,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
   alias Membrane.{MP4, Time}
   alias Membrane.HTTPAdaptiveStream.{Manifest, Sink, Storage}
-  alias Membrane.MP4.Muxer.CMAF
 
   def_options manifest_name: [
                 spec: String.t(),
@@ -129,16 +128,16 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
         """
       ],
       segment_duration: [
-        spec: Manifest.SegmentDuration.t(),
+        spec: Membrane.Time.t(),
         description: """
-        The segment duration range  of the regular segments.
+        The minimal segment duration of the regular segments.
         """
       ],
       partial_segment_duration: [
-        spec: Manifest.SegmentDuration.t() | nil,
+        spec: Membrane.Time.t() | nil,
         default: nil,
         description: """
-        The segment duration range  of the partial segments.
+        The segment duration of the partial segments.
         If not set then the bin won't produce any partial segments.
         """
       ]
@@ -249,14 +248,9 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   end
 
   defp cmaf_child_definiton(pad_options) do
-    %{
-      segment_duration: segment_duration,
-      partial_segment_duration: partial_segment_duration
-    } = pad_options
-
     %MP4.Muxer.CMAF{
-      segment_duration_range: convert_segment_duration_for_muxer(segment_duration),
-      partial_segment_duration_range: convert_segment_duration_for_muxer(partial_segment_duration)
+      segment_min_duration: pad_options.segment_duration,
+      chunk_target_duration: pad_options.partial_segment_duration
     }
   end
 
@@ -321,23 +315,9 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   end
 
   defp track_options(context) do
-    %{
-      track_name: track_name,
-      segment_duration: segment_duration,
-      partial_segment_duration: partial_segment_duration
-    } = context.options
-
-    target_partial_segment_duration =
-      case partial_segment_duration do
-        nil -> nil
-        duration -> duration.target
-      end
-
-    [
-      track_name: track_name,
-      segment_duration: segment_duration,
-      target_partial_segment_duration: target_partial_segment_duration
-    ]
+    context.options
+    |> Map.take([:track_name, :segment_duration, :partial_segment_duration])
+    |> Keyword.new()
   end
 
   defp count_audio_tracks(context),
@@ -345,14 +325,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
       Enum.count(context.pads, fn {_pad, metadata} ->
         metadata.options.encoding == :AAC
       end)
-
-  defp convert_segment_duration_for_muxer(nil), do: nil
-
-  defp convert_segment_duration_for_muxer(%Manifest.SegmentDuration{
-         min: min,
-         target: target
-       }),
-       do: %CMAF.SegmentDurationRange{min: min, target: target}
 
   defp get_payloader(encoding, state) do
     if encoding == :AAC,
