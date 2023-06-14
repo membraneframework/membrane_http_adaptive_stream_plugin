@@ -28,9 +28,9 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   require Membrane.HTTPAdaptiveStream.Manifest.SegmentAttribute
 
   alias Membrane.CMAF
-  alias Membrane.HTTPAdaptiveStream.EncodingInfo
   alias Membrane.HTTPAdaptiveStream.Manifest
   alias Membrane.HTTPAdaptiveStream.Storage
+  alias Membrane.HTTPAdaptiveStream.TrackInfo
 
   defmodule TrackConfig do
     @moduledoc """
@@ -100,6 +100,15 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
 
         When set to nil then the track is not supposed to emit partial segments.
         """
+      ],
+      maximal_framerate: [
+        spec: float() | nil,
+        default: nil,
+        description: """
+        The maximal framerate of video variant. This information is used in master playlist.
+
+        When set to nil then this information won't be added to master playlist. For audio it should be set to nil.
+        """
       ]
     ]
 
@@ -163,6 +172,11 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
         track_options = ctx.pads[pad_ref].options
         track_name = serialize_track_name(track_options[:track_name] || track_id)
 
+        {resolution, encoding_info} =
+          stream_format
+          |> TrackInfo.from_cmaf_track()
+          |> Map.pop(:resolution)
+
         track_config_params =
           state.track_config
           |> Map.from_struct()
@@ -174,7 +188,9 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
             segment_extension: ".m4s",
             segment_duration: track_options.segment_duration,
             partial_segment_duration: track_options.partial_segment_duration,
-            encoding: EncodingInfo.from_cmaf_track(stream_format)
+            encoding: encoding_info,
+            resolution: resolution,
+            maximal_framerate: track_options.maximal_framerate
           })
 
         track_config = struct!(Manifest.Track.Config, track_config_params)

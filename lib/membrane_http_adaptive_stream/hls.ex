@@ -143,7 +143,6 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   end
 
   defp build_media_playlist_tag(%Track{} = track) do
-    # IO.inspect(track)
     case track do
       %Track{content_type: :audio} ->
         """
@@ -153,13 +152,26 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
 
       %Track{content_type: type} when type in [:video, :muxed] ->
         """
-        #EXT-X-STREAM-INF:BANDWIDTH=#{BandwidthCalculator.calculate_bandwidth(track)}#{serialize_encoding(track)}
+        #EXT-X-STREAM-INF:#{serialize_bandwidth(track)}#{serialize_resolution(track)}#{serialize_framerate(track)}#{serialize_encoding(track)}
         """
         |> String.trim()
     end
-
-    # <> serialize_encoding(track)
   end
+
+  defp serialize_bandwidth(track) do
+    "BANDWIDTH=#{BandwidthCalculator.calculate_max_bandwidth(track)},AVERAGE-BANDWIDTH=#{BandwidthCalculator.calculate_avg_bandwidth(track)}"
+  end
+
+  defp serialize_framerate(%Track{maximal_framerate: framerate}) when is_number(framerate),
+    do: ",FRAME-RATE=#{framerate}"
+
+  defp serialize_framerate(_track), do: ""
+
+  defp serialize_resolution(%Track{resolution: {width, height}}) do
+    ",RESOLUTION=#{width}x#{height}"
+  end
+
+  defp serialize_resolution(_track), do: ""
 
   defp serialize_encoding(%Track{encoding: %{} = encoding}) do
     codecs_string =

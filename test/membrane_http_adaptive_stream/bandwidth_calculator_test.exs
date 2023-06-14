@@ -12,14 +12,18 @@ defmodule Membrane.HTTPAdaptiveStream.BandwidthCalculatorTest do
     test "bandwidth equal to maximum segment bandwidth" do
       test_track = mock_track([{1, 0.8}, {2, 1}, {1, 1}, {2, 1.3}, {3, 0.25}], Time.seconds(5))
 
-      assert BandwidthCalculator.calculate_bandwidth(test_track) ==
+      assert BandwidthCalculator.calculate_max_bandwidth(test_track) ==
                (8 * 3 / (0.25 / Time.second())) |> Ratio.floor()
+
+      assert BandwidthCalculator.calculate_avg_bandwidth(test_track) ==
+               (9 * 8 / (4.35 / Time.second())) |> Ratio.floor()
     end
 
     test "no segments in track" do
       test_track = mock_track([], 5)
 
-      assert BandwidthCalculator.calculate_bandwidth(test_track) == @default_bandwidth
+      assert BandwidthCalculator.calculate_max_bandwidth(test_track) == @default_bandwidth
+      assert BandwidthCalculator.calculate_avg_bandwidth(test_track) == @default_bandwidth
     end
   end
 

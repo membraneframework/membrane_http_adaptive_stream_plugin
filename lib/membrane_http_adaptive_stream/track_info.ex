@@ -1,6 +1,7 @@
-defmodule Membrane.HTTPAdaptiveStream.EncodingInfo do
+defmodule Membrane.HTTPAdaptiveStream.TrackInfo do
   @moduledoc """
-  Helper module to retrieve codecs info from CMAF track
+  Helper module to retrieve specific info from CMAF track.
+  Currently retrive information about: resolution, framerate and codecs.
   ## currently supporting following codecs:
   - H264 (avc1)
   - AAC (mp4a)
@@ -8,7 +9,10 @@ defmodule Membrane.HTTPAdaptiveStream.EncodingInfo do
 
   alias Membrane.MP4.Container
 
-  @spec from_cmaf_track(Membrane.CMAF.Track.t()) :: %{(:avc1 | :mp4a) => map()}
+  @spec from_cmaf_track(Membrane.CMAF.Track.t()) :: %{
+          (:avc1 | :mp4a) => map(),
+          :resolution => {non_neg_integer(), non_neg_integer()} | nil
+        }
   def from_cmaf_track(%Membrane.CMAF.Track{header: header}) do
     case header do
       <<>> -> %{}
@@ -28,6 +32,35 @@ defmodule Membrane.HTTPAdaptiveStream.EncodingInfo do
   end
 
   defp get_track_data(moov_children) do
+    moov_children_trak_values = Keyword.get_values(moov_children, :trak)
+
+    encoding_info = get_encoding_info(moov_children_trak_values)
+
+    resolution = get_resolution(moov_children_trak_values)
+
+    Map.put(encoding_info, :resolution, resolution)
+  end
+
+  defp get_resolution(moov_children_trak_values) do
+    Enum.find_value(moov_children_trak_values, fn track ->
+      track = Map.get(track, :children)
+
+      case get_in(track, [:mdia, :children, :hdlr, :fields, :handler_type]) do
+        "vide" ->
+          tkhd = get_in(track, [:tkhd, :fields])
+
+          {width, _min_w} = tkhd.width
+          {height, _min_h} = tkhd.height
+
+          {width, height}
+
+        _other ->
+          nil
+      end
+    end)
+  end
+
+  defp get_encoding_info(moov_children_trak_values) do
     fields = [
       :children,
       :mdia,
@@ -40,8 +73,7 @@ defmodule Membrane.HTTPAdaptiveStream.EncodingInfo do
       :children
     ]
 
-    moov_children
-    |> Keyword.get_values(:trak)
+    moov_children_trak_values
     |> Enum.flat_map(&get_in(&1, fields))
     |> Enum.map(&parse_media_section/1)
     |> Map.new()
