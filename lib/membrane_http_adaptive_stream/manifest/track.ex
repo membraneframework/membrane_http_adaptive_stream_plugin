@@ -26,7 +26,9 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       :segment_duration,
       :partial_segment_duration,
       :header_naming_fun,
-      :segment_naming_fun
+      :segment_naming_fun,
+      :resolution,
+      :maximal_framerate
     ]
     defstruct @enforce_keys ++
                 [
@@ -52,7 +54,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     - `persist?` - determines whether the entire track contents should be available after the streaming finishes
     - `mode` - track's mode that dictates type of metadata inserted into playlist's manifest
     - `encoding` - keyword of strings representing encoding of content_type
-
+    - `resolution` - resolution of video stream
+    - `maximal_framerate` - maximal framerate of video stream
     """
     @type encoding_t :: {:audio, String.t()} | {:video, String.t()}
 
@@ -69,7 +72,9 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
             target_window_duration: Membrane.Time.t(),
             persist?: boolean(),
             mode: :vod | :live,
-            encoding: [encoding_t] | []
+            encoding: [encoding_t] | [],
+            resolution: {non_neg_integer(), non_neg_integer()} | nil,
+            maximal_framerate: float() | nil
           }
   end
 
@@ -110,6 +115,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
           id: id_t,
           content_type: :audio | :video | :muxed,
           encoding: [Config.encoding_t()] | [],
+          resolution: {non_neg_integer(), non_neg_integer()} | nil,
           header_extension: String.t(),
           segment_extension: String.t(),
           partial_segment_duration: segment_duration_t | nil,

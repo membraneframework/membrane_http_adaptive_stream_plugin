@@ -114,7 +114,8 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
                 track_name: track_name,
                 segment_duration: segment_duration_for(encoding),
                 partial_segment_duration:
-                  if(partial_segments, do: partial_segment_duration_for(encoding), else: nil)
+                  if(partial_segments, do: partial_segment_duration_for(encoding), else: nil),
+                maximal_framerate: if(encoding == :H264, do: 25, else: nil)
               ]
             )
             |> get_child(:sink_bin)
