@@ -172,10 +172,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
         track_options = ctx.pads[pad_ref].options
         track_name = serialize_track_name(track_options[:track_name] || track_id)
 
-        {resolution, encoding_info} =
-          stream_format
-          |> TrackInfo.from_cmaf_track()
-          |> Map.pop(:resolution)
+        track_info = TrackInfo.from_cmaf_track(stream_format)
 
         track_config_params =
           state.track_config
@@ -188,8 +185,8 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
             segment_extension: ".m4s",
             segment_duration: track_options.segment_duration,
             partial_segment_duration: track_options.partial_segment_duration,
-            encoding: encoding_info,
-            resolution: resolution,
+            encoding: Map.get(track_info, :encoding_info),
+            resolution: Map.get(track_info, :resolution),
             maximal_framerate: track_options.maximal_framerate
           })
 

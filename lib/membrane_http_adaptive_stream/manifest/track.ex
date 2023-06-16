@@ -26,16 +26,16 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       :segment_duration,
       :partial_segment_duration,
       :header_naming_fun,
-      :segment_naming_fun,
-      :resolution,
-      :maximal_framerate
+      :segment_naming_fun
     ]
     defstruct @enforce_keys ++
                 [
                   target_window_duration: :infinity,
                   persist?: false,
                   mode: :vod,
-                  encoding: []
+                  encoding: [],
+                  resolution: nil,
+                  maximal_framerate: nil
                 ]
 
     @typedoc """

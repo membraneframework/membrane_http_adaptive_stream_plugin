@@ -1,7 +1,7 @@
 defmodule Membrane.HTTPAdaptiveStream.TrackInfo do
   @moduledoc """
   Helper module to retrieve specific info from CMAF track.
-  Currently retrive information about: resolution, framerate and codecs.
+  Currently retrive information about: resolution and codecs.
   ## currently supporting following codecs:
   - H264 (avc1)
   - AAC (mp4a)
@@ -10,8 +10,8 @@ defmodule Membrane.HTTPAdaptiveStream.TrackInfo do
   alias Membrane.MP4.Container
 
   @spec from_cmaf_track(Membrane.CMAF.Track.t()) :: %{
-          (:avc1 | :mp4a) => map(),
-          :resolution => {non_neg_integer(), non_neg_integer()} | nil
+          encoding_info: %{(:avc1 | :mp4a) => map()},
+          resolution: {non_neg_integer(), non_neg_integer()} | nil
         }
   def from_cmaf_track(%Membrane.CMAF.Track{header: header}) do
     case header do
@@ -23,7 +23,7 @@ defmodule Membrane.HTTPAdaptiveStream.TrackInfo do
   defp parse_header(header) do
     case Container.parse(header) do
       {:ok, parsed, ""} ->
-        moov_children = parsed |> (fn el -> get_in(el, [:moov, :children]) end).()
+        moov_children = get_in(parsed, [:moov, :children])
         get_track_data(moov_children)
 
       _other ->
@@ -38,7 +38,7 @@ defmodule Membrane.HTTPAdaptiveStream.TrackInfo do
 
     resolution = get_resolution(moov_children_trak_values)
 
-    Map.put(encoding_info, :resolution, resolution)
+    %{resolution: resolution, encoding_info: encoding_info}
   end
 
   defp get_resolution(moov_children_trak_values) do
