@@ -15,94 +15,94 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   alias Membrane.{MP4, Time}
   alias Membrane.HTTPAdaptiveStream.{Manifest, Sink, Storage}
 
-  def_options(
-    manifest_name: [
-      spec: String.t(),
-      default: "index",
-      description: "Name of the main manifest file"
-    ],
-    manifest_module: [
-      spec: module,
-      description: """
-      Implementation of the `Membrane.HTTPAdaptiveStream.Manifest`
-      behaviour.
-      """
-    ],
-    storage: [
-      spec: Storage.config_t(),
-      description: """
-      Storage configuration. May be one of `Membrane.HTTPAdaptiveStream.Storages.*`.
-      See `Membrane.HTTPAdaptiveStream.Storage` behaviour.
-      """
-    ],
-    target_window_duration: [
-      spec: Time.t() | :infinity,
-      default: Time.seconds(40),
-      inspector: &Time.inspect/1,
-      description: """
-      Manifest duration is kept above that time, while the oldest segments
-      are removed whenever possible.
-      """
-    ],
-    persist?: [
-      spec: boolean,
-      default: false,
-      description: """
-      If true, stale segments are removed from the manifest only. Once
-      playback finishes, they are put back into the manifest.
-      """
-    ],
-    mode: [
-      spec: :live | :vod,
-      default: :vod,
-      description: """
-      Tells if the session is live or a VOD type of broadcast. It can influence type of metadata
-      inserted into the playlist's manifest.
-      """
-    ],
-    hls_mode: [
-      spec: :muxed_av | :separate_av,
-      default: :separate_av,
-      description: """
-      Option defining how the incoming tracks will be handled and how CMAF will be muxed.
+  def_options manifest_name: [
+                spec: String.t(),
+                default: "index",
+                description: "Name of the main manifest file"
+              ],
+              manifest_module: [
+                spec: module,
+                description: """
+                Implementation of the `Membrane.HTTPAdaptiveStream.Manifest`
+                behaviour.
+                """
+              ],
+              storage: [
+                spec: Storage.config_t(),
+                description: """
+                Storage configuration. May be one of `Membrane.HTTPAdaptiveStream.Storages.*`.
+                See `Membrane.HTTPAdaptiveStream.Storage` behaviour.
+                """
+              ],
+              target_window_duration: [
+                spec: Time.t() | :infinity,
+                default: Time.seconds(40),
+                inspector: &Time.inspect/1,
+                description: """
+                Manifest duration is kept above that time, while the oldest segments
+                are removed whenever possible.
+                """
+              ],
+              persist?: [
+                spec: boolean,
+                default: false,
+                description: """
+                If true, stale segments are removed from the manifest only. Once
+                playback finishes, they are put back into the manifest.
+                """
+              ],
+              mode: [
+                spec: :live | :vod,
+                default: :vod,
+                description: """
+                Tells if the session is live or a VOD type of broadcast. It can influence type of metadata
+                inserted into the playlist's manifest.
+                """
+              ],
+              hls_mode: [
+                spec: :muxed_av | :separate_av,
+                default: :separate_av,
+                description: """
+                Option defining how the incoming tracks will be handled and how CMAF will be muxed.
 
-      - In `:muxed_av` audio will be added to each video rendition, creating CMAF segments that contain both audio and video.
-      - In `:separate_av` audio and video tracks will be separate and synchronization will need to be sorted out by the player.
-      """
-    ],
-    header_naming_fun: [
-      spec: (Manifest.Track.t(), counter :: non_neg_integer() -> String.t()),
-      default: &Manifest.Track.default_header_naming_fun/2,
-      description: "A function that generates consequent media header names for a given track"
-    ],
-    segment_naming_fun: [
-      spec: (Manifest.Track.t() -> String.t()),
-      default: &Manifest.Track.default_segment_naming_fun/1,
-      description: "A function that generates consequent segment names for a given track"
-    ],
-    mp4_parameters_in_band?: [
-      spec: boolean(),
-      default: false,
-      description: """
-      Determines whether the parameter type nalus will be removed from the stream.
-      Inband parameters seem to be legal with MP4, but some players don't respond kindly to them, so use at your own risk.
-      This parameter should be set to true when discontinuity can occur. For example when resolution can change.
-      """
-    ],
-    cleanup_after: [
-      spec: nil | Time.t(),
-      default: nil,
-      description: """
-      Time after which a fire-and-forget storage cleanup function should run.
+                - In `:muxed_av` audio will be added to each video rendition, creating CMAF segments that contain both audio and video.
+                - In `:separate_av` audio and video tracks will be separate and synchronization will need to be sorted out by the player.
+                """
+              ],
+              header_naming_fun: [
+                spec: (Manifest.Track.t(), counter :: non_neg_integer() -> String.t()),
+                default: &Manifest.Track.default_header_naming_fun/2,
+                description:
+                  "A function that generates consequent media header names for a given track"
+              ],
+              segment_naming_fun: [
+                spec: (Manifest.Track.t() -> String.t()),
+                default: &Manifest.Track.default_segment_naming_fun/1,
+                description:
+                  "A function that generates consequent segment names for a given track"
+              ],
+              mp4_parameters_in_band?: [
+                spec: boolean(),
+                default: false,
+                description: """
+                Determines whether the parameter type nalus will be removed from the stream.
+                Inband parameters seem to be legal with MP4, but some players don't respond kindly to them, so use at your own risk.
+                This parameter should be set to true when discontinuity can occur. For example when resolution can change.
+                """
+              ],
+              cleanup_after: [
+                spec: nil | Time.t(),
+                default: nil,
+                description: """
+                Time after which a fire-and-forget storage cleanup function should run.
 
-      The function will remove all manifests and segments stored during the stream.
-      """
-    ]
-  )
+                The function will remove all manifests and segments stored during the stream.
+                """
+              ]
 
   @accepted_h264_profiles [:constrained_baseline, :baseline, :high]
 
-  def_input_pad(:input,
+  def_input_pad :input,
     demand_unit: :buffers,
     accepted_format:
       any_of(
@@ -151,7 +151,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
         """
       ]
     ]
-  )
 
   @impl true
   def handle_init(_ctx, opts) do
