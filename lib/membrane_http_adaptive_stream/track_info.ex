@@ -10,12 +10,12 @@ defmodule Membrane.HTTPAdaptiveStream.TrackInfo do
   alias Membrane.MP4.Container
 
   @spec from_cmaf_track(Membrane.CMAF.Track.t()) :: %{
-          encoding_info: %{(:avc1 | :mp4a) => map()},
+          encoding_info: %{(:avc1 | :mp4a) => map()} | %{},
           resolution: {non_neg_integer(), non_neg_integer()} | nil
         }
   def from_cmaf_track(%Membrane.CMAF.Track{header: header}) do
     case header do
-      <<>> -> %{}
+      <<>> -> %{resolution: nil, encoding_info: %{}}
       _other -> parse_header(header)
     end
   end

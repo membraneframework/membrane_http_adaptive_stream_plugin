@@ -185,8 +185,8 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
             segment_extension: ".m4s",
             segment_duration: track_options.segment_duration,
             partial_segment_duration: track_options.partial_segment_duration,
-            encoding: Map.get(track_info, :encoding_info),
-            resolution: Map.get(track_info, :resolution),
+            encoding: track_info.encoding_info,
+            resolution: track_info.resolution,
             maximal_framerate: track_options.maximal_framerate
           })
 
