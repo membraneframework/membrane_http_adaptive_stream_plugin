@@ -145,25 +145,23 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
   @impl true
   def handle_init(_ctx, opts) do
-    structure =
-      [
-        child(:sink, %Sink{
-          manifest_config: %Sink.ManifestConfig{
-            name: opts.manifest_name,
-            module: opts.manifest_module
-          },
-          track_config: %Sink.TrackConfig{
-            target_window_duration: opts.target_window_duration,
-            persist?: opts.persist?,
-            header_naming_fun: opts.header_naming_fun,
-            segment_naming_fun: opts.segment_naming_fun,
-            mode: opts.mode
-          },
-          storage: opts.storage,
-          cleanup_after: opts.cleanup_after
-        })
-      ] ++
-        if(opts.hls_mode == :muxed_av, do: [child(:audio_tee, Membrane.Tee.Parallel)], else: [])
+    structure = [
+      child(:sink, %Sink{
+        manifest_config: %Sink.ManifestConfig{
+          name: opts.manifest_name,
+          module: opts.manifest_module
+        },
+        track_config: %Sink.TrackConfig{
+          target_window_duration: opts.target_window_duration,
+          persist?: opts.persist?,
+          header_naming_fun: opts.header_naming_fun,
+          segment_naming_fun: opts.segment_naming_fun,
+          mode: opts.mode
+        },
+        storage: opts.storage,
+        cleanup_after: opts.cleanup_after
+      })
+    ]
 
     state = %{
       mode: opts.hls_mode,
@@ -176,68 +174,90 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   end
 
   @impl true
-  def handle_pad_added(Pad.ref(:input, ref) = pad, context, state) do
-    %{
-      encoding: encoding,
-      segment_duration: segment_duration,
-      partial_segment_duration: partial_segment_duration
-    } = context.options
+  def handle_pad_added(pad, ctx, state) do
+    do_handle_pad_added(pad, ctx.options, ctx, state)
+  end
 
-    muxer = %MP4.Muxer.CMAF{
-      segment_min_duration: segment_duration,
-      chunk_target_duration: partial_segment_duration
+  defp do_handle_pad_added(pad, pad_options, ctx, state)
+
+  defp do_handle_pad_added(pad, pad_options, ctx, %{mode: :separate_av} = state) do
+    Pad.ref(:input, ref) = pad
+
+    spec =
+      bin_input(pad)
+      |> child({:payloader, ref}, get_payloader(pad_options.encoding, state))
+      |> child({:cmaf_muxer, ref}, cmaf_child_definiton(pad_options))
+      |> via_in(pad, options: track_options(ctx))
+      |> get_child(:sink)
+
+    state = increment_streams_counters(state)
+    {[spec: spec], state}
+  end
+
+  defp do_handle_pad_added(pad, %{encoding: :H264} = pad_options, ctx, %{mode: :muxed_av} = state)
+       when is_map_key(ctx.children, :audio_tee) do
+    Pad.ref(:input, ref) = pad
+    payloader = get_payloader(:H264, state)
+    muxer = cmaf_child_definiton(pad_options)
+
+    spec = [
+      bin_input(pad)
+      |> child({:payloader, ref}, payloader)
+      |> child({:cmaf_muxer, ref}, muxer)
+      |> via_in(pad, options: track_options(ctx))
+      |> get_child(:sink),
+      get_child(:audio_tee)
+      |> get_child({:cmaf_muxer, ref})
+    ]
+
+    state = increment_streams_counters(state)
+    {[spec: spec], state}
+  end
+
+  defp do_handle_pad_added(_pad, %{encoding: :H264}, _ctx, %{mode: :muxed_av} = state) do
+    state = increment_streams_counters(state)
+    {[], state}
+  end
+
+  defp do_handle_pad_added(pad, %{encoding: :AAC} = pad_options, ctx, %{mode: :muxed_av} = state) do
+    if count_audio_tracks(ctx) > 1,
+      do: raise("In :muxed_av mode, only one audio input is accepted")
+
+    postponed_cmaf_muxers =
+      Map.values(ctx.pads)
+      |> Enum.filter(&(&1.direction == :input and &1.options[:encoding] == :H264))
+      |> Enum.map(fn pad_data ->
+        Pad.ref(:input, cmaf_ref) = pad_data.ref
+        muxer = cmaf_child_definiton(pad_options)
+
+        get_child(:audio_tee)
+        |> child({:cmaf_muxer, cmaf_ref}, muxer)
+      end)
+
+    Pad.ref(:input, ref) = pad
+    payloader = get_payloader(:AAC, state)
+
+    spec =
+      [
+        bin_input(pad)
+        |> child({:payloader, ref}, payloader)
+        |> child(:audio_tee, Membrane.Tee.Parallel)
+      ] ++ postponed_cmaf_muxers
+
+    {[spec: spec], state}
+  end
+
+  defp cmaf_child_definiton(pad_options) do
+    %MP4.Muxer.CMAF{
+      segment_min_duration: pad_options.segment_duration,
+      chunk_target_duration: pad_options.partial_segment_duration
     }
+  end
 
-    payloader = get_payloader(encoding, state)
-
-    structure =
-      cond do
-        state.mode == :separate_av ->
-          [
-            bin_input(pad)
-            |> child({:payloader, ref}, payloader)
-            |> child({:cmaf_muxer, ref}, muxer)
-            |> via_in(pad, options: track_options(context))
-            |> get_child(:sink)
-          ]
-
-        state.mode == :muxed_av and encoding == :H264 ->
-          [
-            bin_input(pad)
-            |> child({:payloader, ref}, payloader)
-            |> child({:cmaf_muxer, ref}, muxer),
-            get_child(:audio_tee)
-            |> get_child({:cmaf_muxer, ref})
-            |> via_in(pad, options: track_options(context))
-            |> get_child(:sink)
-          ]
-
-        state.mode == :muxed_av and encoding == :AAC ->
-          if count_audio_tracks(context) > 1,
-            do: raise("In :muxed_av mode, only one audio input is accepted")
-
-          [
-            child({:payloader, ref}, payloader),
-            bin_input(pad)
-            |> get_child({:payloader, ref})
-            |> get_child(:audio_tee)
-          ]
-      end
-
-    update_streams_count = fn count ->
-      if state.mode == :separate_av or encoding == :H264 do
-        count + 1
-      else
-        count
-      end
-    end
-
-    state =
-      state
-      |> Map.update!(:streams_to_start, update_streams_count)
-      |> Map.update!(:streams_to_end, update_streams_count)
-
-    {[spec: structure], state}
+  defp increment_streams_counters(state) do
+    state
+    |> Map.update!(:streams_to_start, &(&1 + 1))
+    |> Map.update!(:streams_to_end, &(&1 + 1))
   end
 
   @impl true
