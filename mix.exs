@@ -63,11 +63,11 @@ defmodule Membrane.HTTPAdaptiveStream.MixProject do
 
   defp deps do
     [
-      {:membrane_core, "~> 0.11.3"},
+      {:membrane_core, "~> 0.12.2"},
       {:membrane_cmaf_format, "~> 0.6.1"},
       {:membrane_tee_plugin, "~> 0.11.0"},
-      {:membrane_mp4_plugin, "~> 0.21.0"},
-      {:membrane_aac_plugin, "~> 0.13.0", only: :test},
+      {:membrane_mp4_plugin, "~> 0.24.0"},
+      {:membrane_aac_plugin, "~> 0.15.0", only: :test},
       {:membrane_hackney_plugin, "~> 0.10.0", only: :test},
       {:membrane_h264_ffmpeg_plugin, "~> 0.27.0", only: :test},
       {:bunch, "~> 1.5"},
