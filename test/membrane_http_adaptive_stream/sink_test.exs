@@ -221,7 +221,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
           |> get_child(:sink)
         end)
 
-    pipeline = Testing.Pipeline.start_link_supervised!(structure: structure)
+    pipeline = Testing.Pipeline.start_link_supervised!(spec: structure)
 
     assert_pipeline_play(pipeline)
 
