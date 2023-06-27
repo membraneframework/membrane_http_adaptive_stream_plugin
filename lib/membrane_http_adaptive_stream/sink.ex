@@ -30,7 +30,6 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   alias Membrane.CMAF
   alias Membrane.HTTPAdaptiveStream.Manifest
   alias Membrane.HTTPAdaptiveStream.Storage
-  alias Membrane.HTTPAdaptiveStream.TrackInfo
 
   defmodule TrackConfig do
     @moduledoc """
@@ -172,8 +171,6 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
         track_options = ctx.pads[pad_ref].options
         track_name = serialize_track_name(track_options[:track_name] || track_id)
 
-        track_info = TrackInfo.from_cmaf_track(stream_format)
-
         track_config_params =
           state.track_config
           |> Map.from_struct()
@@ -185,8 +182,8 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
             segment_extension: ".m4s",
             segment_duration: track_options.segment_duration,
             partial_segment_duration: track_options.partial_segment_duration,
-            encoding: track_info.encoding_info,
-            resolution: track_info.resolution,
+            encoding: stream_format.codecs,
+            resolution: stream_format.resolution,
             maximal_framerate: track_options.maximal_framerate
           })
 
