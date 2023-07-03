@@ -44,10 +44,11 @@ defmodule Membrane.HTTPAdaptiveStream.BandwidthCalculator do
       @default_bandwidth
     else
       segments
-      |> Enum.reduce({0, 0}, fn sg, {num, denom} ->
-        {num + 8 * sg.size, denom + sg.duration / Time.second()}
+      |> Enum.reduce(Ratio.new(0), fn sg, ratio ->
+        Ratio.new(8 * sg.size, sg.duration / Time.second())
+        |> Ratio.add(ratio)
       end)
-      |> then(fn {num, denom} -> num / denom end)
+      |> then(&(&1 / Enum.count(segments)))
       |> Ratio.trunc()
     end
   end

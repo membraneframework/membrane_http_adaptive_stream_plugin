@@ -141,7 +141,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
         If not set then the bin won't produce any partial segments.
         """
       ],
-      maximal_framerate: [
+      max_framerate: [
         spec: float() | nil,
         default: nil,
         description: """
@@ -331,7 +331,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
   defp track_options(context) do
     context.options
-    |> Map.take([:track_name, :segment_duration, :partial_segment_duration, :maximal_framerate])
+    |> Map.take([:track_name, :segment_duration, :partial_segment_duration, :max_framerate])
     |> Keyword.new()
   end
 

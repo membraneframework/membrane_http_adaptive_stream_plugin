@@ -100,7 +100,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
         When set to nil then the track is not supposed to emit partial segments.
         """
       ],
-      maximal_framerate: [
+      max_framerate: [
         spec: float() | nil,
         default: nil,
         description: """
@@ -184,7 +184,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
             partial_segment_duration: track_options.partial_segment_duration,
             encoding: stream_format.codecs,
             resolution: stream_format.resolution,
-            maximal_framerate: track_options.maximal_framerate
+            max_framerate: track_options.max_framerate
           })
 
         track_config = struct!(Manifest.Track.Config, track_config_params)

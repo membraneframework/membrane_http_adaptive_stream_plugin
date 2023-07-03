@@ -35,7 +35,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
                   mode: :vod,
                   encoding: [],
                   resolution: nil,
-                  maximal_framerate: nil
+                  max_framerate: nil
                 ]
 
     @typedoc """
@@ -55,7 +55,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     - `mode` - track's mode that dictates type of metadata inserted into playlist's manifest
     - `encoding` - keyword of strings representing encoding of content_type
     - `resolution` - resolution of video stream
-    - `maximal_framerate` - maximal framerate of video stream
+    - `max_framerate` - maximal framerate of video stream
     """
     @type encoding_t :: {:audio, String.t()} | {:video, String.t()}
 
@@ -74,7 +74,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
             mode: :vod | :live,
             encoding: [encoding_t] | [],
             resolution: {non_neg_integer(), non_neg_integer()} | nil,
-            maximal_framerate: float() | nil
+            max_framerate: float() | nil
           }
   end
 

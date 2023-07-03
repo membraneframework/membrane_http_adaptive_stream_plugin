@@ -162,7 +162,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     "BANDWIDTH=#{BandwidthCalculator.calculate_max_bandwidth(track)},AVERAGE-BANDWIDTH=#{BandwidthCalculator.calculate_avg_bandwidth(track)}"
   end
 
-  defp serialize_framerate(%Track{maximal_framerate: framerate}) when is_number(framerate),
+  defp serialize_framerate(%Track{max_framerate: framerate}) when is_number(framerate),
     do: ",FRAME-RATE=#{framerate}"
 
   defp serialize_framerate(_track), do: ""
