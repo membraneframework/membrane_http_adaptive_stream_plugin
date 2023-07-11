@@ -99,6 +99,15 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
 
         When set to nil then the track is not supposed to emit partial segments.
         """
+      ],
+      max_framerate: [
+        spec: float() | nil,
+        default: nil,
+        description: """
+        The maximal framerate of video variant. This information is used in master playlist.
+
+        When set to nil then this information won't be added to master playlist. For audio it should be set to nil.
+        """
       ]
     ]
 
@@ -172,7 +181,10 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
             header_extension: ".mp4",
             segment_extension: ".m4s",
             segment_duration: track_options.segment_duration,
-            partial_segment_duration: track_options.partial_segment_duration
+            partial_segment_duration: track_options.partial_segment_duration,
+            encoding: stream_format.codecs,
+            resolution: stream_format.resolution,
+            max_framerate: track_options.max_framerate
           })
 
         track_config = struct!(Manifest.Track.Config, track_config_params)

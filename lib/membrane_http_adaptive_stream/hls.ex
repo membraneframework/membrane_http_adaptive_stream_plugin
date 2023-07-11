@@ -146,17 +146,55 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     case track do
       %Track{content_type: :audio} ->
         """
-        #EXT-X-MEDIA:TYPE=AUDIO,NAME="#{@default_audio_track_name}",GROUP-ID="#{@default_audio_track_id}",AUTOSELECT=YES,DEFAULT=YES,URI="#{build_media_playlist_path(track)}"
+        #EXT-X-MEDIA:TYPE=AUDIO,NAME="#{@default_audio_track_name}",GROUP-ID="#{@default_audio_track_id}",AUTOSELECT=YES,DEFAULT=YES,URI="#{build_media_playlist_path(track)}"#{serialize_encoding(track)}
         """
         |> String.trim()
 
       %Track{content_type: type} when type in [:video, :muxed] ->
         """
-        #EXT-X-STREAM-INF:BANDWIDTH=#{BandwidthCalculator.calculate_bandwidth(track)},CODECS="avc1.42e00a"
+        #EXT-X-STREAM-INF:#{serialize_bandwidth(track)}#{serialize_resolution(track)}#{serialize_framerate(track)}#{serialize_encoding(track)}
         """
         |> String.trim()
     end
   end
+
+  defp serialize_bandwidth(track) do
+    "BANDWIDTH=#{BandwidthCalculator.calculate_max_bandwidth(track)},AVERAGE-BANDWIDTH=#{BandwidthCalculator.calculate_avg_bandwidth(track)}"
+  end
+
+  defp serialize_framerate(%Track{max_framerate: framerate}) when is_number(framerate),
+    do: ",FRAME-RATE=#{framerate}"
+
+  defp serialize_framerate(_track), do: ""
+
+  defp serialize_resolution(%Track{resolution: {width, height}}) do
+    ",RESOLUTION=#{width}x#{height}"
+  end
+
+  defp serialize_resolution(_track), do: ""
+
+  defp serialize_encoding(%Track{encoding: %{} = encoding}) do
+    codecs_string =
+      encoding
+      |> Enum.map_join(",", &serialize_codec(&1))
+      |> String.trim()
+
+    ",CODECS=\"#{codecs_string}\""
+  end
+
+  defp serialize_encoding(%Track{}), do: ""
+
+  defp serialize_codec({:avc1, %{profile: profile, compatibility: compatibility, level: level}}) do
+    [profile, compatibility, level]
+    |> Enum.map(&Integer.to_string(&1, 16))
+    |> Enum.map_join(&String.pad_leading(&1, 2, "0"))
+    |> then(&"avc1.#{&1}")
+    |> String.downcase()
+  end
+
+  defp serialize_codec({:mp4a, %{aot_id: aot_id}}), do: String.downcase("mp4a.40.#{aot_id}")
+
+  defp serialize_codec(_other), do: ""
 
   defp build_master_playlist(tracks) do
     case tracks do

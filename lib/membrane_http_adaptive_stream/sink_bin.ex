@@ -140,6 +140,15 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
         The segment duration of the partial segments.
         If not set then the bin won't produce any partial segments.
         """
+      ],
+      max_framerate: [
+        spec: float() | nil,
+        default: nil,
+        description: """
+        The maximal framerate of video variant. This information is used in master playlist.
+
+        When set to nil then this information won't be added to master playlist. For audio it should be set to nil.
+        """
       ]
     ]
 
@@ -322,7 +331,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
   defp track_options(context) do
     context.options
-    |> Map.take([:track_name, :segment_duration, :partial_segment_duration])
+    |> Map.take([:track_name, :segment_duration, :partial_segment_duration, :max_framerate])
     |> Keyword.new()
   end
 
