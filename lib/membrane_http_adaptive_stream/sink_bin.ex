@@ -100,14 +100,14 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
                 """
               ]
 
-  @accepted_h264_profiles [:constrained_baseline, :baseline, :high]
+  @accepted_h264_profiles [:constrained_baseline, :baseline, :high, :main]
 
   def_input_pad :input,
     demand_unit: :buffers,
     accepted_format:
       any_of(
         Membrane.AAC,
-        %Membrane.H264{profile: profile} when profile in @accepted_h264_profiles
+        Membrane.H264
       ),
     availability: :on_request,
     options: [
