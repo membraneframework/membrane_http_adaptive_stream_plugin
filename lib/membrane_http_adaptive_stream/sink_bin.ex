@@ -100,14 +100,12 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
                 """
               ]
 
-  @accepted_h264_profiles [:constrained_baseline, :baseline, :high]
-
   def_input_pad :input,
     demand_unit: :buffers,
     accepted_format:
       any_of(
         Membrane.AAC,
-        %Membrane.H264{profile: profile} when profile in @accepted_h264_profiles
+        Membrane.H264
       ),
     availability: :on_request,
     options: [
@@ -115,8 +113,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
         spec: :AAC | :H264,
         description: """
         Encoding type determining which payloader will be used for the given stream.
-
-        For H264, the accepted profiles are #{Enum.map_join(@accepted_h264_profiles, ", ", &inspect/1)}.
         """
       ],
       track_name: [
