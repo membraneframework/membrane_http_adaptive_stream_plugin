@@ -332,7 +332,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
         Float.ceil(Ratio.to_float(track.partial_segment_duration / Time.second()), 3)
 
       """
-      #EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=#{2 * target_partial_duration}#{can_skip_until(can_skip_segments_duration)}
+      #EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=#{3 * target_partial_duration}#{can_skip_until(can_skip_segments_duration)}
       #EXT-X-PART-INF:PART-TARGET=#{target_partial_duration}
       """
     else
