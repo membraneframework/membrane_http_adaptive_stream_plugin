@@ -4,9 +4,9 @@
 #EXT-X-MEDIA-SEQUENCE:0
 #EXT-X-DISCONTINUITY-SEQUENCE:0
 #EXT-X-MAP:URI="muxed_header_video_480x270_part_0.mp4"
-#EXTINF:4.780045351,
+#EXTINF:4.489795918,
 muxed_segment_0_video_480x270.m4s
-#EXTINF:4.287845804,
+#EXTINF:4.276235827,
 muxed_segment_1_video_480x270.m4s
 #EXTINF:2.116507936,
 muxed_segment_2_video_480x270.m4s
@@ -22,6 +22,6 @@ muxed_segment_6_video_480x270.m4s
 muxed_segment_7_video_480x270.m4s
 #EXTINF:3.953696145,
 muxed_segment_8_video_480x270.m4s
-#EXTINF:2.795736961,
+#EXTINF:3.097596371,
 muxed_segment_9_video_480x270.m4s
 #EXT-X-ENDLIST

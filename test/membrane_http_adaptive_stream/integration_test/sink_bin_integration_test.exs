@@ -84,11 +84,9 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
           parser =
             case encoding do
               :H264 ->
-                %Membrane.H264.FFmpeg.Parser{
-                  framerate: {25, 1},
-                  alignment: :au,
-                  attach_nalus?: true,
-                  skip_until_parameters?: false
+                %Membrane.H264.Parser{
+                  output_alignment: :au,
+                  generate_best_effort_timestamps: %{framerate: {25, 1}}
                 }
 
               :AAC ->
