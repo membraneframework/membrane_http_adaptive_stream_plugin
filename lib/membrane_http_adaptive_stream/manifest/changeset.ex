@@ -12,12 +12,13 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Changeset do
             duration: Membrane.Time.t() | Ratio.t(),
             sequence_number: non_neg_integer(),
             name: String.t(),
+            partial_name: String.t() | nil,
             payload: binary(),
             independent?: boolean(),
             byte_offset: non_neg_integer() | nil
           }
     @enforce_keys [:type, :duration, :sequence_number, :name, :payload]
-    defstruct @enforce_keys ++ [independent?: nil, byte_offset: nil]
+    defstruct @enforce_keys ++ [independent?: nil, byte_offset: nil, partial_name: nil]
   end
 
   @type element_type_t :: :segment | :header

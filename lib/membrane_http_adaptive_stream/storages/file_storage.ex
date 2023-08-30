@@ -18,6 +18,18 @@ defmodule Membrane.HTTPAdaptiveStream.Storages.FileStorage do
   @impl true
   def store(
         _parent_id,
+        _name,
+        _contents,
+        _metadata,
+        %{mode: :binary, type: :partial_segment},
+        state
+      ) do
+    {:ok, state}
+  end
+
+  @impl true
+  def store(
+        _parent_id,
         name,
         contents,
         _metadata,

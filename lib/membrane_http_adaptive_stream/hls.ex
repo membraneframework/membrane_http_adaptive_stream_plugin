@@ -271,7 +271,6 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     |> Enum.split(-@keep_latest_n_segment_parts)
     |> then(fn {regular_segments, ll_segments} ->
       regular = Enum.flat_map(regular_segments, &do_serialize_segment(&1, false))
-
       ll = Enum.flat_map(ll_segments, &do_serialize_segment(&1, supports_ll_hls?))
 
       regular ++ ll
@@ -281,7 +280,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
 
   defp do_serialize_segment(%Segment{} = segment, supports_ll_hls?) do
     [
-      # serialize partial segments just for the last 2 live segments, otherwise just keep the regular segments
+      # serialize partial segments just for the last 4 live segments, otherwise just keep the regular segments
       if(supports_ll_hls?,
         do: serialize_partial_segments(segment),
         else: []
@@ -303,19 +302,16 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
       ]
   end
 
-  defp serialize_partial_segments(segment) do
-    segment.parts
-    |> Enum.map_reduce(0, fn part, total_bytes ->
+  defp serialize_partial_segments(%Segment{} = segment) do
+    Enum.map(segment.parts, fn part ->
       time = Ratio.to_float(part.duration / Time.second())
 
-      serialized =
-        "#EXT-X-PART:DURATION=#{time},URI=\"#{segment.name}\",BYTERANGE=\"#{part.size}@#{total_bytes}\""
+      serialized = "#EXT-X-PART:DURATION=#{time},URI=\"#{part.name}\""
 
-      serialized = if part.independent?, do: serialized <> ",INDEPENDENT=YES", else: serialized
-
-      {serialized, part.size + total_bytes}
+      if part.independent?,
+        do: serialized <> ",INDEPENDENT=YES",
+        else: serialized
     end)
-    |> then(fn {parts, _acc} -> parts end)
   end
 
   defp serialize_ll_hls_tags(track) do
@@ -340,22 +336,13 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     end
   end
 
-  defp serialize_preload_hint_tag(true, track) do
-    get_tag = fn name, bytes ->
-      "#EXT-X-PRELOAD-HINT:TYPE=PART,URI=\"#{name}\",BYTERANGE-START=#{bytes}"
-    end
+  defp serialize_preload_hint_tag(true, %Track{} = track) do
+    if Enum.empty?(track.segments) do
+      ""
+    else
+      name = track.partial_naming_fun.(track, preload_hint?: true)
 
-    case Qex.last(track.segments) do
-      :empty ->
-        ""
-
-      {:value, %Segment{type: :partial, name: name, parts: parts}} ->
-        bytes = Enum.reduce(parts, 0, fn part, acc -> acc + part.size end)
-        get_tag.(name, bytes)
-
-      {:value, %Segment{type: :full}} ->
-        name = track.segment_naming_fun.(track) <> track.segment_extension
-        get_tag.(name, 0)
+      "#EXT-X-PRELOAD-HINT:TYPE=PART,URI=\"#{name}\""
     end
   end
 

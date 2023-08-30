@@ -204,6 +204,7 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
           %{
             type: type,
             name: name,
+            partial_name: partial_name,
             duration: duration,
             sequence_number: sequence_number,
             independent?: independent?,
@@ -212,6 +213,7 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
           } = segment
 
           metadata = %{
+            partial_name: partial_name,
             duration: duration,
             sequence_number: sequence_number,
             independent?: independent?,

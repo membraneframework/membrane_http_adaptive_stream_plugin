@@ -28,6 +28,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Segment do
   * `attributes` - the attributes for the particular partial segment
   """
   @type partial_segment_t :: %{
+          name: String.t(),
           independent?: boolean(),
           duration: segment_duration_t(),
           size: non_neg_integer(),
