@@ -12,7 +12,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   """
   use Membrane.Bin
 
-  alias Membrane.{MP4, AAC, H264, Time}
+  alias Membrane.{AAC, H264, MP4, Time}
   alias Membrane.HTTPAdaptiveStream.{Manifest, Sink, Storage}
 
   def_options manifest_name: [
