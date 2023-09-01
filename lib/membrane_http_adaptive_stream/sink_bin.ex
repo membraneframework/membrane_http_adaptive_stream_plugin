@@ -190,6 +190,10 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
     spec =
       bin_input(pad)
+      # |> child(%Membrane.Debug.Filter{
+      #   handle_buffer: &File.write("#{inspect(self())}-old", "#{inspect(&1)}\n", [:append]),
+      #   handle_stream_format: &File.write("#{inspect(self())}-old", "#{inspect(&1)}\n", [:append])
+      # })
       |> child({:payloader, ref}, get_payloader(pad_options.encoding, state))
       |> child({:cmaf_muxer, ref}, cmaf_child_definiton(pad_options))
       |> via_in(pad, options: track_options(ctx))
@@ -339,7 +343,9 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
   defp get_payloader(encoding, state) do
     if encoding == :AAC,
-      do: %AAC.Parser{output_config: :esds},
-      else: %H264.Parser{output_stream_structure: :avc1}
+      do: %AAC.Parser{output_config: :esds, out_encapsulation: :none},
+      else: %H264.Parser{
+        output_stream_structure: if(state.mp4_parameters_in_band?, do: :avc3, else: :avc1)
+      }
   end
 end
