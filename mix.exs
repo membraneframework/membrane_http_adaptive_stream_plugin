@@ -67,7 +67,7 @@ defmodule Membrane.HTTPAdaptiveStream.MixProject do
       {:membrane_tee_plugin, "~> 0.11.0"},
       {:membrane_mp4_plugin, "~> 0.29.0"},
       {:membrane_aac_plugin, "~> 0.16.0"},
-      # {:membrane_h264_plugin, "~> 0.7.0"},
+      # {:membrane_h264_plugin, "~> 0.7.1"},
       {:membrane_h264_plugin,
        github: "membraneframework/membrane_h264_plugin",
        branch: "pass-framerate-to-output-format",

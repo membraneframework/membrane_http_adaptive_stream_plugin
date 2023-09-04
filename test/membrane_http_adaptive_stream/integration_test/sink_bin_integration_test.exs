@@ -60,6 +60,8 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
     alias Membrane.HTTPAdaptiveStream.Storages.FileStorage
     alias Membrane.Time
 
+    @non_b_frames_profiles [:constrained_baseline, :baseline]
+
     @impl true
     def handle_init(_ctx, %{
           sources: sources,
@@ -83,7 +85,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
         |> Enum.flat_map(fn {source, encoding, profile, track_name} ->
           parser =
             case {encoding, profile} do
-              {:H264, :constrained_baseline} ->
+              {:H264, profile} when profile in @non_b_frames_profiles ->
                 %Membrane.H264.Parser{
                   output_alignment: :au,
                   generate_best_effort_timestamps: %{framerate: {25, 1}, add_dts_offset: false}

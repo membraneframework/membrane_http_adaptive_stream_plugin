@@ -190,10 +190,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
     spec =
       bin_input(pad)
-      # |> child(%Membrane.Debug.Filter{
-      #   handle_buffer: &File.write("#{inspect(self())}-old", "#{inspect(&1)}\n", [:append]),
-      #   handle_stream_format: &File.write("#{inspect(self())}-old", "#{inspect(&1)}\n", [:append])
-      # })
       |> child({:payloader, ref}, get_payloader(pad_options.encoding, state))
       |> child({:cmaf_muxer, ref}, cmaf_child_definiton(pad_options))
       |> via_in(pad, options: track_options(ctx))
