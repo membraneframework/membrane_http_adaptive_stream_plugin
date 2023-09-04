@@ -698,6 +698,6 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     do: {msn, %{track | segment_sequencer: {msn + 1, 0}}}
 
   defp update_segment_duration(track, duration) do
-    Map.update!(track, :segment_duration, &if(&1 > duration, do: &1, else: duration))
+    Map.update!(track, :segment_duration, &max(&1, duration))
   end
 end
