@@ -116,40 +116,50 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   end
 
   defp add_serialized_track(tracks_map, track) do
-    target_duration = Ratio.ceil(track.segment_duration / Time.second()) |> trunc()
+    target_duration = calculate_target_duration(track)
     playlist_path = build_media_playlist_path(track)
 
-    with {:create_delta, delta_ctx} <- maybe_calculate_delta_params(track, target_duration) do
-      serialized_track =
-        {playlist_path, serialize_track(track, target_duration, %{delta_ctx | skip_count: 0})}
+    case maybe_calculate_delta_params(track, target_duration) do
+      {:create_delta, delta_ctx} ->
+        serialized_track =
+          {playlist_path, serialize_track(track, target_duration, %{delta_ctx | skip_count: 0})}
 
-      delta_path = build_media_playlist_path(track, delta?: true)
-      serialized_delta_track = {delta_path, serialize_track(track, target_duration, delta_ctx)}
+        delta_path = build_media_playlist_path(track, delta?: true)
+        serialized_delta_track = {delta_path, serialize_track(track, target_duration, delta_ctx)}
 
-      tracks_map
-      |> Map.put(track.id, serialized_track)
-      |> Map.put(:"#{track.id}_delta", serialized_delta_track)
-    else
+        tracks_map
+        |> Map.put(track.id, serialized_track)
+        |> Map.put(:"#{track.id}_delta", serialized_delta_track)
+
       :dont_create_delta ->
         serialized_track = {playlist_path, serialize_track(track, target_duration)}
         Map.put(tracks_map, track.id, serialized_track)
     end
   end
 
+  defp calculate_target_duration(track) do
+    Ratio.ceil(track.segment_duration / Time.second()) |> trunc()
+  end
+
   defp maybe_calculate_delta_params(track, target_duration) do
     min_duration = Time.seconds(@min_segments_in_delta_playlist * target_duration)
 
     with true <- Track.supports_partial_segments?(track),
-         {skip_count, skip_duration} <-
+         latest_full_segments <-
            track.segments
-           |> Enum.filter(&(&1.type == :full))
+           # For some reason, Dialyzer complains without the following line.
+           # See discussion in https://github.com/membraneframework/membrane_http_adaptive_stream_plugin/pull/88
+           |> Function.identity()
+           |> Qex.reverse()
+           |> Enum.drop_while(&(&1.type == :partial)),
+         {skip_count, skip_duration} <-
+           latest_full_segments
            |> Enum.with_index()
-           |> Enum.reverse()
-           |> Enum.reduce_while(0, fn {segment, segments_left}, duration ->
+           |> Enum.reduce_while(0, fn {segment, idx}, duration ->
              duration = duration + segment.duration
 
              if duration >= min_duration,
-               do: {:halt, {segments_left, duration}},
+               do: {:halt, {Enum.count(latest_full_segments) - idx - 1, duration}},
                else: {:cont, duration}
            end),
          true <- skip_count > 0 do

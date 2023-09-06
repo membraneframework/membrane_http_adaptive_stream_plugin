@@ -69,6 +69,7 @@ defmodule Membrane.HTTPAdaptiveStream.MixProject do
       {:membrane_aac_plugin, "~> 0.16.0"},
       {:membrane_h264_plugin, "~> 0.7.1"},
       {:bunch, "~> 1.5"},
+      {:qex, "~> 0.5"},
       {:membrane_hackney_plugin, "~> 0.10.0", only: :test},
       {:credo, "~> 1.6.1", only: :dev, runtime: false},
       {:ex_doc, "~> 0.25", only: :dev, runtime: false},
