@@ -8,7 +8,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
   # The boolean flag below controls whether reference HLS content in fixtures directory will be created simultaneously with test content.
   # It should be set only when developing new HLS features that are expected to introduce changes to reference HLS files. Nevertheless it should
   # be done only locally to create and push new reference HLS files and this flag must not be set in remote repository. There is unit test in code below
-  # that will cause CI to fail if this flag happens to be set on remote repository. Every new version of reference HSL content must
+  # that will cause CI to fail if this flag happens to be set on remote repository. Every new version of reference HLS content must
   # be manually verified by its creator by using some player e.g. ffplay command.
 
   @pipeline_config %{
@@ -18,7 +18,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
   }
   @create_fixtures false
 
-  @expected_number_of_segments_in_delta_playlist 6
+  @min_number_of_segments_in_delta_playlist 6
 
   @audio_video_tracks_sources [
     {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/test-audio.aac",
@@ -53,6 +53,15 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
      :H264, :high, "video_720x480"}
   ]
   @muxed_av_ref_path "./test/membrane_http_adaptive_stream/integration_test/fixtures/muxed_av/"
+
+  @delta_test_sources [
+    {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s_480x270_120s.h264",
+     :H264, :high, "long_video"},
+    {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s_120s.aac",
+     :AAC, :LC, "long_audio"}
+  ]
+
+  @eps 1.0e-8
 
   defmodule TestPipeline do
     use Membrane.Pipeline
@@ -148,7 +157,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
     refute @create_fixtures
   end
 
-  describe "Test HLS content creation for " do
+  describe "Test HLS content creation for" do
     @tag :tmp_dir
     test "audio and video tracks", %{tmp_dir: tmp_dir} do
       test_pipeline(
@@ -212,7 +221,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
       alias Membrane.HTTPAdaptiveStream.Storages.FileStorage
 
       hackney_sources =
-        @audio_multiple_video_tracks_sources
+        @delta_test_sources
         |> Enum.map(fn {path, encoding, profile, name} ->
           {%Membrane.Hackney.Source{location: path, hackney_opts: [follow_redirect: true]},
            encoding, profile, name}
@@ -225,7 +234,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
             sources: hackney_sources,
             hls_mode: @pipeline_config.hls_mode,
             partial_segments: true,
-            target_window_duration: @pipeline_config.target_window_duration,
+            target_window_duration: :infinity,
             persist?: @pipeline_config.persist?,
             storage: %FileStorage{
               directory: tmp_dir
@@ -241,42 +250,69 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
       |> Enum.each(fn manifest_filename ->
         manifest_file = File.read!(Path.join(tmp_dir, manifest_filename))
 
-        segments_in_manifest =
-          Regex.scan(~r/#EXTINF:\d+\.\d+,\s\w+segment_\d+_.+.m4s/, manifest_file)
+        target_duration =
+          manifest_file
+          |> then(&Regex.run(~r/#EXT-X-TARGETDURATION:(\d+)/, &1, capture: :all_but_first))
+          |> hd()
+          |> String.to_integer()
 
-        number_of_segments_in_manifest = Enum.count(segments_in_manifest)
-        # delta manifest will be generated when plailist is longer then 6 segments
-        if number_of_segments_in_manifest > @expected_number_of_segments_in_delta_playlist do
-          # check if manifest contains CAN-SKIP-UNTIL tag
-          assert Regex.match?(~r/CAN-SKIP-UNTIL=\d+\.*\d*/, manifest_file)
+        {segments_in_manifest, segment_durations} =
+          manifest_file
+          |> then(&Regex.scan(~r/#EXTINF:(\d+\.\d+),\s\w+segment_\d+_.+.m4s/, &1))
+          |> Enum.map(&List.to_tuple/1)
+          |> Enum.unzip()
 
-          # check if delta file exists
-          delta_manifest_filename = String.replace(manifest_filename, ".m3u8", "_delta.m3u8")
-          assert File.exists?(Path.join(tmp_dir, delta_manifest_filename))
+        # delta manifest will be generated when the sum of full (finished) segment durations
+        # is greater than 6 * target duration
+        # AND there is at least one segment that can be skipped
+        segment_durations_sum =
+          segment_durations
+          |> Enum.drop(1)
+          |> Enum.reduce(0, &(String.to_float(&1) + &2))
 
-          delta_manifest_file = File.read!(Path.join(tmp_dir, delta_manifest_filename))
+        # for the fixtures used in this test, the following condition will be true,
+        # so delta must be generated
+        assert segment_durations_sum > @min_number_of_segments_in_delta_playlist * target_duration
 
-          segments_in_delta_manifest =
-            Regex.scan(~r/#EXTINF:\d+\.\d+,\s\w+segment_\d+_.+.m4s/, delta_manifest_file)
+        delta_manifest_filename = String.replace_suffix(manifest_filename, ".m3u8", "_delta.m3u8")
 
-          number_of_segments_in_delta_manifest = Enum.count(segments_in_delta_manifest)
-          # check if delta manifest contains exected number of segments
-          assert number_of_segments_in_delta_manifest ==
-                   @expected_number_of_segments_in_delta_playlist
+        # check if manifest contains #CAN-SKIP-UNTIL tag
+        can_skip_until =
+          manifest_file
+          |> then(&Regex.run(~r/CAN-SKIP-UNTIL=(\d+\.*\d*)/, &1, capture: :all_but_first))
+          |> hd()
+          |> String.to_float()
 
-          # check if delta manifest contains last 6 segments from manifest
-          assert Enum.take(segments_in_manifest, -@expected_number_of_segments_in_delta_playlist) ==
-                   segments_in_delta_manifest
+        # check if delta file exists
+        assert File.exists?(Path.join(tmp_dir, delta_manifest_filename))
 
-          # check if delta manifest contains #EXT-X-SKIP tag with correct value
-          [_match, skipped_segments] =
-            Regex.run(~r/EXT-X-SKIP:SKIPPED-SEGMENTS=(\d+)/, delta_manifest_file)
+        delta_manifest_file = File.read!(Path.join(tmp_dir, delta_manifest_filename))
 
-          {skipped_segments, _rest} = Integer.parse(skipped_segments)
+        {segments_in_delta_manifest, delta_durations} =
+          delta_manifest_file
+          |> then(&Regex.scan(~r/#EXTINF:(\d+\.\d+),\s\w+segment_\d+_.+.m4s/, &1))
+          |> Enum.map(&List.to_tuple/1)
+          |> Enum.unzip()
 
-          assert skipped_segments + number_of_segments_in_delta_manifest ==
-                   number_of_segments_in_manifest
-        end
+        # check if #CAN-SKIP-UNTIL tag has the correct value
+        delta_durations_sum = Enum.reduce(delta_durations, 0, &(String.to_float(&1) + &2))
+        assert_in_delta can_skip_until, delta_durations_sum, @eps
+
+        number_of_segments_in_delta_manifest = Enum.count(segments_in_delta_manifest)
+
+        # check if segments in delta manifest are the same as last segments from regular manifest
+        assert Enum.take(segments_in_manifest, -number_of_segments_in_delta_manifest) ==
+                 segments_in_delta_manifest
+
+        # check if delta manifest contains #EXT-X-SKIP tag with correct value
+        skipped_segments =
+          delta_manifest_file
+          |> then(&Regex.run(~r/EXT-X-SKIP:SKIPPED-SEGMENTS=(\d+)/, &1, capture: :all_but_first))
+          |> hd()
+          |> String.to_integer()
+
+        assert skipped_segments + number_of_segments_in_delta_manifest ==
+                 Enum.count(segments_in_manifest)
       end)
     end
 

@@ -13,6 +13,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   alias Membrane.Time
 
   @version 7
+  @delta_version 9
 
   @master_playlist_header """
                           #EXTM3U
@@ -27,6 +28,16 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
 
   @keep_latest_n_segment_parts 4
   @min_segments_in_delta_playlist 6
+
+  # See https://github.com/membraneframework/membrane_http_adaptive_stream_plugin/pull/88
+  # and https://github.com/erlang/otp/issues/7624
+  @dialyzer {:nowarn_function,
+             [
+               add_serialized_track: 2,
+               build_media_playlist_path: 2,
+               serialize_segments: 2,
+               can_skip_until: 1
+             ]}
 
   defmodule SegmentAttribute do
     @moduledoc """
@@ -115,20 +126,58 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   end
 
   defp add_serialized_track(tracks_map, track) do
+    target_duration = calculate_target_duration(track)
     playlist_path = build_media_playlist_path(track)
-    serialized_track = {playlist_path, serialize_track(track)}
-    tracks_map = Map.put(tracks_map, track.id, serialized_track)
 
-    should_generate_delta_playlist? =
-      Track.supports_partial_segments?(track) &&
-        Enum.count(track.segments) > @min_segments_in_delta_playlist
+    case maybe_calculate_delta_params(track, target_duration) do
+      {:create_delta, delta_ctx} ->
+        serialized_track =
+          {playlist_path, serialize_track(track, target_duration, %{delta_ctx | skip_count: 0})}
 
-    if should_generate_delta_playlist? do
-      delta_path = build_media_playlist_path(track, delta?: true)
-      serialized_delta_track = {delta_path, serialize_track(track, delta?: true)}
-      Map.put(tracks_map, :"#{track.id}_delta", serialized_delta_track)
+        delta_path = build_media_playlist_path(track, delta?: true)
+        serialized_delta_track = {delta_path, serialize_track(track, target_duration, delta_ctx)}
+
+        tracks_map
+        |> Map.put(track.id, serialized_track)
+        |> Map.put(:"#{track.id}_delta", serialized_delta_track)
+
+      :dont_create_delta ->
+        serialized_track = {playlist_path, serialize_track(track, target_duration)}
+        Map.put(tracks_map, track.id, serialized_track)
+    end
+  end
+
+  defp calculate_target_duration(track) do
+    Ratio.ceil(track.segment_duration / Time.second()) |> trunc()
+  end
+
+  defp maybe_calculate_delta_params(track, target_duration) do
+    min_duration = Time.seconds(@min_segments_in_delta_playlist * target_duration)
+
+    with true <- Track.supports_partial_segments?(track),
+         latest_full_segments <-
+           track.segments
+           |> Qex.reverse()
+           |> Enum.drop_while(&(&1.type == :partial)),
+         {skip_count, skip_duration} <-
+           latest_full_segments
+           |> Enum.with_index()
+           |> Enum.reduce_while(0, fn {segment, idx}, duration ->
+             duration = duration + segment.duration
+
+             if duration >= min_duration,
+               do: {:halt, {Enum.count(latest_full_segments) - idx - 1, duration}},
+               else: {:cont, duration}
+           end),
+         true <- skip_count > 0 do
+      delta_ctx = %{
+        skip_count: skip_count,
+        skip_duration: Ratio.to_float(skip_duration / Time.second())
+      }
+
+      {:create_delta, delta_ctx}
     else
-      tracks_map
+      _any -> :dont_create_delta
     end
   end
 
@@ -232,28 +281,33 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     end
   end
 
-  defp serialize_track(%Track{} = track, [delta?: delta?] \\ [delta?: false]) do
-    target_duration = Ratio.ceil(track.segment_duration / Time.second()) |> trunc()
+  defp serialize_track(
+         %Track{} = track,
+         target_duration,
+         delta_ctx \\ %{skip_count: 0, skip_duration: 0}
+       ) do
     supports_ll_hls? = Track.supports_partial_segments?(track)
 
     """
     #EXTM3U
-    #EXT-X-VERSION:#{@version}
+    #EXT-X-VERSION:#{if delta_ctx.skip_count > 0, do: @delta_version, else: @version}
     #EXT-X-TARGETDURATION:#{target_duration}
     """ <>
-      serialize_ll_hls_tags(track) <>
+      serialize_ll_hls_tags(track, segments_to_skip_duration: delta_ctx.skip_duration) <>
       """
       #EXT-X-MEDIA-SEQUENCE:#{track.current_seq_num}
       #EXT-X-DISCONTINUITY-SEQUENCE:#{track.current_discontinuity_seq_num}
       #EXT-X-MAP:URI="#{track.header_name}"
-      #{serialize_segments(track.segments, supports_ll_hls?: supports_ll_hls?, delta?: delta?)}
+      #{serialize_segments(track.segments, supports_ll_hls?: supports_ll_hls?, segments_to_skip_count: delta_ctx.skip_count)}
       #{if track.finished?, do: "#EXT-X-ENDLIST", else: serialize_preload_hint_tag(supports_ll_hls?, track)}
       """
   end
 
-  defp serialize_segments(segments, supports_ll_hls?: supports_ll_hls?, delta?: true) do
-    segments_to_skip_count = Enum.count(segments) - @min_segments_in_delta_playlist
-
+  defp serialize_segments(segments,
+         supports_ll_hls?: supports_ll_hls?,
+         segments_to_skip_count: segments_to_skip_count
+       )
+       when segments_to_skip_count > 0 do
     prefix = """
     #EXT-X-SKIP:SKIPPED-SEGMENTS=#{segments_to_skip_count}
     """
@@ -261,12 +315,12 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     serialized_segments =
       segments
       |> Enum.drop(segments_to_skip_count)
-      |> serialize_segments(supports_ll_hls?: supports_ll_hls?, delta?: false)
+      |> serialize_segments(supports_ll_hls?: supports_ll_hls?, segments_to_skip_count: 0)
 
     prefix <> serialized_segments
   end
 
-  defp serialize_segments(segments, supports_ll_hls?: supports_ll_hls?, delta?: false) do
+  defp serialize_segments(segments, supports_ll_hls?: supports_ll_hls?, segments_to_skip_count: 0) do
     segments
     |> Enum.split(-@keep_latest_n_segment_parts)
     |> then(fn {regular_segments, ll_segments} ->
@@ -314,21 +368,15 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     end)
   end
 
-  defp serialize_ll_hls_tags(track) do
+  defp serialize_ll_hls_tags(track, segments_to_skip_duration: segments_to_skip_duration) do
     supports_ll_hls? = Track.supports_partial_segments?(track)
 
     if supports_ll_hls? do
-      can_skip_segments_duration =
-        track.segments
-        |> Enum.drop(-@min_segments_in_delta_playlist)
-        |> Enum.reduce(0, &(&1.duration + &2))
-        |> then(&Ratio.to_float(&1 / Time.second()))
-
       target_partial_duration =
         Float.ceil(Ratio.to_float(track.partial_segment_duration / Time.second()), 3)
 
       """
-      #EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=#{3 * target_partial_duration}#{can_skip_until(can_skip_segments_duration)}
+      #EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=#{3 * target_partial_duration}#{can_skip_until(segments_to_skip_duration)}
       #EXT-X-PART-INF:PART-TARGET=#{target_partial_duration}
       """
     else
