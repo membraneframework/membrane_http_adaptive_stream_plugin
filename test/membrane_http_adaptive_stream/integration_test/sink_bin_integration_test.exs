@@ -55,10 +55,9 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
   @muxed_av_ref_path "./test/membrane_http_adaptive_stream/integration_test/fixtures/muxed_av/"
 
   @delta_test_sources [
-    # TODO change branch to `gh-pages` once https://github.com/membraneframework/static/pull/6 gets merged
-    {"http://raw.githubusercontent.com/membraneframework/static/long-bunny/samples/big-buck-bunny/bun33s_480x270_120s.h264",
+    {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s_480x270_120s.h264",
      :H264, :high, "long_video"},
-    {"http://raw.githubusercontent.com/membraneframework/static/long-bunny/samples/big-buck-bunny/bun33s_120s.aac",
+    {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s_120s.aac",
      :AAC, :LC, "long_audio"}
   ]
 
@@ -251,17 +250,17 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
       |> Enum.each(fn manifest_filename ->
         manifest_file = File.read!(Path.join(tmp_dir, manifest_filename))
 
-        assert target_duration =
-                 manifest_file
-                 |> then(&Regex.run(~r/#EXT-X-TARGETDURATION:(\d+)/, &1, capture: :all_but_first))
-                 |> hd()
-                 |> String.to_integer()
+        target_duration =
+          manifest_file
+          |> then(&Regex.run(~r/#EXT-X-TARGETDURATION:(\d+)/, &1, capture: :all_but_first))
+          |> hd()
+          |> String.to_integer()
 
-        assert {segments_in_manifest, segment_durations} =
-                 manifest_file
-                 |> then(&Regex.scan(~r/#EXTINF:(\d+\.\d+),\s\w+segment_\d+_.+.m4s/, &1))
-                 |> Enum.map(&List.to_tuple/1)
-                 |> Enum.unzip()
+        {segments_in_manifest, segment_durations} =
+          manifest_file
+          |> then(&Regex.scan(~r/#EXTINF:(\d+\.\d+),\s\w+segment_\d+_.+.m4s/, &1))
+          |> Enum.map(&List.to_tuple/1)
+          |> Enum.unzip()
 
         # delta manifest will be generated when the sum of full (finished) segment durations
         # is greater than 6 * target duration
@@ -278,22 +277,22 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
         delta_manifest_filename = String.replace_suffix(manifest_filename, ".m3u8", "_delta.m3u8")
 
         # check if manifest contains #CAN-SKIP-UNTIL tag
-        assert can_skip_until =
-                 manifest_file
-                 |> then(&Regex.run(~r/CAN-SKIP-UNTIL=(\d+\.*\d*)/, &1, capture: :all_but_first))
-                 |> hd()
-                 |> String.to_float()
+        can_skip_until =
+          manifest_file
+          |> then(&Regex.run(~r/CAN-SKIP-UNTIL=(\d+\.*\d*)/, &1, capture: :all_but_first))
+          |> hd()
+          |> String.to_float()
 
         # check if delta file exists
         assert File.exists?(Path.join(tmp_dir, delta_manifest_filename))
 
         delta_manifest_file = File.read!(Path.join(tmp_dir, delta_manifest_filename))
 
-        assert {segments_in_delta_manifest, delta_durations} =
-                 delta_manifest_file
-                 |> then(&Regex.scan(~r/#EXTINF:(\d+\.\d+),\s\w+segment_\d+_.+.m4s/, &1))
-                 |> Enum.map(&List.to_tuple/1)
-                 |> Enum.unzip()
+        {segments_in_delta_manifest, delta_durations} =
+          delta_manifest_file
+          |> then(&Regex.scan(~r/#EXTINF:(\d+\.\d+),\s\w+segment_\d+_.+.m4s/, &1))
+          |> Enum.map(&List.to_tuple/1)
+          |> Enum.unzip()
 
         # check if #CAN-SKIP-UNTIL tag has the correct value
         delta_durations_sum = Enum.reduce(delta_durations, 0, &(String.to_float(&1) + &2))
@@ -306,13 +305,11 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
                  segments_in_delta_manifest
 
         # check if delta manifest contains #EXT-X-SKIP tag with correct value
-        assert skipped_segments =
-                 delta_manifest_file
-                 |> then(
-                   &Regex.run(~r/EXT-X-SKIP:SKIPPED-SEGMENTS=(\d+)/, &1, capture: :all_but_first)
-                 )
-                 |> hd()
-                 |> String.to_integer()
+        skipped_segments =
+          delta_manifest_file
+          |> then(&Regex.run(~r/EXT-X-SKIP:SKIPPED-SEGMENTS=(\d+)/, &1, capture: :all_but_first))
+          |> hd()
+          |> String.to_integer()
 
         assert skipped_segments + number_of_segments_in_delta_manifest ==
                  Enum.count(segments_in_manifest)
