@@ -26,7 +26,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       :segment_duration,
       :partial_segment_duration,
       :header_naming_fun,
-      :segment_naming_fun
+      :segment_naming_fun,
+      :partial_naming_fun
     ]
     defstruct @enforce_keys ++
                 [
@@ -67,6 +68,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
             segment_extension: String.t(),
             header_naming_fun: (Track.t(), counter :: non_neg_integer() -> String.t()),
             segment_naming_fun: (Track.t() -> String.t()),
+            partial_naming_fun: (t(), Keyword.t() -> String.t()),
             segment_duration: Membrane.Time.t(),
             partial_segment_duration: Membrane.Time.t() | nil,
             target_window_duration: Membrane.Time.t(),
@@ -183,6 +185,26 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   @spec default_header_naming_fun(t, non_neg_integer) :: String.t()
   def default_header_naming_fun(track, counter) do
     Enum.join([track.content_type, "header", track.track_name, "part", "#{counter}"], "_")
+  end
+
+  @spec default_partial_naming_fun(t(), Keyword.t()) :: String.t()
+  def default_partial_naming_fun(%__MODULE__{} = track, preload_hint?: preload_hint?) do
+    {:value, last_segment} = Qex.last(track.segments)
+
+    {name, partial_sn} =
+      if preload_hint? do
+        name = track.segment_naming_fun.(track) <> track.segment_extension
+
+        case last_segment do
+          %Segment{type: :partial, parts: parts} -> {name, length(parts)}
+          %Segment{type: :full} -> {name, 0}
+        end
+      else
+        {partial_sn, _track} = get_partial_sequence_number(track, false)
+        {last_segment.name, partial_sn}
+      end
+
+    String.replace_suffix(name, ".m4s", "_#{partial_sn}_part.m4s")
   end
 
   @doc """
@@ -390,6 +412,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
 
         {new_segment, track}
       else
+        partial_name = track.partial_naming_fun.(track, preload_hint?: false)
         {partial_sequence_number, track} = get_partial_sequence_number(track, false)
 
         new_partial_segment = %Changeset.Segment{
@@ -399,6 +422,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
           byte_offset: byte_size(payload),
           independent?: true,
           name: name,
+          partial_name: partial_name,
           payload: payload
         }
 
@@ -438,7 +462,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       independent?: independent?,
       duration: duration,
       size: size,
-      payload: payload
+      payload: payload,
+      name: track.partial_naming_fun.(track, preload_hint?: false)
     }
 
     {%Segment{type: :partial} = last_segment, segments} = Qex.pop_back!(track.segments)
@@ -452,6 +477,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
       byte_offset: Enum.map(last_segment.parts, & &1.size) |> Enum.sum(),
       independent?: independent?,
       name: last_segment.name,
+      partial_name: partial_segment.name,
       payload: payload
     }
 

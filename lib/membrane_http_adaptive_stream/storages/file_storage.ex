@@ -5,6 +5,8 @@ defmodule Membrane.HTTPAdaptiveStream.Storages.FileStorage do
   """
   @behaviour Membrane.HTTPAdaptiveStream.Storage
 
+  require Logger
+
   @enforce_keys [:directory]
   defstruct @enforce_keys
 
@@ -14,6 +16,19 @@ defmodule Membrane.HTTPAdaptiveStream.Storages.FileStorage do
 
   @impl true
   def init(%__MODULE__{} = config), do: config
+
+  @impl true
+  def store(
+        _parent_id,
+        _name,
+        _contents,
+        _metadata,
+        %{mode: :binary, type: :partial_segment},
+        state
+      ) do
+    Logger.warning("File storage does not support LL-HLS. The partial segment is omitted.")
+    {:ok, state}
+  end
 
   @impl true
   def store(

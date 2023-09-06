@@ -2,6 +2,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
   use ExUnit.Case, async: true
 
   import Membrane.Testing.Assertions
+
   alias Membrane.Testing
 
   # The boolean flag below controls whether reference HLS content in fixtures directory will be created simultaneously with test content.
@@ -311,13 +312,13 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
       # that should be followed by regular segments containing all previous parts
       # (belonging to the current segment)
       expected_segments = [
-        {:video, 0, 21},
-        {:video, 1, 5},
-        {:audio, 0, 5},
-        {:audio, 1, 5},
-        {:audio, 2, 5},
-        {:audio, 3, 5},
-        {:audio, 4, 1}
+        {:video, 0, 20},
+        {:video, 1, 4},
+        {:audio, 0, 4},
+        {:audio, 1, 4},
+        {:audio, 2, 4},
+        {:audio, 3, 4},
+        {:audio, 4, 0}
       ]
 
       for {type, segment_idx, parts} <- expected_segments do
@@ -325,12 +326,15 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
         segment_name = "#{type}_segment_#{segment_idx}_#{type}_track.m4s"
 
         partial_segments =
-          for _i <- 1..parts do
+          for i <- 0..parts do
+            partial_name = String.replace_suffix(segment_name, ".m4s", "_#{i}_part.m4s")
+
             assert_receive {SendStorage, :store,
                             %{
                               name: ^segment_name,
                               type: :partial_segment,
-                              contents: segment
+                              contents: segment,
+                              metadata: %{partial_name: ^partial_name}
                             }}
 
             assert_receive {SendStorage, :store, %{type: :manifest, name: ^manifest_name}}

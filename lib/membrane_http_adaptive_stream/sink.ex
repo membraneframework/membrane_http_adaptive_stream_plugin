@@ -40,6 +40,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
             mode: :live | :vod,
             header_naming_fun: (Manifest.Track.t(), counter :: non_neg_integer -> String.t()),
             segment_naming_fun: (Manifest.Track.t() -> String.t()),
+            partial_naming_fun: (String.t(), Keyword.t() -> String.t()),
             persist?: boolean()
           }
 
@@ -47,6 +48,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
               mode: :vod,
               header_naming_fun: &Manifest.Track.default_header_naming_fun/2,
               segment_naming_fun: &Manifest.Track.default_segment_naming_fun/1,
+              partial_naming_fun: &Manifest.Track.default_partial_naming_fun/2,
               persist?: false
   end
 
