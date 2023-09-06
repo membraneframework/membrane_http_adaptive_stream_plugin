@@ -21,9 +21,9 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
 
   @audio_video_tracks_sources [
     {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/test-audio.aac",
-     :AAC, "audio_track"},
+     :AAC, :LC, "audio_track"},
     {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/ffmpeg-testsrc.h264",
-     :H264, "video_track"}
+     :H264, :high, "video_track"}
   ]
   @audio_video_tracks_ref_path "./test/membrane_http_adaptive_stream/integration_test/fixtures/audio_video_tracks/"
   @live_stream_ref_path "./test/membrane_http_adaptive_stream/integration_test/fixtures/live/"
@@ -31,25 +31,25 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
 
   @audio_multiple_video_tracks_sources [
     {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s.aac",
-     :AAC, "audio_track"},
+     :AAC, :LC, "audio_track"},
     {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s_480x270.h264",
-     :H264, "video_480x270"},
+     :H264, :constrained_baseline, "video_480x270"},
     {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s_540x360.h264",
-     :H264, "video_540x360"},
+     :H264, :high, "video_540x360"},
     {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s_720x480.h264",
-     :H264, "video_720x480"}
+     :H264, :high, "video_720x480"}
   ]
   @audio_multiple_video_tracks_ref_path "./test/membrane_http_adaptive_stream/integration_test/fixtures/audio_multiple_video_tracks/"
 
   @muxed_av_sources [
     {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s.aac",
-     :AAC, "audio_track"},
+     :AAC, :LC, "audio_track"},
     {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s_480x270.h264",
-     :H264, "video_480x270"},
+     :H264, :constrained_baseline, "video_480x270"},
     {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s_540x360.h264",
-     :H264, "video_540x360"},
+     :H264, :high, "video_540x360"},
     {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s_720x480.h264",
-     :H264, "video_720x480"}
+     :H264, :high, "video_720x480"}
   ]
   @muxed_av_ref_path "./test/membrane_http_adaptive_stream/integration_test/fixtures/muxed_av/"
 
@@ -59,6 +59,8 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
     alias Membrane.HTTPAdaptiveStream
     alias Membrane.HTTPAdaptiveStream.Storages.FileStorage
     alias Membrane.Time
+
+    @non_b_frames_profiles [:constrained_baseline, :baseline]
 
     @impl true
     def handle_init(_ctx, %{
@@ -80,18 +82,22 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
 
       children =
         sources
-        |> Enum.flat_map(fn {source, encoding, track_name} ->
+        |> Enum.flat_map(fn {source, encoding, profile, track_name} ->
           parser =
-            case encoding do
-              :H264 ->
-                %Membrane.H264.FFmpeg.Parser{
-                  framerate: {25, 1},
-                  alignment: :au,
-                  attach_nalus?: true,
-                  skip_until_parameters?: false
+            case {encoding, profile} do
+              {:H264, profile} when profile in @non_b_frames_profiles ->
+                %Membrane.H264.Parser{
+                  output_alignment: :au,
+                  generate_best_effort_timestamps: %{framerate: {25, 1}, add_dts_offset: false}
                 }
 
-              :AAC ->
+              {:H264, _profile} ->
+                %Membrane.H264.Parser{
+                  output_alignment: :au,
+                  generate_best_effort_timestamps: %{framerate: {25, 1}}
+                }
+
+              {:AAC, _profile} ->
                 %Membrane.AAC.Parser{
                   out_encapsulation: :none
                 }
@@ -106,7 +112,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
 
       structure =
         children ++
-          Enum.map(sources, fn {_source, encoding, track_name} ->
+          Enum.map(sources, fn {_source, encoding, _profile, track_name} ->
             get_child({:parser, track_name})
             |> via_in(Pad.ref(:input, track_name),
               options: [
@@ -206,9 +212,9 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
 
       hackney_sources =
         @audio_multiple_video_tracks_sources
-        |> Enum.map(fn {path, encoding, name} ->
+        |> Enum.map(fn {path, encoding, profile, name} ->
           {%Membrane.Hackney.Source{location: path, hackney_opts: [follow_redirect: true]},
-           encoding, name}
+           encoding, profile, name}
         end)
 
       pipeline =
@@ -278,9 +284,9 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
 
       hackney_sources =
         @audio_video_tracks_sources
-        |> Enum.map(fn {path, encoding, name} ->
+        |> Enum.map(fn {path, encoding, profile, name} ->
           {%Membrane.Hackney.Source{location: path, hackney_opts: [follow_redirect: true]},
-           encoding, name}
+           encoding, profile, name}
         end)
 
       pipeline =
@@ -388,9 +394,9 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
        ) do
     hackney_sources =
       sources
-      |> Enum.map(fn {path, encoding, name} ->
+      |> Enum.map(fn {path, encoding, profile, name} ->
         {%Membrane.Hackney.Source{location: path, hackney_opts: [follow_redirect: true]},
-         encoding, name}
+         encoding, profile, name}
       end)
 
     if @create_fixtures do

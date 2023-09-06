@@ -12,7 +12,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   """
   use Membrane.Bin
 
-  alias Membrane.{MP4, Time}
+  alias Membrane.{AAC, H264, MP4, Time}
   alias Membrane.HTTPAdaptiveStream.{Manifest, Sink, Storage}
 
   def_options manifest_name: [
@@ -339,7 +339,9 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
   defp get_payloader(encoding, state) do
     if encoding == :AAC,
-      do: MP4.Payloader.AAC,
-      else: %MP4.Payloader.H264{parameters_in_band?: state.mp4_parameters_in_band?}
+      do: %AAC.Parser{output_config: :esds, out_encapsulation: :none},
+      else: %H264.Parser{
+        output_stream_structure: if(state.mp4_parameters_in_band?, do: :avc3, else: :avc1)
+      }
   end
 end
