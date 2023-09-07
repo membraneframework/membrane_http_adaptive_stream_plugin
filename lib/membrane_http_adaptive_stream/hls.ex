@@ -155,6 +155,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     min_duration = Time.seconds(@min_segments_in_delta_playlist * target_duration)
 
     with true <- Track.supports_partial_segments?(track),
+         true <- track_supports_delta_creation?(track),
          latest_full_segments <-
            track.segments
            |> Qex.reverse()
@@ -179,6 +180,10 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     else
       _any -> :dont_create_delta
     end
+  end
+
+  defp track_supports_delta_creation?(track) do
+    track.target_window_duration == :infinity
   end
 
   defp build_media_playlist_path(track, opts \\ [delta?: false])
