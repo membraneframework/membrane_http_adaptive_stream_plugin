@@ -492,9 +492,9 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
 
   defp extract_preload_hint(contents) do
     contents
-    |> then(&Regex.run(~r/#EXT-X-PRELOAD-HINT:TYPE=PART,URI=.*$/, &1))
+    |> then(
+      &Regex.run(~r/#EXT-X-PRELOAD-HINT:TYPE=PART,URI="(.*)"$/, &1, capture: :all_but_first)
+    )
     |> hd()
-    |> String.split("\"")
-    |> Enum.at(1)
   end
 end
