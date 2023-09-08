@@ -193,11 +193,13 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
 
     {name, partial_sn} =
       if preload_hint? do
-        name = track.segment_naming_fun.(track) <> track.segment_extension
-
         case last_segment do
-          %Segment{type: :partial, parts: parts} -> {name, length(parts)}
-          %Segment{type: :full} -> {name, 0}
+          %Segment{type: :partial, parts: parts} ->
+            {last_segment.name, length(parts)}
+
+          %Segment{type: :full} ->
+            name = track.segment_naming_fun.(track) <> track.segment_extension
+            {name, 0}
         end
       else
         {partial_sn, _track} = get_partial_sequence_number(track, false)

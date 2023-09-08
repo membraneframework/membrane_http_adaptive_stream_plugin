@@ -358,7 +358,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
       ]
 
       for {type, segment_idx, parts} <- expected_segments do
-        manifest_name = "#{type}_track.m3u8"
         segment_name = "#{type}_segment_#{segment_idx}_#{type}_track.m4s"
 
         partial_segments =
@@ -373,8 +372,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
                               metadata: %{partial_name: ^partial_name}
                             }}
 
-            assert_receive {SendStorage, :store, %{type: :manifest, name: ^manifest_name}}
-
             segment
           end
 
@@ -387,6 +384,31 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
                           contents: ^full_segment
                         }}
       end
+
+      preload_hints =
+        expected_segments
+        |> Enum.flat_map(fn {_type, _segment_idx, parts} = tuple ->
+          for idx <- 0..parts, do: Tuple.append(tuple, idx)
+        end)
+        |> Enum.map(fn {type, segment_idx, parts, part_idx} ->
+          {segment_idx, part_idx} = calculate_preload_sn(segment_idx, part_idx, parts)
+          "#{type}_segment_#{segment_idx}_#{type}_track_#{part_idx}_part.m4s"
+        end)
+
+      expected_segments
+      |> Enum.flat_map(fn {type, _segment_idx, parts} -> for _idx <- 0..parts, do: type end)
+      |> Enum.reduce(preload_hints, fn type, preload_hints ->
+        manifest_name = "#{type}_track.m3u8"
+
+        assert_receive {SendStorage, :store,
+                        %{type: :manifest, contents: contents, name: ^manifest_name}}
+
+        preload_hint = extract_preload_hint(contents)
+
+        assert preload_hint in preload_hints
+
+        List.delete(preload_hints, preload_hint)
+      end)
 
       :ok = Testing.Pipeline.terminate(pipeline, blocking?: true)
 
@@ -458,5 +480,21 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
         )
       end
     end
+  end
+
+  defp calculate_preload_sn(segment_idx, part_idx, parts) do
+    if part_idx == parts do
+      {segment_idx + 1, 0}
+    else
+      {segment_idx, part_idx + 1}
+    end
+  end
+
+  defp extract_preload_hint(contents) do
+    contents
+    |> then(
+      &Regex.run(~r/#EXT-X-PRELOAD-HINT:TYPE=PART,URI="(.*)"$/, &1, capture: :all_but_first)
+    )
+    |> hd()
   end
 end
