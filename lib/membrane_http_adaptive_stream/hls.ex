@@ -29,16 +29,6 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   @keep_latest_n_segment_parts 4
   @min_segments_in_delta_playlist 6
 
-  # See https://github.com/membraneframework/membrane_http_adaptive_stream_plugin/pull/88
-  # and https://github.com/erlang/otp/issues/7624
-  @dialyzer {:nowarn_function,
-             [
-               add_serialized_track: 2,
-               build_media_playlist_path: 2,
-               serialize_segments: 2,
-               can_skip_until: 1
-             ]}
-
   defmodule SegmentAttribute do
     @moduledoc """
     Implementation of `Membrane.HTTPAdaptiveStream.Manifest.SegmentAttribute` behaviour for HTTP Live Streaming
@@ -153,11 +143,12 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
 
   defp maybe_calculate_delta_params(track, target_duration) do
     min_duration = Time.seconds(@min_segments_in_delta_playlist * target_duration)
+    segments = track.segments
 
     with true <- Track.supports_partial_segments?(track),
          true <- track_supports_delta_creation?(track),
          latest_full_segments <-
-           track.segments
+           segments
            |> Qex.reverse()
            |> Enum.drop_while(&(&1.type == :partial)),
          {skip_count, skip_duration} <-
