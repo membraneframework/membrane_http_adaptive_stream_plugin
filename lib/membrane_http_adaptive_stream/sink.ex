@@ -332,13 +332,16 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
        }) do
     {:ok, _pid} =
       Task.start(fn ->
-        to_remove = Manifest.all_segments_per_track(manifest)
+        segments_to_remove = Manifest.all_segments_per_track(manifest)
+        headers_to_remove = Manifest.all_headers_per_track(manifest)
+
         timeout = Membrane.Time.as_milliseconds(cleanup_after)
 
         Process.sleep(timeout)
 
         # cleanup all data of the secondary playlist and the master one
-        with {:ok, storage} <- Storage.clean_all_track_segments(storage, to_remove),
+        with {:ok, storage} <- Storage.clean_all_track_headers(storage, headers_to_remove),
+             {:ok, storage} <- Storage.clean_all_track_segments(storage, segments_to_remove),
              {:ok, _storage} <- Storage.cleanup(storage, :master, []) do
           :ok
         else

@@ -120,4 +120,9 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
   def all_segments_per_track(%__MODULE__{} = manifest) do
     Map.new(manifest.tracks, fn {track_id, track} -> {track_id, Track.all_segments(track)} end)
   end
+
+  @spec all_headers_per_track(t()) :: %{optional(track_id :: term()) => String.t()}
+  def all_headers_per_track(%__MODULE__{} = manifest) do
+    Map.new(manifest.tracks, fn {track_id, track} -> {track_id, Track.header(track)} end)
+  end
 end

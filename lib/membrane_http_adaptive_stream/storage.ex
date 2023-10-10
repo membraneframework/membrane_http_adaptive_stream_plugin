@@ -235,6 +235,28 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   end
 
   @doc """
+  Removes all headers grouped by track
+  """
+
+  @spec clean_all_track_headers(t(), %{(id :: any()) => String.t()}) :: {callback_result_t, t}
+  def clean_all_track_headers(storage, header_per_track) do
+    %__MODULE__{storage_impl: storage_impl, impl_state: impl_state} = storage
+
+    result =
+      Bunch.Enum.try_reduce(header_per_track, impl_state, fn {track_id, header}, impl_state ->
+        storage_impl.remove(track_id, header, %{type: :header}, impl_state)
+      end)
+
+    case result do
+      {:ok, impl_state} ->
+        {:ok, %__MODULE__{storage | impl_state: impl_state}}
+
+      {error, _impl_state} ->
+        {error, storage}
+    end
+  end
+
+  @doc """
   Removes all segments grouped by track.
   """
   @spec clean_all_track_segments(t(), %{(id :: any()) => [String.t()]}) ::
@@ -278,7 +300,7 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
            stored_manifests: MapSet.delete(manifests, manifest_to_delete)
        }}
     else
-      error -> {error, %{storage | impl_state: impl_state}}
+      {error, _impl_state} -> {error, %{storage | impl_state: impl_state}}
     end
   end
 
