@@ -332,8 +332,8 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
        }) do
     {:ok, _pid} =
       Task.start(fn ->
-        segments_to_remove = Manifest.all_segments_per_track(manifest)
-        headers_to_remove = Manifest.all_header_per_track(manifest)
+        segments_to_remove = Manifest.segments_per_track(manifest)
+        headers_to_remove = Manifest.header_per_track(manifest)
 
         timeout = Membrane.Time.as_milliseconds(cleanup_after)
 

@@ -114,15 +114,18 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
   @doc """
   Returns all segments grouped by the track id.
   """
-  @spec all_segments_per_track(t()) :: %{
+  @spec segments_per_track(t()) :: %{
           optional(track_id :: term()) => [segment_name :: String.t()]
         }
-  def all_segments_per_track(%__MODULE__{} = manifest) do
+  def segments_per_track(%__MODULE__{} = manifest) do
     Map.new(manifest.tracks, fn {track_id, track} -> {track_id, Track.all_segments(track)} end)
   end
 
-  @spec all_header_per_track(t()) :: %{optional(track_id :: term()) => String.t()}
-  def all_header_per_track(%__MODULE__{} = manifest) do
+  @doc """
+  Returns one header per track
+  """
+  @spec header_per_track(t()) :: %{optional(track_id :: term()) => String.t()}
+  def header_per_track(%__MODULE__{} = manifest) do
     Map.new(manifest.tracks, fn {track_id, track} -> {track_id, Track.header(track)} end)
   end
 end
