@@ -1,7 +1,7 @@
 defmodule Membrane.HTTPAdaptiveStream.MixProject do
   use Mix.Project
 
-  @version "0.17.1"
+  @version "0.17.2"
   @github_url "https://github.com/membraneframework/membrane_http_adaptive_stream_plugin"
 
   def project do
