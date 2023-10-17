@@ -188,6 +188,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
     assert_receive {SendStorage, :remove, %{type: :manifest, name: "index.m3u8"}}
     assert_receive {SendStorage, :remove, %{type: :manifest, name: "audio" <> _}}
     assert_receive {SendStorage, :remove, %{name: "audio_segment_0_" <> _}}
+    assert_receive {SendStorage, :remove, %{type: :header}}
     refute_receive {SendStorage, _, _}
   end
 

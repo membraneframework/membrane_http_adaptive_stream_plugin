@@ -237,19 +237,27 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   @doc """
   Removes all segments grouped by track.
   """
-  @spec clean_all_track_segments(t(), %{(id :: any()) => [String.t()]}) ::
+  @type segments :: [String.t()]
+  @type header :: String.t()
+
+  @spec clean_all_tracks(t(), %{(id :: any()) => segments()}, %{(id :: any()) => header()}) ::
           {callback_result_t, t}
-  def clean_all_track_segments(storage, segments_per_track) do
-    Bunch.Enum.try_reduce(segments_per_track, storage, fn {track_id, segments}, storage ->
-      cleanup(storage, track_id, segments)
+  def clean_all_tracks(storage, segments_per_track, header_per_track) do
+    segments_per_track
+    |> Enum.map(fn {track_id, segments} ->
+      {track_id, segments, Map.fetch!(header_per_track, track_id)}
+    end)
+    |> Bunch.Enum.try_reduce(storage, fn {track_id, segments, header}, storage ->
+      cleanup(storage, track_id, segments, header)
     end)
   end
 
   @doc """
   Removes all the saved segments and manifest for given id.
   """
-  @spec cleanup(t, id :: any(), segments :: [String.t()]) :: {callback_result_t, t}
-  def cleanup(storage, id, segments) do
+  @spec cleanup(t, id :: any(), segments :: segments(), header :: header() | nil) ::
+          {callback_result_t, t}
+  def cleanup(storage, id, segments, header) do
     %__MODULE__{storage_impl: storage_impl, impl_state: impl_state, stored_manifests: manifests} =
       storage
 
@@ -265,12 +273,13 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
       end
 
     with :ok <- manifest_remove_result,
-         {:ok, _impl_state} <-
+         {:ok, impl_state} <-
            Bunch.Enum.try_reduce(
              segments,
              impl_state,
              &storage_impl.remove(id, &1, %{type: :segment}, &2)
-           ) do
+           ),
+         {:ok, _impl_state} <- maybe_remove_header(id, header, impl_state, storage_impl) do
       {:ok,
        %__MODULE__{
          storage
@@ -278,7 +287,7 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
            stored_manifests: MapSet.delete(manifests, manifest_to_delete)
        }}
     else
-      error -> {error, %{storage | impl_state: impl_state}}
+      {error, impl_state} -> {error, %{storage | impl_state: impl_state}}
     end
   end
 
@@ -289,4 +298,9 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   def clear_cache(storage) do
     %__MODULE__{storage | cache: %{}}
   end
+
+  defp maybe_remove_header(_track_id, nil, impl_state, _storage_impl), do: {:ok, impl_state}
+
+  defp maybe_remove_header(track_id, header, impl_state, storage_impl),
+    do: storage_impl.remove(track_id, header, %{type: :header}, impl_state)
 end

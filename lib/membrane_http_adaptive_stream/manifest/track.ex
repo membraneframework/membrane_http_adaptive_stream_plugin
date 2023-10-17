@@ -350,6 +350,14 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     Qex.join(track.stale_segments, track.segments) |> Enum.map(& &1.name)
   end
 
+  @doc """
+  Returns current header name
+  """
+  @spec header(t()) :: String.t()
+  def header(%__MODULE__{} = track) do
+    track.header_name
+  end
+
   # Add a segment of given duration to the track.
   # It is recommended not to pass discontinuity attribute manually but use `discontinue/1` function instead.
   @spec add_segment(
