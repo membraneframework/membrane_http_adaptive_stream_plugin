@@ -18,7 +18,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
     use Membrane.Source
     alias Membrane.CMAF.Track
 
-    def_output_pad :output, accepted_format: Track, mode: :push
+    def_output_pad :output, accepted_format: Track, flow_control: :push
 
     def_options content_type: [spec: :audio | :video], source_id: [spec: String.t()]
 
@@ -54,7 +54,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
     assert_receive {SendStorage, :remove, %{name: "audio_segment_0_" <> _}}
     refute_receive {SendStorage, _, _}
 
-    :ok = Testing.Pipeline.terminate(pipeline, blocking?: true)
+    :ok = Testing.Pipeline.terminate(pipeline)
 
     assert_received {SendStorage, :store, %{type: :manifest, name: "audio" <> _}}
   end
@@ -92,7 +92,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
     assert_receive {SendStorage, :remove, %{name: "audio_segment_0_" <> _}}
     refute_receive {SendStorage, _, _}
 
-    :ok = Testing.Pipeline.terminate(pipeline, blocking?: true)
+    :ok = Testing.Pipeline.terminate(pipeline)
 
     assert_received {SendStorage, :store, %{type: :manifest, name: "audio" <> _}}
     assert_received {SendStorage, :store, %{type: :manifest, name: "video" <> _}}
@@ -165,7 +165,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
     assert_receive {SendStorage, :remove, %{name: "video_segment_0_video_1" <> _}}
     refute_receive {SendStorage, _, _}
 
-    :ok = Testing.Pipeline.terminate(pipeline, blocking?: true)
+    :ok = Testing.Pipeline.terminate(pipeline)
   end
 
   test "cleanup" do
@@ -183,7 +183,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
 
     assert_receive {SendStorage, :store, %{type: :manifest, name: "audio" <> _}}
 
-    Process.sleep(Membrane.Time.as_milliseconds(cleanup_after))
+    Process.sleep(Membrane.Time.as_milliseconds(cleanup_after, :round))
 
     assert_receive {SendStorage, :remove, %{type: :manifest, name: "index.m3u8"}}
     assert_receive {SendStorage, :remove, %{type: :manifest, name: "audio" <> _}}
@@ -222,11 +222,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
           |> get_child(:sink)
         end)
 
-    pipeline = Testing.Pipeline.start_link_supervised!(spec: structure)
-
-    assert_pipeline_play(pipeline)
-
-    pipeline
+    Testing.Pipeline.start_link_supervised!(spec: structure)
   end
 
   defp send_buf(pipeline, source_id, duration) do

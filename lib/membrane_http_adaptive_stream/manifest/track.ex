@@ -466,7 +466,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
          duration,
          size
        ) do
-    use Ratio
+    use Numbers, overload_operators: true
 
     partial_segment = %{
       independent?: independent?,
@@ -649,7 +649,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
          headers_acc,
          header
        ) do
-    use Ratio, comparison: true
+    use Numbers, overload_operators: true, comparison: true
     {segment, new_segments} = Qex.pop!(segments)
     new_window_duration = window_duration - segment.duration
 

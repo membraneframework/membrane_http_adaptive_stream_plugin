@@ -137,7 +137,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
             |> get_child(:sink_bin)
           end)
 
-      {[spec: structure, playback: :playing], %{}}
+      {[spec: structure], %{}}
     end
 
     defp segment_duration_for(:AAC),
@@ -242,7 +242,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
           }
         )
 
-      assert_pipeline_play(pipeline)
       assert_pipeline_notified(pipeline, :sink_bin, :end_of_stream, 10_000)
 
       File.ls!(tmp_dir)
@@ -339,7 +338,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
           }
         )
 
-      assert_pipeline_play(pipeline)
       assert_pipeline_notified(pipeline, :sink_bin, :end_of_stream, 10_000)
 
       assert_receive {SendStorage, :store, %{type: :manifest, name: "index.m3u8"}}, 1_000
@@ -410,7 +408,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
         List.delete(preload_hints, preload_hint)
       end)
 
-      :ok = Testing.Pipeline.terminate(pipeline, blocking?: true)
+      :ok = Testing.Pipeline.terminate(pipeline)
 
       # last manifests after EoS is received by the sink
       assert_receive {SendStorage, :store, %{type: :manifest, name: "video_track.m3u8"}}, 500
@@ -441,11 +439,9 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
       ]
       |> Testing.Pipeline.start_link_supervised!()
 
-    assert_pipeline_play(pipeline)
-
     assert_pipeline_notified(pipeline, :sink_bin, :end_of_stream, 10_000)
 
-    :ok = Testing.Pipeline.terminate(pipeline, blocking?: true)
+    :ok = Testing.Pipeline.terminate(pipeline)
   end
 
   defp test_pipeline(
