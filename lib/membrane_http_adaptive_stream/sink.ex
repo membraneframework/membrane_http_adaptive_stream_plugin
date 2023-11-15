@@ -73,6 +73,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
 
   def_input_pad :input,
     availability: :on_request,
+    flow_control: :manual,
     demand_unit: :buffers,
     accepted_format: CMAF.Track,
     options: [
@@ -219,7 +220,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
   def handle_pad_added(_pad, _ctx, state), do: {[], state}
 
   @impl true
-  def handle_write(Pad.ref(:input, track_id) = pad, buffer, _ctx, %{storage: storage} = state) do
+  def handle_buffer(Pad.ref(:input, track_id) = pad, buffer, _ctx, %{storage: storage} = state) do
     {changeset, manifest} = Manifest.add_chunk(state.manifest, track_id, buffer)
 
     with {:ok, storage} <- Storage.apply_track_changeset(storage, track_id, changeset),
@@ -335,7 +336,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
         segments_to_remove = Manifest.segments_per_track(manifest)
         headers_to_remove = Manifest.header_per_track(manifest)
 
-        timeout = Membrane.Time.as_milliseconds(cleanup_after)
+        timeout = Membrane.Time.as_milliseconds(cleanup_after, :round)
 
         Process.sleep(timeout)
 

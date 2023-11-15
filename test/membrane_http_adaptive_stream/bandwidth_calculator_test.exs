@@ -1,6 +1,6 @@
 defmodule Membrane.HTTPAdaptiveStream.BandwidthCalculatorTest do
   use ExUnit.Case
-  use Ratio, comparison: true
+  use Numbers, overload_operators: true, comparison: true
 
   alias Membrane.HTTPAdaptiveStream.BandwidthCalculator
   alias Membrane.HTTPAdaptiveStream.Manifest.Track
@@ -18,8 +18,8 @@ defmodule Membrane.HTTPAdaptiveStream.BandwidthCalculatorTest do
 
       assert BandwidthCalculator.calculate_avg_bandwidth(test_track) ==
                segments
-               |> Enum.map(fn {num, denom} -> Ratio.new(num * 8, denom / Time.second()) end)
-               |> Enum.reduce(Ratio.new(0), &Ratio.add(&1, &2))
+               |> Enum.map(fn {num, denom} -> Numbers.div(num * 8, denom / Time.second()) end)
+               |> Enum.reduce(Ratio.new(0), &Numbers.add(&1, &2))
                |> then(&(&1 / Enum.count(segments)))
                |> Ratio.floor()
     end

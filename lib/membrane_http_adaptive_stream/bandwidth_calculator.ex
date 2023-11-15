@@ -4,7 +4,7 @@ defmodule Membrane.HTTPAdaptiveStream.BandwidthCalculator do
   # Function to calculate multimedia track bandwidth
   # For a single track it comes down to finding a single segment with the highest bitrate, equal to the size in bits to duration ratio.
 
-  use Ratio, comparison: true
+  use Numbers, overload_operators: true
 
   alias Membrane.HTTPAdaptiveStream.Manifest.Track
   alias Membrane.Time
@@ -27,7 +27,7 @@ defmodule Membrane.HTTPAdaptiveStream.BandwidthCalculator do
     else
       segments
       |> Enum.map(fn sg -> 8 * sg.size / (sg.duration / Time.second()) end)
-      |> Enum.max(&Ratio.>=/2)
+      |> Enum.max(&Ratio.gte?/2)
       |> Ratio.trunc()
     end
   end
@@ -45,8 +45,9 @@ defmodule Membrane.HTTPAdaptiveStream.BandwidthCalculator do
     else
       segments
       |> Enum.reduce(Ratio.new(0), fn sg, ratio ->
-        Ratio.new(8 * sg.size, sg.duration / Time.second())
-        |> Ratio.add(ratio)
+        Ratio.new(8 * sg.size * Time.second())
+        |> Numbers.div(sg.duration)
+        |> Numbers.add(ratio)
       end)
       |> then(&(&1 / Enum.count(segments)))
       |> Ratio.trunc()

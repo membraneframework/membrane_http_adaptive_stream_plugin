@@ -6,7 +6,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   """
   @behaviour Membrane.HTTPAdaptiveStream.Manifest
 
-  use Ratio
+  use Numbers, overload_operators: true
 
   alias Membrane.HTTPAdaptiveStream.{BandwidthCalculator, Manifest}
   alias Membrane.HTTPAdaptiveStream.Manifest.{Segment, Track}

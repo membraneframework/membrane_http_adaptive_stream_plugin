@@ -101,7 +101,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
               ]
 
   def_input_pad :input,
-    demand_unit: :buffers,
     accepted_format:
       any_of(
         Membrane.AAC,
@@ -180,7 +179,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
   @impl true
   def handle_pad_added(pad, ctx, state) do
-    do_handle_pad_added(pad, ctx.options, ctx, state)
+    do_handle_pad_added(pad, ctx.pad_options, ctx, state)
   end
 
   defp do_handle_pad_added(pad, pad_options, ctx, state)
@@ -326,7 +325,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   end
 
   defp track_options(context) do
-    context.options
+    context.pad_options
     |> Map.take([:track_name, :segment_duration, :partial_segment_duration, :max_framerate])
     |> Keyword.new()
   end
