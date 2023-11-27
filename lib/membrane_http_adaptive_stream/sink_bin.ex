@@ -111,7 +111,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
       encoding: [
         spec: :AAC | :H264,
         description: """
-        Encoding type determining which payloader will be used for the given stream.
+        Encoding type determining which parser will be used for the given stream.
         """
       ],
       track_name: [
@@ -189,7 +189,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
     spec =
       bin_input(pad)
-      |> child({:payloader, ref}, get_payloader(pad_options.encoding, state))
+      |> child({:parser, ref}, get_parser(pad_options.encoding, state))
       |> child({:cmaf_muxer, ref}, cmaf_child_definiton(pad_options))
       |> via_in(pad, options: track_options(ctx))
       |> get_child(:sink)
@@ -201,12 +201,12 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   defp do_handle_pad_added(pad, %{encoding: :H264} = pad_options, ctx, %{mode: :muxed_av} = state)
        when is_map_key(ctx.children, :audio_tee) do
     Pad.ref(:input, ref) = pad
-    payloader = get_payloader(:H264, state)
+    parser = get_parser(:H264, state)
     muxer = cmaf_child_definiton(pad_options)
 
     spec = [
       bin_input(pad)
-      |> child({:payloader, ref}, payloader)
+      |> child({:parser, ref}, parser)
       |> child({:cmaf_muxer, ref}, muxer)
       |> via_in(pad, options: track_options(ctx))
       |> get_child(:sink),
@@ -239,12 +239,12 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
       end)
 
     Pad.ref(:input, ref) = pad
-    payloader = get_payloader(:AAC, state)
+    parser = get_parser(:AAC, state)
 
     spec =
       [
         bin_input(pad)
-        |> child({:payloader, ref}, payloader)
+        |> child({:parser, ref}, parser)
         |> child(:audio_tee, Membrane.Tee.Parallel)
       ] ++ postponed_cmaf_muxers
 
@@ -268,14 +268,14 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   def handle_pad_removed(Pad.ref(:input, ref), ctx, state) do
     children =
       ([
-         get_child({:payloader, ref})
+         get_child({:parser, ref})
        ] ++ if(state.mode != :muxed_av, do: [get_child({:cmaf_muxer, ref})], else: []))
       |> Enum.filter(fn child_name ->
         child_entry = Map.get(ctx.children, child_name)
         child_entry != nil and !child_entry.terminating?
       end)
 
-    {[remove_child: children], state}
+    {[remove_children: children], state}
   end
 
   @impl true
@@ -336,7 +336,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
         metadata.options.encoding == :AAC
       end)
 
-  defp get_payloader(encoding, state) do
+  defp get_parser(encoding, state) do
     if encoding == :AAC,
       do: %AAC.Parser{output_config: :esds, out_encapsulation: :none},
       else: %H264.Parser{
