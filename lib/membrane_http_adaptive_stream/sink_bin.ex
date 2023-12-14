@@ -268,8 +268,8 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
   def handle_pad_removed(Pad.ref(:input, ref), ctx, state) do
     children =
       ([
-         get_child({:parser, ref})
-       ] ++ if(state.mode != :muxed_av, do: [get_child({:cmaf_muxer, ref})], else: []))
+         {:parser, ref}
+       ] ++ if(state.mode != :muxed_av, do: [{:cmaf_muxer, ref}], else: []))
       |> Enum.filter(fn child_name ->
         child_entry = Map.get(ctx.children, child_name)
         child_entry != nil and !child_entry.terminating?
