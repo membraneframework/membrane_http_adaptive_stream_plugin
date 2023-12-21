@@ -442,6 +442,8 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
     audio_track = "audio_track"
 
     assert_receive {SendStorage, :store, %{type: :manifest, name: "index.m3u8"}}, 2_000
+    assert_receive {SendStorage, :store, %{type: :manifest, name: "video_track.m3u8"}}, 1_000
+    assert_receive {SendStorage, :store, %{type: :manifest, name: "audio_track.m3u8"}}, 1_000
 
     :ok =
       Testing.Pipeline.execute_actions(pipeline,
@@ -453,8 +455,9 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
     :ok = Testing.Pipeline.terminate(pipeline)
 
     # last manifests after EoS is received by the sink
-    assert_receive {SendStorage, :store, %{type: :manifest, name: "video_track.m3u8"}}, 1_000
-    assert_receive {SendStorage, :store, %{type: :manifest, name: "audio_track.m3u8"}}, 1_000
+    assert_receive {SendStorage, :store, %{type: :manifest, name: "index.m3u8"}}, 10_000
+    assert_receive {SendStorage, :store, %{type: :manifest, name: "video_track.m3u8"}}, 10_000
+    assert_receive {SendStorage, :store, %{type: :manifest, name: "audio_track.m3u8"}}, 10_000
   end
 
   defp run_pipeline(sources, result_directory, %{
