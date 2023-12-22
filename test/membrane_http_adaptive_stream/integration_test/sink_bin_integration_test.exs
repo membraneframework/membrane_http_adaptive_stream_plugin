@@ -88,7 +88,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
         storage: storage,
         hls_mode: hls_mode,
         mode: if(partial_segments, do: :live, else: :vod),
-        cleanup_after: Membrane.Time.seconds(1)
+        cleanup_after: Membrane.Time.second()
       }
 
       children =
