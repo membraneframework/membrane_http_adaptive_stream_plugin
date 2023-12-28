@@ -87,7 +87,8 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
         persist?: persist?,
         storage: storage,
         hls_mode: hls_mode,
-        mode: if(partial_segments, do: :live, else: :vod)
+        mode: if(partial_segments, do: :live, else: :vod),
+        cleanup_after: Membrane.Time.second()
       }
 
       children =
@@ -414,6 +415,50 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
       assert_receive {SendStorage, :store, %{type: :manifest, name: "video_track.m3u8"}}, 500
       assert_receive {SendStorage, :store, %{type: :manifest, name: "audio_track.m3u8"}}, 500
     end
+  end
+
+  test "audio and video tracks with removing pad" do
+    alias Membrane.HTTPAdaptiveStream.Storages.SendStorage
+
+    hackney_sources =
+      @audio_video_tracks_sources
+      |> Enum.map(fn {path, encoding, profile, name} ->
+        {%Membrane.Hackney.Source{location: path, hackney_opts: [follow_redirect: true]},
+         encoding, profile, name}
+      end)
+
+    pipeline =
+      Testing.Pipeline.start_link_supervised!(
+        module: TestPipeline,
+        custom_args: %{
+          sources: hackney_sources,
+          hls_mode: @pipeline_config.hls_mode,
+          partial_segments: true,
+          target_window_duration: @pipeline_config.target_window_duration,
+          persist?: @pipeline_config.persist?,
+          storage: %SendStorage{destination: self()}
+        }
+      )
+
+    audio_track = "audio_track"
+
+    assert_receive {SendStorage, :store, %{type: :manifest, name: "index.m3u8"}}, 2_000
+    assert_receive {SendStorage, :store, %{type: :manifest, name: "video_track.m3u8"}}, 1_000
+    assert_receive {SendStorage, :store, %{type: :manifest, name: "audio_track.m3u8"}}, 1_000
+
+    :ok =
+      Testing.Pipeline.execute_actions(pipeline,
+        remove_children: [{:source, audio_track}, {:parser, audio_track}]
+      )
+
+    assert_pipeline_notified(pipeline, :sink_bin, :end_of_stream, 10_000)
+
+    :ok = Testing.Pipeline.terminate(pipeline)
+
+    # last manifests after EoS is received by the sink
+    assert_receive {SendStorage, :remove, %{type: :manifest, name: "index.m3u8"}}, 10_000
+    assert_receive {SendStorage, :remove, %{type: :manifest, name: "video_track.m3u8"}}, 10_000
+    assert_receive {SendStorage, :remove, %{type: :manifest, name: "audio_track.m3u8"}}, 10_000
   end
 
   defp run_pipeline(sources, result_directory, %{
