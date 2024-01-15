@@ -179,6 +179,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
   @impl true
   def handle_pad_added(pad, ctx, state) do
+    IO.inspect("hellooo")
     do_handle_pad_added(pad, ctx.pad_options, ctx, state)
   end
 
@@ -206,7 +207,9 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
 
     spec = [
       bin_input(pad)
+      |> IO.inspect(label: "pre_parser")
       |> child({:parser, ref}, parser)
+      |> IO.inspect(label: "post_parser")
       |> child({:cmaf_muxer, ref}, muxer)
       |> via_in(pad, options: track_options(ctx))
       |> get_child(:sink),
