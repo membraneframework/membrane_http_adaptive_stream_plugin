@@ -1,0 +1,15 @@
+#EXTM3U
+#EXT-X-VERSION:7
+#EXT-X-TARGETDURATION:3
+#EXT-X-MEDIA-SEQUENCE:0
+#EXT-X-DISCONTINUITY-SEQUENCE:0
+#EXT-X-MAP:URI="video_header_video_track_part_0.mp4"
+#EXTINF:3.0,
+video_segment_0_video_track.m4s
+#EXTINF:3.0,
+video_segment_1_video_track.m4s
+#EXTINF:3.0,
+video_segment_2_video_track.m4s
+#EXTINF:1.08,
+video_segment_3_video_track.m4s
+#EXT-X-ENDLIST
