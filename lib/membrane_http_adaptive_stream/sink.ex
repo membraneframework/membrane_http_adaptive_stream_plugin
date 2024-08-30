@@ -14,7 +14,7 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
 
   The following configuration:
 
-  %#{inspect(__MODULE__)}{
+      %#{inspect(__MODULE__)}{
         manifest_config: %ManifestConfig{name: "manifest", module: Membrane.HTTPAdaptiveStream.HLS}
         storage: %Membrane.HTTPAdaptiveStream.Storages.FileStorage{directory: "output"}
       }

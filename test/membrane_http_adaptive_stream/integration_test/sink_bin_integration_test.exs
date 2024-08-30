@@ -30,6 +30,14 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
   @live_stream_ref_path "./test/membrane_http_adaptive_stream/integration_test/fixtures/live/"
   @persisted_stream_ref_path "./test/membrane_http_adaptive_stream/integration_test/fixtures/persisted/"
 
+  @audio_video_hevc_tracks_source [
+    {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/test-audio.aac",
+     :AAC, :LC, "audio_track"},
+    {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/ffmpeg-testsrc.h265",
+     :H265, :main, "video_track"}
+  ]
+  @audio_video_hevc_tracks_ref_path "./test/membrane_http_adaptive_stream/integration_test/fixtures/audio_video_hevc_tracks/"
+
   @audio_multiple_video_tracks_sources [
     {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s.aac",
      :AAC, :LC, "audio_track"},
@@ -108,6 +116,12 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
                   generate_best_effort_timestamps: %{framerate: {25, 1}}
                 }
 
+              {:H265, _profile} ->
+                %Membrane.H265.Parser{
+                  output_alignment: :au,
+                  generate_best_effort_timestamps: %{framerate: {25, 1}}
+                }
+
               {:AAC, _profile} ->
                 %Membrane.AAC.Parser{
                   out_encapsulation: :none
@@ -132,7 +146,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
                 segment_duration: segment_duration_for(encoding),
                 partial_segment_duration:
                   if(partial_segments, do: partial_segment_duration_for(encoding), else: nil),
-                max_framerate: if(encoding == :H264, do: 25, else: nil)
+                max_framerate: if(encoding in [:H264, :H265], do: 25, else: nil)
               ]
             )
             |> get_child(:sink_bin)
@@ -144,13 +158,13 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
     defp segment_duration_for(:AAC),
       do: Time.milliseconds(2000)
 
-    defp segment_duration_for(:H264),
+    defp segment_duration_for(codec) when codec in [:H264, :H265],
       do: Time.milliseconds(2000)
 
     defp partial_segment_duration_for(:AAC),
       do: Time.milliseconds(500)
 
-    defp partial_segment_duration_for(:H264),
+    defp partial_segment_duration_for(codec) when codec in [:H264, :H265],
       do: Time.milliseconds(500)
   end
 
@@ -164,6 +178,15 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
       test_pipeline(
         @audio_video_tracks_sources,
         @audio_video_tracks_ref_path,
+        tmp_dir
+      )
+    end
+
+    @tag :tmp_dir
+    test "audio and hevc video tracks", %{tmp_dir: tmp_dir} do
+      test_pipeline(
+        @audio_video_hevc_tracks_source,
+        @audio_video_hevc_tracks_ref_path,
         tmp_dir
       )
     end
