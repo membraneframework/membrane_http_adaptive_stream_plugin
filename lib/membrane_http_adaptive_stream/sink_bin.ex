@@ -237,12 +237,19 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
     postponed_cmaf_muxers =
       Map.values(ctx.pads)
       |> Enum.filter(&(&1.direction == :input and &1.options[:encoding] in [:H264, :H265]))
-      |> Enum.map(fn pad_data ->
+      |> Enum.flat_map(fn pad_data ->
         Pad.ref(:input, cmaf_ref) = pad_data.ref
         muxer = cmaf_child_definiton(pad_options)
 
-        get_child(:audio_tee)
-        |> child({:cmaf_muxer, cmaf_ref}, muxer)
+        [
+          bin_input(pad_data.ref)
+          |> child({:parser, cmaf_ref}, get_parser(pad_data.options.encoding, state))
+          |> child({:cmaf_muxer, cmaf_ref}, muxer)
+          |> via_in(pad, options: track_options(ctx))
+          |> get_child(:sink),
+          get_child(:audio_tee)
+          |> get_child({:cmaf_muxer, cmaf_ref})
+        ]
       end)
 
     Pad.ref(:input, ref) = pad

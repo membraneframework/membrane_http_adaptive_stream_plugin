@@ -231,6 +231,6 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
       metadata: %{duration: Time.seconds(duration), independent?: true, last_chunk?: true}
     }
 
-    Testing.Pipeline.message_child(pipeline, {:source, source_id}, {:buffer, buffer})
+    Testing.Pipeline.notify_child(pipeline, {:source, source_id}, {:buffer, buffer})
   end
 end
