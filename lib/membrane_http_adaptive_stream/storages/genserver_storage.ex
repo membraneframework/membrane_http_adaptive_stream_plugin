@@ -40,10 +40,7 @@ defmodule Membrane.HTTPAdaptiveStream.Storages.GenServerStorage do
   end
 
   @impl true
-  def store(parent_id, name, contents, metadata, context, %__MODULE__{
-        destination: destination,
-        method: method
-      }) do
+  def store(parent_id, name, contents, metadata, context, impl_state) do
     params =
       Map.merge(context, %{
         parent_id: parent_id,
@@ -52,12 +49,12 @@ defmodule Membrane.HTTPAdaptiveStream.Storages.GenServerStorage do
         metadata: metadata
       })
 
-    method.(destination, {__MODULE__, :store, params})
+    {impl_state.method.(impl_state.destination, {__MODULE__, :store, params}), impl_state}
   end
 
   @impl true
-  def remove(parent_id, name, context, %__MODULE__{destination: destination, method: method}) do
+  def remove(parent_id, name, context, impl_state) do
     params = Map.merge(context, %{parent_id: parent_id, name: name})
-    method.(destination, {__MODULE__, :remove, params})
+    {impl_state.method.(impl_state.destination, {__MODULE__, :store, params}), impl_state}
   end
 end
