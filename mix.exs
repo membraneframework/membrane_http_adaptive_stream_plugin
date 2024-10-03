@@ -66,7 +66,7 @@ defmodule Membrane.HTTPAdaptiveStream.MixProject do
       {:membrane_core, "~> 1.0"},
       {:membrane_tee_plugin, "~> 0.12.0"},
       {:membrane_mp4_plugin, "~> 0.35.0"},
-      {:membrane_aac_plugin, "~> 0.18.0"},
+      {:membrane_aac_plugin, "~> 0.19.0"},
       {:membrane_h26x_plugin, "~> 0.10.0"},
       {:bunch, "~> 1.6"},
       {:qex, "~> 0.5"},
