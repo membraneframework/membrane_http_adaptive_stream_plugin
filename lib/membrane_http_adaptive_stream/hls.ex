@@ -196,11 +196,15 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
         |> String.trim()
 
       %Track{content_type: type} when type in [:video, :muxed] ->
-        """
-        #EXT-X-STREAM-INF:#{serialize_bandwidth(track)}#{serialize_resolution(track)}#{serialize_framerate(track)}#{serialize_encoding(track)}
-        """
-        |> String.trim()
+        build_variant_stream_tag(track)
     end
+  end
+
+  defp build_variant_stream_tag(%Track{} = track) do
+    """
+    #EXT-X-STREAM-INF:#{serialize_bandwidth(track)}#{serialize_resolution(track)}#{serialize_framerate(track)}#{serialize_encoding(track)}
+    """
+    |> String.trim()
   end
 
   defp serialize_bandwidth(track) do
@@ -247,8 +251,8 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   defp build_master_playlist(tracks) do
     case tracks do
       {audio, nil} ->
-        [@master_playlist_header, build_media_playlist_tag(audio)]
-        |> Enum.join("")
+        [@master_playlist_header, build_media_playlist_tag(audio), build_variant_stream_tag(audio), build_media_playlist_path(audio)]
+        |> Enum.join("\n")
 
       {nil, videos} ->
         [
