@@ -251,7 +251,12 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
   defp build_master_playlist(tracks) do
     case tracks do
       {audio, nil} ->
-        [@master_playlist_header, build_media_playlist_tag(audio), build_variant_stream_tag(audio), build_media_playlist_path(audio)]
+        [
+          @master_playlist_header,
+          build_media_playlist_tag(audio),
+          build_variant_stream_tag(audio),
+          build_media_playlist_path(audio)
+        ]
         |> Enum.join("\n")
 
       {nil, videos} ->

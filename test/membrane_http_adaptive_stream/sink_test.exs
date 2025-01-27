@@ -52,6 +52,10 @@ defmodule Membrane.HTTPAdaptiveStream.SinkTest do
     assert_receive {SendStorage, :store, %{type: :manifest, name: "audio" <> _}}
     assert_receive {SendStorage, :store, %{name: "audio_segment_2_" <> _}}
     assert_receive {SendStorage, :remove, %{name: "audio_segment_0_" <> _}}
+
+    # Average bandwith change causes update in master manifest
+    assert_receive {SendStorage, :store, %{type: :manifest, name: "index.m3u8"}}
+
     refute_receive {SendStorage, _, _}
 
     :ok = Testing.Pipeline.terminate(pipeline)
