@@ -20,6 +20,15 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
 
   @min_number_of_segments_in_delta_playlist 6
 
+  @audio_track_source [
+    {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/test-audio.aac",
+     :AAC, :LC, "audio_track"}
+  ]
+
+  @audio_track_ref_path [
+    "./test/membrane_http_adaptive_stream/integration_test/fixtures/audio_track/"
+  ]
+
   @audio_video_tracks_sources [
     {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/test-audio.aac",
      :AAC, :LC, "audio_track"},
@@ -173,6 +182,15 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
   end
 
   describe "Test HLS content creation for" do
+    @tag :tmp_dir
+    test "single audio track", %{tmp_dir: tmp_dir} do
+      test_pipeline(
+        @audio_track_source,
+        @audio_track_ref_path,
+        tmp_dir
+      )
+    end
+
     @tag :tmp_dir
     test "audio and video tracks", %{tmp_dir: tmp_dir} do
       test_pipeline(
