@@ -428,7 +428,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
       preload_hints =
         expected_segments
         |> Enum.flat_map(fn {_type, _segment_idx, parts} = tuple ->
-          for idx <- 0..parts, do: Tuple.append(tuple, idx)
+          for idx <- 0..parts, do: Tuple.insert_at(tuple, 3, idx)
         end)
         |> Enum.map(fn {type, segment_idx, parts, part_idx} ->
           {segment_idx, part_idx} = calculate_preload_sn(segment_idx, part_idx, parts)
