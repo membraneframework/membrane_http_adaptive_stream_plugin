@@ -55,6 +55,6 @@ defmodule Membrane.HTTPAdaptiveStream.Storages.GenServerStorage do
   @impl true
   def remove(parent_id, name, context, impl_state) do
     params = Map.merge(context, %{parent_id: parent_id, name: name})
-    {impl_state.method.(impl_state.destination, {__MODULE__, :store, params}), impl_state}
+    {impl_state.method.(impl_state.destination, {__MODULE__, :remove, params}), impl_state}
   end
 end
