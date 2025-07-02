@@ -63,11 +63,12 @@ defmodule Membrane.HTTPAdaptiveStream.MixProject do
 
   defp deps do
     [
-      {:membrane_core, "~> 1.0"},
+      {:membrane_core, "~> 1.2"},
       {:membrane_tee_plugin, "~> 0.12.0"},
       {:membrane_mp4_plugin, "~> 0.35.0"},
       {:membrane_aac_plugin, "~> 0.19.0"},
       {:membrane_h26x_plugin, "~> 0.10.0"},
+      {:ex_hls, path: "../ex_hls"},
       {:bunch, "~> 1.6"},
       {:qex, "~> 0.5"},
       {:membrane_hackney_plugin, "~> 0.11.0", only: :test},
