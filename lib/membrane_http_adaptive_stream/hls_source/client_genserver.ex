@@ -46,7 +46,7 @@ defmodule Membrane.HLS.Source.ClientGenServer do
   def handle_cast({:request_video, pid}, state) do
     {frame, client} = Client.read_video_frame(state.client)
     send(pid, {:video_stream, frame})
-    {:noreply}
+    {:noreply, %{state | client: client}}
   end
 
   @impl true

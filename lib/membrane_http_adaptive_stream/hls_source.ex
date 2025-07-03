@@ -2,7 +2,6 @@ defmodule Membrane.HLS.Source do
   use Membrane.Source
   require Membrane.Pad, as: Pad
 
-  alias ExHLS.Client
   alias __MODULE__.ClientGenServer
 
   alias Membrane.{
@@ -12,14 +11,14 @@ defmodule Membrane.HLS.Source do
   }
 
   def_output_pad :video_output,
-    accepted_format: any_of(H264, %RemoteStream{content_type: H264}),
+    accepted_format: any_of(H264, %RemoteStream{content_format: H264}),
     availability: :on_request,
     max_instances: 1,
     flow_control: :manual,
     demand_unit: :buffers
 
   def_output_pad :audio_output,
-    accepted_format: any_of(AAC, %RemoteStream{content_type: AAC}),
+    accepted_format: any_of(AAC, %RemoteStream{content_format: AAC}),
     availability: :on_request,
     max_instances: 1,
     flow_control: :manual,
@@ -50,8 +49,8 @@ defmodule Membrane.HLS.Source do
         :fmp4 -> ExHLS.DemuxingEngine.CMAF
       end
 
-    {:ok, clinet_genserver} = ClientGenServer.start_link(url, demuxing_engine)
-    %{state | client_genserver: clinet_genserver}
+    {:ok, clinet_genserver} = ClientGenServer.start_link(state.url, demuxing_engine)
+    {[], %{state | client_genserver: clinet_genserver}}
   end
 
   @impl true
@@ -61,7 +60,7 @@ defmodule Membrane.HLS.Source do
   end
 
   @impl true
-  def handle_playing(_ctx, state) do
+  def handle_playing(ctx, state) do
     if ctx.pads |> map_size() < 2 do
       raise "HLS Source requires both audio and video output pads to be present"
     end
@@ -70,16 +69,18 @@ defmodule Membrane.HLS.Source do
       ClientGenServer.get_tracks_info(state.client_genserver)
       |> Map.values()
       |> Enum.split_with(fn
-        %RemoteStream{content_type: AAC} -> true
-        %RemoteStream{content_type: H264} -> false
+        %RemoteStream{content_format: AAC} -> true
+        %RemoteStream{content_format: H264} -> false
         %AAC{} -> true
         %H264{} -> false
       end)
 
-    {[
-       stream_format: {:audio_output, audio_stream_format},
-       stream_format: {:video_output, video_stream_format}
-     ], %{state | client_server: client_server}}
+    actions = [
+      stream_format: {state.audio_output.pad_ref, audio_stream_format},
+      stream_format: {state.video_output.pad_ref, video_stream_format}
+    ]
+
+    {actions, state}
   end
 
   @impl true
@@ -107,7 +108,7 @@ defmodule Membrane.HLS.Source do
     {[redemand: state[pad_name].pad_ref], state}
   end
 
-  defp pop_buffers(Pad.ref(pad_name, _id) = pad_ref, demand, state) do
+  defp pop_buffers(Pad.ref(pad_name, _id), demand, state) do
     range_upperbound = min(state[pad_name].qex_size, demand)
 
     if range_upperbound > 0 do
@@ -135,8 +136,8 @@ defmodule Membrane.HLS.Source do
   end
 
   defp request_frames(state) do
-    [audio_output: :request_audio, video_output: :request_video]
-    |> Enum.reduce(state, fn {pad_name, request_type}, state ->
+    [:audio_output, :video_output]
+    |> Enum.reduce(state, fn pad_name, state ->
       request_size = state.buffer_size - state[pad_name].qex_size - state[pad_name].requested
       :ok = do_request(state, pad_name, request_size)
 
@@ -145,7 +146,7 @@ defmodule Membrane.HLS.Source do
     end)
   end
 
-  defp do_request(_state, _pad_name, 0), do: :ok
+  defp do_request(_state, _pad_name, request_size) when request_size < 1, do: :ok
 
   defp do_request(state, :audio_output, request_size) do
     1..request_size
