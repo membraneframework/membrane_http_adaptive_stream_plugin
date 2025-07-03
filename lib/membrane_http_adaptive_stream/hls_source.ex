@@ -1,4 +1,4 @@
-defmodule Membrane.HLS.ExHLSSource do
+defmodule Membrane.HLS.Source do
   use Membrane.Source
   require Membrane.Pad, as: Pad
 
@@ -112,7 +112,7 @@ defmodule Membrane.HLS.ExHLSSource do
 
     if range_upperbound > 0 do
       1..range_upperbound
-      |> Enum.reduce({[], state}, fn _i, {actions_acc, state} ->
+      |> Enum.map_reduce(state, fn _i, state ->
         {frame, qex} = state[pad_name].qex |> Qex.pop!()
 
         buffer = %Membrane.Buffer{
@@ -127,7 +127,7 @@ defmodule Membrane.HLS.ExHLSSource do
           |> put_in([pad_name, :qex], qex)
           |> update_in([pad_name, :qex_size], &(&1 - 1))
 
-        {[buffer | actions_acc], state}
+        {buffer, state}
       end)
     else
       {[], state}
