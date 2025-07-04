@@ -24,9 +24,21 @@ defmodule Membrane.HLS.Source do
     flow_control: :manual,
     demand_unit: :buffers
 
+  @type variant_selection_policy() ::
+          :lowest_resolution
+          | :highest_resolution
+          | :lowest_bandwidth
+          | :highest_bandwidth
+          | (variants_map :: %{optional(integer()) => ExHLS.Client.variant_description()} ->
+               variant_id :: integer())
+
   def_options url: [spec: String.t()],
               buffer_size: [spec: pos_integer(), default: 0],
-              container: [spec: :mpeg_ts | :fmp4, default: :mpeg_ts]
+              container: [spec: :mpeg_ts | :fmp4, default: :mpeg_ts],
+              variant_selection_policy: [
+                spec: variant_selection_policy(),
+                default: :highest_resolution
+              ]
 
   @impl true
   def handle_init(_ctx, opts) do
@@ -49,7 +61,9 @@ defmodule Membrane.HLS.Source do
         :fmp4 -> ExHLS.DemuxingEngine.CMAF
       end
 
-    {:ok, clinet_genserver} = ClientGenServer.start_link(state.url, demuxing_engine)
+    {:ok, clinet_genserver} =
+      ClientGenServer.start_link(state.url, demuxing_engine, state.variant_selection_policy)
+
     {[], %{state | client_genserver: clinet_genserver}}
   end
 

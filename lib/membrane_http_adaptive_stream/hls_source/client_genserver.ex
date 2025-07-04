@@ -6,10 +6,18 @@ defmodule Membrane.HLS.Source.ClientGenServer do
   use GenServer
   alias ExHLS.Client
 
-  @spec start_link(String.t(), ExHLS.DemuxingEngine.CMAF | ExHLS.DemuxingEngine.MPEGTS) ::
+  @spec start_link(
+          String.t(),
+          ExHLS.DemuxingEngine.CMAF | ExHLS.DemuxingEngine.MPEGTS,
+          Membrane.HLS.Source.variant_selection_policy()
+        ) ::
           GenServer.on_start()
-  def start_link(url, demuxing_engine) do
-    GenServer.start_link(__MODULE__, url: url, demuxing_engine: demuxing_engine)
+  def start_link(url, demuxing_engine, variant_selection_policy) do
+    GenServer.start_link(__MODULE__,
+      url: url,
+      demuxing_engine: demuxing_engine,
+      variant_selection_policy: variant_selection_policy
+    )
   end
 
   @spec request_audio(pid()) :: :ok
@@ -28,11 +36,44 @@ defmodule Membrane.HLS.Source.ClientGenServer do
   end
 
   @impl true
-  def init(url: url, demuxing_engine: demuxing_engine) do
-    client = Client.new(url, demuxing_engine)
-    variant_id = Client.get_variants(client) |> Enum.at(0) |> elem(0)
-    client = Client.choose_variant(client, variant_id)
-    {:ok, %{client: client}}
+  def init(
+        url: url,
+        demuxing_engine: demuxing_engine,
+        variant_selection_policy: variant_selection_policy
+      ) do
+    state = %{
+      client: Client.new(url, demuxing_engine),
+      variant_selection_policy: variant_selection_policy
+    }
+
+    {:ok, state |> choose_variant()}
+  end
+
+  defp choose_variant(state) do
+    variants = Client.get_variants(state.client)
+    get_resolution = fn {_id, %{resolution: {width, height}}} -> width * height end
+    get_bandwidth = fn {_id, %{bandwidth: bandwidth}} -> bandwidth end
+
+    chosen_variant_id =
+      case state.variant_selection_policy do
+        :lowest_resolution ->
+          variants |> Enum.min_by(get_resolution) |> elem(0)
+
+        :highest_resolution ->
+          variants |> Enum.max_by(get_resolution) |> elem(0)
+
+        :lowest_bandwidth ->
+          variants |> Enum.min_by(get_bandwidth) |> elem(0)
+
+        :highest_bandwidth ->
+          variants |> Enum.max_by(get_bandwidth) |> elem(0)
+
+        custom_policy when is_function(custom_policy, 1) ->
+          variants |> custom_policy.()
+      end
+
+    client = state.client |> Client.choose_variant(chosen_variant_id)
+    %{state | client: client}
   end
 
   @impl true
