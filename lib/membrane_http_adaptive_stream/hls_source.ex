@@ -32,6 +32,8 @@ defmodule Membrane.HLS.Source do
     flow_control: :manual,
     demand_unit: :buffers
 
+  # The boundary on how many samples of one stream will be requested
+  # from Membrane.HLS.Source.ClientGenServer at once.
   @requested_samples_boundary 5
 
   @variant_selection_policy_description """
@@ -68,6 +70,9 @@ defmodule Membrane.HLS.Source do
                 Amount of time of stream, that will be buffered by #{inspect(__MODULE__)}.
 
                 Defaults to 1 second.
+
+                Due to implementation details, the amount of the buffered stream might
+                be slightly different than specyfied value.
                 """
               ],
               variant_selection_policy: [
@@ -82,7 +87,13 @@ defmodule Membrane.HLS.Source do
 
   @impl true
   def handle_init(_ctx, opts) do
-    initial_pad_state = %{requested: 0, qex: Qex.new(), qex_size: 0, oldest_buffer_dts: nil}
+    initial_pad_state = %{
+      requested: 0,
+      qex: Qex.new(),
+      qex_size: 0,
+      oldest_buffer_dts: nil,
+      eos_received?: false
+    }
 
     state =
       Map.from_struct(opts)
@@ -101,7 +112,7 @@ defmodule Membrane.HLS.Source do
       ClientGenServer.start_link(state.url, state.variant_selection_policy)
 
     # todo: maybe we should call here `get_tracks_info/1` to start downloading segments
-    # or we should start buffering the frames?
+    # or we should start buffering frames?
 
     {[], %{state | client_genserver: client_genserver}}
   end
@@ -133,19 +144,14 @@ defmodule Membrane.HLS.Source do
 
   @impl true
   def handle_demand(pad_ref, demand, :buffers, _ctx, state) do
-    {buffers, state} = pop_buffers(pad_ref, demand, state)
+    {actions, state} = pop_buffers(pad_ref, demand, state)
     state = request_samples(state)
-    {[buffer: {pad_ref, buffers}], state}
+    {actions, state}
   end
 
   @impl true
-  def handle_info({data_type, %ExHLS.Sample{} = sample}, _ctx, state)
-      when data_type in [:audio_sample_, :video_sample] do
-    pad_ref =
-      case data_type do
-        :audio_sample -> :audio_output
-        :video_sample -> :video_output
-      end
+  def handle_info({data_type, %ExHLS.Sample{} = sample}, _ctx, state) do
+    pad_ref = data_type_to_pad_ref(data_type)
 
     buffer = %Buffer{
       payload: sample.payload,
@@ -168,20 +174,48 @@ defmodule Membrane.HLS.Source do
     {[redemand: pad_ref], state}
   end
 
+  @impl true
+  def handle_info({data_type, :end_of_stream}, _ctx, state) do
+    pad_ref = data_type_to_pad_ref(data_type)
+
+    state =
+      if state[pad_ref].eos_received? do
+        state
+      else
+        state
+        |> put_in([pad_ref, :eos_received?], true)
+        |> update_in([pad_ref, :qex], &Qex.push(&1, :end_of_stream))
+        |> update_in([pad_ref, :qex_size], &(&1 + 1))
+      end
+
+    state = state |> update_in([pad_ref, :requested], &(&1 - 1))
+
+    {[redemand: pad_ref], state}
+  end
+
+  defp data_type_to_pad_ref(:audio_sample), do: :audio_output
+  defp data_type_to_pad_ref(:video_sample), do: :video_output
+
   defp pop_buffers(pad_ref, demand, state) do
     how_many_pop = min(state[pad_ref].qex_size, demand)
 
     1..how_many_pop//1
-    |> Enum.map_reduce(state, fn _i, state ->
-      {%Buffer{} = buffer, qex} = state[pad_ref].qex |> Qex.pop!()
+    |> Enum.flat_map_reduce(state, fn _i, state ->
+      {buffer_or_eos, qex} = state[pad_ref].qex |> Qex.pop!()
 
       state =
         state
-        |> put_in([pad_ref, :oldest_buffer_dts], buffer.dts)
         |> put_in([pad_ref, :qex], qex)
         |> update_in([pad_ref, :qex_size], &(&1 - 1))
 
-      {buffer, state}
+      case buffer_or_eos do
+        %Buffer{} = buffer ->
+          state = state |> put_in([pad_ref, :oldest_buffer_dts], buffer.dts)
+          {[buffer: {pad_ref, buffer}], state}
+
+        :end_of_stream ->
+          {[end_of_stream: pad_ref], state}
+      end
     end)
   end
 
@@ -189,9 +223,13 @@ defmodule Membrane.HLS.Source do
     [:audio_output, :video_output]
     |> Enum.reduce(state, fn pad_ref, state ->
       oldest_dts = state[pad_ref].oldest_buffer_dts
+      eos_received? = state[pad_ref].eos_received?
 
       request_size =
         case state[pad_ref].qex |> Qex.first() do
+          _any when eos_received? ->
+            0
+
           # todo: maybe we should handle rollovers
           {:value, %Buffer{dts: newest_dts}}
           when newest_dts - oldest_dts >= state.buffered_stream_time ->

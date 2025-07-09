@@ -56,36 +56,73 @@ defmodule Membrane.HLS.Source.ClientGenServer do
   def handle_info(:setup, state) do
     state =
       %{state | client: Client.new(state.url)}
-      |> choose_variant()
+
+    # |> choose_variant()
+
+    variants = Client.get_variants(state.client)
+
+    state =
+      if variants != %{} do
+        get_resolution_fn = fn {_id, %{resolution: {width, height}}} -> width * height end
+        get_bandwidth_fn = fn {_id, %{bandwidth: bandwidth}} -> bandwidth end
+
+        chosen_variant_id =
+          case state.variant_selection_policy do
+            :lowest_resolution ->
+              variants |> Enum.min_by(get_resolution_fn) |> elem(0)
+
+            :highest_resolution ->
+              variants |> Enum.max_by(get_resolution_fn) |> elem(0)
+
+            :lowest_bandwidth ->
+              variants |> Enum.min_by(get_bandwidth_fn) |> elem(0)
+
+            :highest_bandwidth ->
+              variants |> Enum.max_by(get_bandwidth_fn) |> elem(0)
+
+            custom_policy when is_function(custom_policy, 1) ->
+              variants |> custom_policy.()
+          end
+
+        client = state.client |> Client.choose_variant(chosen_variant_id)
+        %{state | client: client}
+      else
+        state
+      end
 
     {:noreply, state}
   end
 
   defp choose_variant(state) do
     variants = Client.get_variants(state.client)
-    get_resolution_fn = fn {_id, %{resolution: {width, height}}} -> width * height end
-    get_bandwidth_fn = fn {_id, %{bandwidth: bandwidth}} -> bandwidth end
 
-    chosen_variant_id =
-      case state.variant_selection_policy do
-        :lowest_resolution ->
-          variants |> Enum.min_by(get_resolution_fn) |> elem(0)
+    if variants != %{} do
+      get_resolution_fn = fn {_id, %{resolution: {width, height}}} -> width * height end
+      get_bandwidth_fn = fn {_id, %{bandwidth: bandwidth}} -> bandwidth end
 
-        :highest_resolution ->
-          variants |> Enum.max_by(get_resolution_fn) |> elem(0)
+      chosen_variant_id =
+        case state.variant_selection_policy do
+          :lowest_resolution ->
+            variants |> Enum.min_by(get_resolution_fn) |> elem(0)
 
-        :lowest_bandwidth ->
-          variants |> Enum.min_by(get_bandwidth_fn) |> elem(0)
+          :highest_resolution ->
+            variants |> Enum.max_by(get_resolution_fn) |> elem(0)
 
-        :highest_bandwidth ->
-          variants |> Enum.max_by(get_bandwidth_fn) |> elem(0)
+          :lowest_bandwidth ->
+            variants |> Enum.min_by(get_bandwidth_fn) |> elem(0)
 
-        custom_policy when is_function(custom_policy, 1) ->
-          variants |> custom_policy.()
-      end
+          :highest_bandwidth ->
+            variants |> Enum.max_by(get_bandwidth_fn) |> elem(0)
 
-    client = state.client |> Client.choose_variant(chosen_variant_id)
-    %{state | client: client}
+          custom_policy when is_function(custom_policy, 1) ->
+            variants |> custom_policy.()
+        end
+
+      client = state.client |> Client.choose_variant(chosen_variant_id)
+      %{state | client: client}
+    else
+      state
+    end
   end
 
   @impl true
