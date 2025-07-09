@@ -151,6 +151,7 @@ defmodule Membrane.HLS.Source do
       |> update_in([pad_ref, :qex], &Qex.push(&1, sample))
       |> update_in([pad_ref, :qex_size], &(&1 + 1))
       |> update_in([pad_ref, :requested], &(&1 - 1))
+      |> request_samples()
 
     {[redemand: pad_ref], state}
   end
