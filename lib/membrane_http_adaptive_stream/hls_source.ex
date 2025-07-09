@@ -82,7 +82,7 @@ defmodule Membrane.HLS.Source do
 
   @impl true
   def handle_init(_ctx, opts) do
-    initial_pad_state = %{requested: 0, qex: Qex.new(), oldest_buffer_dts: nil}
+    initial_pad_state = %{requested: 0, qex: Qex.new(), qex_size: 0, oldest_buffer_dts: nil}
 
     state =
       Map.from_struct(opts)
@@ -118,6 +118,7 @@ defmodule Membrane.HLS.Source do
       stream_format: {:video_output, video_stream_format}
     ]
 
+    state = request_samples(state)
     {actions, state}
   end
 
@@ -138,7 +139,7 @@ defmodule Membrane.HLS.Source do
   end
 
   @impl true
-  def handle_info({data_type, sample}, _ctx, state)
+  def handle_info({data_type, %ExHLS.Sample{} = sample}, _ctx, state)
       when data_type in [:audio_sample_, :video_sample] do
     pad_ref =
       case data_type do
@@ -146,41 +147,42 @@ defmodule Membrane.HLS.Source do
         :video_sample -> :video_output
       end
 
+    buffer = %Buffer{
+      payload: sample.payload,
+      pts: sample.pts_ms |> Membrane.Time.milliseconds(),
+      dts: sample.dts_ms |> Membrane.Time.milliseconds(),
+      metadata: sample.metadata
+    }
+
     state =
       state
-      |> update_in([pad_ref, :qex], &Qex.push(&1, sample))
+      |> update_in([pad_ref, :qex], &Qex.push(&1, buffer))
       |> update_in([pad_ref, :qex_size], &(&1 + 1))
       |> update_in([pad_ref, :requested], &(&1 - 1))
+      |> update_in([pad_ref, :oldest_buffer_dts], fn
+        nil -> buffer.dts
+        oldest_dts -> oldest_dts
+      end)
       |> request_samples()
 
     {[redemand: pad_ref], state}
   end
 
   defp pop_buffers(pad_ref, demand, state) do
-    range_upperbound = min(state[pad_ref].qex_size, demand)
+    how_many_pop = min(state[pad_ref].qex_size, demand)
 
-    if range_upperbound > 0 do
-      1..range_upperbound
-      |> Enum.map_reduce(state, fn _i, state ->
-        {%ExHLS.Sample{} = sample, qex} = state[pad_ref].qex |> Qex.pop!()
+    1..how_many_pop//1
+    |> Enum.map_reduce(state, fn _i, state ->
+      {%Buffer{} = buffer, qex} = state[pad_ref].qex |> Qex.pop!()
 
-        buffer = %Buffer{
-          payload: sample.payload,
-          pts: sample.pts_ms |> Membrane.Time.milliseconds(),
-          dts: sample.dts_ms |> Membrane.Time.milliseconds(),
-          metadata: sample.metadata
-        }
+      state =
+        state
+        |> put_in([pad_ref, :oldest_buffer_dts], buffer.dts)
+        |> put_in([pad_ref, :qex], qex)
+        |> update_in([pad_ref, :qex_size], &(&1 - 1))
 
-        state =
-          state
-          |> put_in([pad_ref, :qex], qex)
-          |> update_in([pad_ref, :qex_size], &(&1 - 1))
-
-        {buffer, state}
-      end)
-    else
-      {[], state}
-    end
+      {buffer, state}
+    end)
   end
 
   defp request_samples(state) do
@@ -196,7 +198,7 @@ defmodule Membrane.HLS.Source do
             0
 
           _empty_or_not_new_enough ->
-            @requested_samples_boundary - state[pad_ref].qex_size - state[pad_ref].requested
+            @requested_samples_boundary - state[pad_ref].requested
         end
 
       1..request_size//1

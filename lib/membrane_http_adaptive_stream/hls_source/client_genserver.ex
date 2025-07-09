@@ -28,6 +28,9 @@ defmodule Membrane.HLS.Source.ClientGenServer do
     GenServer.cast(client_genserver, {:request_video_sample, self()})
   end
 
+  # this function should be called by Membrane.HLS.Source
+  # before we start buffering the samples, to avoid waiting
+  # on downloading many segments
   @spec get_tracks_info(pid()) :: map()
   def get_tracks_info(client_genserver) do
     GenServer.call(client_genserver, :get_tracks_info)
