@@ -12,15 +12,11 @@ defmodule Membrane.HLS.Source do
 
   def_output_pad :video_output,
     accepted_format: any_of(H264, %RemoteStream{content_format: H264}),
-    availability: :on_request,
-    max_instances: 1,
     flow_control: :manual,
     demand_unit: :buffers
 
   def_output_pad :audio_output,
     accepted_format: any_of(AAC, %RemoteStream{content_format: AAC}),
-    availability: :on_request,
-    max_instances: 1,
     flow_control: :manual,
     demand_unit: :buffers
 
@@ -34,7 +30,6 @@ defmodule Membrane.HLS.Source do
 
   def_options url: [spec: String.t()],
               buffer_size: [spec: pos_integer(), default: 0],
-              container: [spec: :mpeg_ts | :fmp4, default: :mpeg_ts],
               variant_selection_policy: [
                 spec: variant_selection_policy(),
                 default: :highest_resolution
@@ -45,8 +40,8 @@ defmodule Membrane.HLS.Source do
     state =
       Map.from_struct(opts)
       |> Map.merge(%{
-        audio_output: %{pad_ref: nil, requested: 0, qex: Qex.new(), qex_size: 0},
-        video_output: %{pad_ref: nil, requested: 0, qex: Qex.new(), qex_size: 0},
+        audio_output: %{requested: 0, qex: Qex.new(), qex_size: 0},
+        video_output: %{requested: 0, qex: Qex.new(), qex_size: 0},
         client_genserver: nil
       })
 
@@ -55,30 +50,14 @@ defmodule Membrane.HLS.Source do
 
   @impl true
   def handle_setup(_ctx, state) do
-    demuxing_engine =
-      case state.container do
-        :mpeg_ts -> ExHLS.DemuxingEngine.MPEGTS
-        :fmp4 -> ExHLS.DemuxingEngine.CMAF
-      end
+    {:ok, client_genserver} =
+      ClientGenServer.start_link(state.url, state.variant_selection_policy)
 
-    {:ok, clinet_genserver} =
-      ClientGenServer.start_link(state.url, demuxing_engine, state.variant_selection_policy)
-
-    {[], %{state | client_genserver: clinet_genserver}}
-  end
-
-  @impl true
-  def handle_pad_added(Pad.ref(pad_name, _id) = pad_ref, _ctx, state) do
-    state = state |> put_in([pad_name, :pad_ref], pad_ref)
-    {[], state}
+    {[], %{state | client_genserver: client_genserver}}
   end
 
   @impl true
   def handle_playing(ctx, state) do
-    if ctx.pads |> map_size() < 2 do
-      raise "HLS Source requires both audio and video output pads to be present"
-    end
-
     {[audio_stream_format], [video_stream_format]} =
       ClientGenServer.get_tracks_info(state.client_genserver)
       |> Map.values()
@@ -90,8 +69,8 @@ defmodule Membrane.HLS.Source do
       end)
 
     actions = [
-      stream_format: {state.audio_output.pad_ref, audio_stream_format},
-      stream_format: {state.video_output.pad_ref, video_stream_format}
+      stream_format: {:audio_output, audio_stream_format},
+      stream_format: {:video_output, video_stream_format}
     ]
 
     {actions, state}
@@ -105,42 +84,42 @@ defmodule Membrane.HLS.Source do
   end
 
   @impl true
-  def handle_info({stream_type, frame}, _ctx, state)
-      when stream_type in [:audio_stream, :video_stream] do
-    pad_name =
-      case stream_type do
-        :audio_stream -> :audio_output
-        :video_stream -> :video_output
+  def handle_info({data_type, sample}, _ctx, state)
+      when data_type in [:audio_sample_, :video_sample] do
+    pad_ref =
+      case data_type do
+        :audio_sample -> :audio_output
+        :video_sample -> :video_output
       end
 
     state =
       state
-      |> update_in([pad_name, :qex], &Qex.push(&1, frame))
-      |> update_in([pad_name, :qex_size], &(&1 + 1))
-      |> update_in([pad_name, :requested], &(&1 - 1))
+      |> update_in([pad_ref, :qex], &Qex.push(&1, sample))
+      |> update_in([pad_ref, :qex_size], &(&1 + 1))
+      |> update_in([pad_ref, :requested], &(&1 - 1))
 
-    {[redemand: state[pad_name].pad_ref], state}
+    {[redemand: pad_ref], state}
   end
 
-  defp pop_buffers(Pad.ref(pad_name, _id), demand, state) do
-    range_upperbound = min(state[pad_name].qex_size, demand)
+  defp pop_buffers(pad_ref, demand, state) do
+    range_upperbound = min(state[pad_ref].qex_size, demand)
 
     if range_upperbound > 0 do
       1..range_upperbound
       |> Enum.map_reduce(state, fn _i, state ->
-        {frame, qex} = state[pad_name].qex |> Qex.pop!()
+        {%ExHLS.Sample{} = sample, qex} = state[pad_ref].qex |> Qex.pop!()
 
         buffer = %Membrane.Buffer{
-          payload: frame.payload,
-          pts: frame.pts |> Membrane.Time.milliseconds(),
-          dts: frame.dts |> Membrane.Time.milliseconds(),
-          metadata: frame.metadata
+          payload: sample.payload,
+          pts: sample.pts_ms |> Membrane.Time.milliseconds(),
+          dts: sample.dts_ms |> Membrane.Time.milliseconds(),
+          metadata: sample.metadata
         }
 
         state =
           state
-          |> put_in([pad_name, :qex], qex)
-          |> update_in([pad_name, :qex_size], &(&1 - 1))
+          |> put_in([pad_ref, :qex], qex)
+          |> update_in([pad_ref, :qex_size], &(&1 - 1))
 
         {buffer, state}
       end)
@@ -149,30 +128,24 @@ defmodule Membrane.HLS.Source do
     end
   end
 
-  defp request_frames(state) do
+  defp request_samples(state) do
     [:audio_output, :video_output]
-    |> Enum.reduce(state, fn pad_name, state ->
-      request_size = state.buffer_size - state[pad_name].qex_size - state[pad_name].requested
-      :ok = do_request(state, pad_name, request_size)
+    |> Enum.reduce(state, fn pad_ref, state ->
+      request_size = state.buffer_size - state[pad_ref].qex_size - state[pad_ref].requested
+
+      if request_size > 0 do
+        1..request_size
+        |> Enum.each(fn _i -> reuqest_single_sample(pad_ref, state) end)
+      end
 
       state
-      |> update_in([pad_name, :requested], &(&1 + request_size))
+      |> update_in([pad_ref, :requested], &(&1 + request_size))
     end)
   end
 
-  defp do_request(_state, _pad_name, request_size) when request_size < 1, do: :ok
+  defp request_single_sample(:audio_output, state),
+    do: ClientGenServer.request_audio_sample(state.client_genserver)
 
-  defp do_request(state, :audio_output, request_size) do
-    1..request_size
-    |> Enum.each(fn _i ->
-      ClientGenServer.request_audio(state.client_genserver)
-    end)
-  end
-
-  defp do_request(state, :video_output, request_size) do
-    1..request_size
-    |> Enum.each(fn _i ->
-      ClientGenServer.request_video(state.client_genserver)
-    end)
-  end
+  defp request_single_sample(:video_output, state),
+    do: ClientGenServer.request_video_sample(state.client_genserver)
 end

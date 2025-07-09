@@ -8,26 +8,24 @@ defmodule Membrane.HLS.Source.ClientGenServer do
 
   @spec start_link(
           String.t(),
-          ExHLS.DemuxingEngine.CMAF | ExHLS.DemuxingEngine.MPEGTS,
           Membrane.HLS.Source.variant_selection_policy()
         ) ::
           GenServer.on_start()
-  def start_link(url, demuxing_engine, variant_selection_policy) do
+  def start_link(url, variant_selection_policy) do
     GenServer.start_link(__MODULE__,
       url: url,
-      demuxing_engine: demuxing_engine,
       variant_selection_policy: variant_selection_policy
     )
   end
 
-  @spec request_audio(pid()) :: :ok
-  def request_audio(client_genserver) do
-    GenServer.cast(client_genserver, {:request_audio, self()})
+  @spec request_audio_sample(pid()) :: :ok
+  def request_audio_sample(client_genserver) do
+    GenServer.cast(client_genserver, {:request_audio_sample, self()})
   end
 
-  @spec request_video(pid()) :: :ok
-  def request_video(client_genserver) do
-    GenServer.cast(client_genserver, {:request_video, self()})
+  @spec request_video_sample(pid()) :: :ok
+  def request_video_sample(client_genserver) do
+    GenServer.cast(client_genserver, {:request_video_sample, self()})
   end
 
   @spec get_tracks_info(pid()) :: map()
@@ -36,37 +34,48 @@ defmodule Membrane.HLS.Source.ClientGenServer do
   end
 
   @impl true
-  def init(
-        url: url,
-        demuxing_engine: demuxing_engine,
-        variant_selection_policy: variant_selection_policy
-      ) do
+  def init(url: url, variant_selection_policy: variant_selection_policy) do
     state = %{
-      client: Client.new(url, demuxing_engine),
-      variant_selection_policy: variant_selection_policy
+      url: url,
+      variant_selection_policy: variant_selection_policy,
+      client: nil
     }
 
-    {:ok, state |> choose_variant()}
+    # let's create Client and choose variant asnychronously
+    # beyond init/1, because it requires doing some HTTP requests
+    # so it can take some time
+    self() |> send(:setup)
+
+    {:ok, state}
+  end
+
+  @impl true
+  def handle_info(:setup, state) do
+    state =
+      %{state | client: Client.new(state.url)}
+      |> choose_variant()
+
+    {:noreply, state}
   end
 
   defp choose_variant(state) do
     variants = Client.get_variants(state.client)
-    get_resolution = fn {_id, %{resolution: {width, height}}} -> width * height end
-    get_bandwidth = fn {_id, %{bandwidth: bandwidth}} -> bandwidth end
+    get_resolution_fn = fn {_id, %{resolution: {width, height}}} -> width * height end
+    get_bandwidth_fn = fn {_id, %{bandwidth: bandwidth}} -> bandwidth end
 
     chosen_variant_id =
       case state.variant_selection_policy do
         :lowest_resolution ->
-          variants |> Enum.min_by(get_resolution) |> elem(0)
+          variants |> Enum.min_by(get_resolution_fn) |> elem(0)
 
         :highest_resolution ->
-          variants |> Enum.max_by(get_resolution) |> elem(0)
+          variants |> Enum.max_by(get_resolution_fn) |> elem(0)
 
         :lowest_bandwidth ->
-          variants |> Enum.min_by(get_bandwidth) |> elem(0)
+          variants |> Enum.min_by(get_bandwidth_fn) |> elem(0)
 
         :highest_bandwidth ->
-          variants |> Enum.max_by(get_bandwidth) |> elem(0)
+          variants |> Enum.max_by(get_bandwidth_fn) |> elem(0)
 
         custom_policy when is_function(custom_policy, 1) ->
           variants |> custom_policy.()
@@ -77,16 +86,16 @@ defmodule Membrane.HLS.Source.ClientGenServer do
   end
 
   @impl true
-  def handle_cast({:request_audio, pid}, state) do
-    {frame, client} = Client.read_audio_frame(state.client)
-    send(pid, {:audio_stream, frame})
+  def handle_cast({:request_audio_sample, pid}, state) do
+    {sample, client} = Client.read_audio_sample(state.client)
+    send(pid, {:audio_sample, sample})
     {:noreply, %{state | client: client}}
   end
 
   @impl true
-  def handle_cast({:request_video, pid}, state) do
-    {frame, client} = Client.read_video_frame(state.client)
-    send(pid, {:video_stream, frame})
+  def handle_cast({:request_video_sample, pid}, state) do
+    {sample, client} = Client.read_video_sample(state.client)
+    send(pid, {:video_sample, sample})
     {:noreply, %{state | client: client}}
   end
 
