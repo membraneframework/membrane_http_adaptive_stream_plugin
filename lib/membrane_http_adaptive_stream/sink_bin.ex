@@ -245,7 +245,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
           bin_input(pad_data.ref)
           |> child({:parser, cmaf_ref}, get_parser(pad_data.options.encoding, state))
           |> child({:cmaf_muxer, cmaf_ref}, muxer)
-          |> via_in(pad, options: track_options(ctx))
+          |> via_in(pad_data.ref, options: track_options(ctx))
           |> get_child(:sink),
           get_child(:audio_tee)
           |> get_child({:cmaf_muxer, cmaf_ref})
