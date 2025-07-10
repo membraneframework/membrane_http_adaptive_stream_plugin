@@ -270,9 +270,11 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
         pipeline_config
       )
     end
-    
+
     @tag :tmp_dir
-    test "audio and multiple video tracks added before audio track - muxed AV", %{tmp_dir: tmp_dir} do
+    test "audio and multiple video tracks added before audio track - muxed AV", %{
+      tmp_dir: tmp_dir
+    } do
       pipeline_config = %{@pipeline_config | hls_mode: :muxed_av}
 
       test_pipeline(
