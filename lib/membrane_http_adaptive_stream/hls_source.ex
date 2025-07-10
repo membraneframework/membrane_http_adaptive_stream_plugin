@@ -64,7 +64,7 @@ defmodule Membrane.HLS.Source do
               ],
               buffered_stream_time: [
                 spec: Membrane.Time.t(),
-                default: Membrane.Time.seconds(1),
+                default: Membrane.Time.seconds(10),
                 inspector: &Membrane.Time.inspect/1,
                 description: """
                 Amount of time of stream, that will be buffered by #{inspect(__MODULE__)}.
@@ -122,7 +122,7 @@ defmodule Membrane.HLS.Source do
     {[audio_stream_format], [video_stream_format]} =
       ClientGenServer.get_tracks_info(state.client_genserver)
       |> Map.values()
-      |> Enum.split_with(&is_audio_stream_format/1)
+      |> Enum.split_with(&audio_stream_format?/1)
 
     actions = [
       stream_format: {:audio_output, audio_stream_format},
@@ -133,7 +133,7 @@ defmodule Membrane.HLS.Source do
     {actions, state}
   end
 
-  defp is_audio_stream_format(stream_format) do
+  defp audio_stream_format?(stream_format) do
     case stream_format do
       %RemoteStream{content_format: AAC} -> true
       %RemoteStream{content_format: H264} -> false
