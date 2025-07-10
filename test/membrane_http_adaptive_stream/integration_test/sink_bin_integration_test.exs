@@ -16,7 +16,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
     target_window_duration: Membrane.Time.seconds(30),
     persist?: false
   }
-  @create_fixtures false
+  @create_fixtures true
 
   @min_number_of_segments_in_delta_playlist 6
 
@@ -69,7 +69,20 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
     {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s_720x480.h264",
      :H264, :high, "video_720x480"}
   ]
+
+  @muxed_av_reordered_sources [
+    {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s_480x270.h264",
+     :H264, :constrained_baseline, "video_480x270"},
+    {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s_540x360.h264",
+     :H264, :high, "video_540x360"},
+    {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s_720x480.h264",
+     :H264, :high, "video_720x480"},
+    {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s.aac",
+     :AAC, :LC, "audio_track"}
+  ]
+
   @muxed_av_ref_path "./test/membrane_http_adaptive_stream/integration_test/fixtures/muxed_av/"
+  @muxed_av_reordered_ref_path "./test/membrane_http_adaptive_stream/integration_test/fixtures/muxed_av_reordered/"
 
   @delta_test_sources [
     {"http://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s_480x270_120s.h264",
@@ -253,6 +266,18 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
       test_pipeline(
         @muxed_av_sources,
         @muxed_av_ref_path,
+        tmp_dir,
+        pipeline_config
+      )
+    end
+    
+    @tag :tmp_dir
+    test "audio and multiple video tracks added before audio track - muxed AV", %{tmp_dir: tmp_dir} do
+      pipeline_config = %{@pipeline_config | hls_mode: :muxed_av}
+
+      test_pipeline(
+        @muxed_av_reordered_sources,
+        @muxed_av_reordered_ref_path,
         tmp_dir,
         pipeline_config
       )
