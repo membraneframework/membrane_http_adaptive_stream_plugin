@@ -16,7 +16,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBinIntegrationTest do
     target_window_duration: Membrane.Time.seconds(30),
     persist?: false
   }
-  @create_fixtures true
+  @create_fixtures false
 
   @min_number_of_segments_in_delta_playlist 6
 
