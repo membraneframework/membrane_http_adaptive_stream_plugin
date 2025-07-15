@@ -18,18 +18,18 @@ defmodule Membrane.HLS.Source.ClientGenServer do
     )
   end
 
-  @spec request_audio_sample(pid()) :: :ok
-  def request_audio_sample(client_genserver) do
-    GenServer.cast(client_genserver, {:request_audio_sample, self()})
+  @spec request_audio_chunk(pid()) :: :ok
+  def request_audio_chunk(client_genserver) do
+    GenServer.cast(client_genserver, {:request_audio_chunk, self()})
   end
 
-  @spec request_video_sample(pid()) :: :ok
-  def request_video_sample(client_genserver) do
-    GenServer.cast(client_genserver, {:request_video_sample, self()})
+  @spec request_video_chunk(pid()) :: :ok
+  def request_video_chunk(client_genserver) do
+    GenServer.cast(client_genserver, {:request_video_chunk, self()})
   end
 
   # this function should be called by Membrane.HLS.Source
-  # before we start buffering the samples, to avoid waiting
+  # before we start buffering the chunks, to avoid waiting
   # on downloading many segments
   @spec get_tracks_info(pid()) :: map()
   def get_tracks_info(client_genserver) do
@@ -94,16 +94,16 @@ defmodule Membrane.HLS.Source.ClientGenServer do
   end
 
   @impl true
-  def handle_cast({:request_audio_sample, pid}, state) do
-    {sample, client} = Client.read_audio_sample(state.client)
-    send(pid, {:audio_sample, sample})
+  def handle_cast({:request_audio_chunk, pid}, state) do
+    {chunk, client} = Client.read_audio_chunk(state.client)
+    send(pid, {:audio_chunk, chunk})
     {:noreply, %{state | client: client}}
   end
 
   @impl true
-  def handle_cast({:request_video_sample, pid}, state) do
-    {sample, client} = Client.read_video_sample(state.client)
-    send(pid, {:video_sample, sample})
+  def handle_cast({:request_video_chunk, pid}, state) do
+    {chunk, client} = Client.read_video_chunk(state.client)
+    send(pid, {:video_chunk, chunk})
     {:noreply, %{state | client: client}}
   end
 

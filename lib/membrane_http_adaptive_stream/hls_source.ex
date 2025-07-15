@@ -32,9 +32,9 @@ defmodule Membrane.HLS.Source do
     flow_control: :manual,
     demand_unit: :buffers
 
-  # The boundary on how many samples of one stream will be requested
+  # The boundary on how many chunks of one stream will be requested
   # from Membrane.HLS.Source.ClientGenServer at once.
-  @requested_samples_boundary 5
+  @requested_chunks_boundary 5
 
   @variant_selection_policy_description """
   The policy used to select a variant from the list of available variants.
@@ -129,7 +129,7 @@ defmodule Membrane.HLS.Source do
       stream_format: {:video_output, video_stream_format}
     ]
 
-    state = request_samples(state)
+    state = request_media_chunks(state)
     {actions, state}
   end
 
@@ -145,19 +145,19 @@ defmodule Membrane.HLS.Source do
   @impl true
   def handle_demand(pad_ref, demand, :buffers, _ctx, state) do
     {actions, state} = pop_buffers(pad_ref, demand, state)
-    state = request_samples(state)
+    state = request_media_chunks(state)
     {actions, state}
   end
 
   @impl true
-  def handle_info({data_type, %ExHLS.Sample{} = sample}, _ctx, state) do
+  def handle_info({data_type, %ExHLS.Chunk{} = chunk}, _ctx, state) do
     pad_ref = data_type_to_pad_ref(data_type)
 
     buffer = %Buffer{
-      payload: sample.payload,
-      pts: sample.pts_ms |> Membrane.Time.milliseconds(),
-      dts: sample.dts_ms |> Membrane.Time.milliseconds(),
-      metadata: sample.metadata
+      payload: chunk.payload,
+      pts: chunk.pts_ms |> Membrane.Time.milliseconds(),
+      dts: chunk.dts_ms |> Membrane.Time.milliseconds(),
+      metadata: chunk.metadata
     }
 
     state =
@@ -169,7 +169,7 @@ defmodule Membrane.HLS.Source do
         nil -> buffer.dts
         oldest_dts -> oldest_dts
       end)
-      |> request_samples()
+      |> request_media_chunks()
 
     {[redemand: pad_ref], state}
   end
@@ -193,8 +193,8 @@ defmodule Membrane.HLS.Source do
     {[redemand: pad_ref], state}
   end
 
-  defp data_type_to_pad_ref(:audio_sample), do: :audio_output
-  defp data_type_to_pad_ref(:video_sample), do: :video_output
+  defp data_type_to_pad_ref(:audio_chunk), do: :audio_output
+  defp data_type_to_pad_ref(:video_chunk), do: :video_output
 
   defp pop_buffers(pad_ref, demand, state) do
     how_many_pop = min(state[pad_ref].qex_size, demand)
@@ -219,7 +219,7 @@ defmodule Membrane.HLS.Source do
     end)
   end
 
-  defp request_samples(state) do
+  defp request_media_chunks(state) do
     [:audio_output, :video_output]
     |> Enum.reduce(state, fn pad_ref, state ->
       oldest_dts = state[pad_ref].oldest_buffer_dts
@@ -236,20 +236,20 @@ defmodule Membrane.HLS.Source do
             0
 
           _empty_or_not_new_enough ->
-            @requested_samples_boundary - state[pad_ref].requested
+            @requested_chunks_boundary - state[pad_ref].requested
         end
 
       1..request_size//1
-      |> Enum.each(fn _i -> request_single_sample(pad_ref, state) end)
+      |> Enum.each(fn _i -> request_single_chunk(pad_ref, state) end)
 
       state
       |> update_in([pad_ref, :requested], &(&1 + request_size))
     end)
   end
 
-  defp request_single_sample(:audio_output, state),
-    do: ClientGenServer.request_audio_sample(state.client_genserver)
+  defp request_single_chunk(:audio_output, state),
+    do: ClientGenServer.request_audio_chunk(state.client_genserver)
 
-  defp request_single_sample(:video_output, state),
-    do: ClientGenServer.request_video_sample(state.client_genserver)
+  defp request_single_chunk(:video_output, state),
+    do: ClientGenServer.request_video_chunk(state.client_genserver)
 end
