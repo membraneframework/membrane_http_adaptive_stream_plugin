@@ -192,7 +192,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
       bin_input(pad)
       |> child({:parser, ref}, get_parser(pad_options.encoding, state))
       |> child({:cmaf_muxer, ref}, cmaf_child_definiton(pad_options))
-      |> via_in(pad, options: track_options(ctx))
+      |> via_in(pad, options: track_options(ctx.pad_options))
       |> get_child(:sink)
 
     state = increment_streams_counters(state)
@@ -214,7 +214,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
       bin_input(pad)
       |> child({:parser, ref}, parser)
       |> child({:cmaf_muxer, ref}, muxer)
-      |> via_in(pad, options: track_options(ctx))
+      |> via_in(pad, options: track_options(ctx.pad_options))
       |> get_child(:sink),
       get_child(:audio_tee)
       |> get_child({:cmaf_muxer, ref})
@@ -245,7 +245,7 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
           bin_input(pad_data.ref)
           |> child({:parser, cmaf_ref}, get_parser(pad_data.options.encoding, state))
           |> child({:cmaf_muxer, cmaf_ref}, muxer)
-          |> via_in(pad, options: track_options(ctx))
+          |> via_in(pad_data.ref, options: track_options(pad_data.options))
           |> get_child(:sink),
           get_child(:audio_tee)
           |> get_child({:cmaf_muxer, cmaf_ref})
@@ -338,8 +338,8 @@ defmodule Membrane.HTTPAdaptiveStream.SinkBin do
     {[notify_parent: {:track_playable, track_info}], state}
   end
 
-  defp track_options(context) do
-    context.pad_options
+  defp track_options(pad_options) do
+    pad_options
     |> Map.take([:track_name, :segment_duration, :partial_segment_duration, :max_framerate])
     |> Keyword.new()
   end
