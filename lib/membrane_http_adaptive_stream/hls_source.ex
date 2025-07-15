@@ -64,15 +64,15 @@ defmodule Membrane.HLS.Source do
               ],
               buffered_stream_time: [
                 spec: Membrane.Time.t(),
-                default: Membrane.Time.seconds(10),
+                default: Membrane.Time.seconds(5),
                 inspector: &Membrane.Time.inspect/1,
                 description: """
                 Amount of time of stream, that will be buffered by #{inspect(__MODULE__)}.
 
-                Defaults to 1 second.
+                Defaults to 5 seconds.
 
                 Due to implementation details, the amount of the buffered stream might
-                be slightly different than specyfied value.
+                be slightly different than specified value.
                 """
               ],
               variant_selection_policy: [

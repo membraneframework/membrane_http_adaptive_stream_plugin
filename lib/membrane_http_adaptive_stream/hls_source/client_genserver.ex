@@ -44,16 +44,11 @@ defmodule Membrane.HLS.Source.ClientGenServer do
       client: nil
     }
 
-    # let's create Client and choose variant asnychronously
-    # beyond init/1, because it requires doing some HTTP requests
-    # so it can take some time
-    self() |> send(:setup)
-
-    {:ok, state}
+    {:ok, state, {:continue, :setup}}
   end
 
   @impl true
-  def handle_info(:setup, state) do
+  def handle_continue(:setup, state) do
     state =
       %{state | client: Client.new(state.url)}
       |> choose_variant()
