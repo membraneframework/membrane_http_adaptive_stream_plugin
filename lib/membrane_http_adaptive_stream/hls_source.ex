@@ -89,6 +89,8 @@ defmodule Membrane.HLS.Source do
                 """
               ]
 
+  @typep status :: :created | :waiting_on_pads_link | :playing
+
   @impl true
   def handle_init(_ctx, opts) do
     initial_pad_state = %{
@@ -103,18 +105,29 @@ defmodule Membrane.HLS.Source do
     state =
       Map.from_struct(opts)
       |> Map.merge(%{
+        status: false,
+        client_genserver: nil,
+        new_tracks_notification: nil,
         audio_output: initial_pad_state,
-        video_output: initial_pad_state,
-        client_genserver: nil
+        video_output: initial_pad_state
       })
 
     {[], state}
   end
 
+  # todo: kontynuuj tutaj
+
   @impl true
-  def handle_pad_added(Pad.ref(pad_name, _id) = pad_ref, _ctx, state) do
+  def handle_pad_added(Pad.ref(pad_name, _id) = pad_ref, ctx, state)
+      when ctx.playback == :stopped do
     state = state |> put_in([pad_name, :ref], pad_ref)
     {[], state}
+  end
+
+  @impl true
+  def handle_pad_added(Pad.ref(pad_name, _id) = pad_ref, ctx, state)
+      when ctx.playback == :playing and state.status == :waiting_on_pads do
+    state = state |> put_in([pad_name, :ref], pad_ref)
   end
 
   @impl true
@@ -130,25 +143,62 @@ defmodule Membrane.HLS.Source do
 
   @impl true
   def handle_playing(_ctx, state) do
+    if state.audio_input.ref != nil or state.video_input.ref != nil do
+      state |> start_running()
+    else
+      actions = send_new_tracks_notification(state)
+      [actions, %{state | status: :waiting_on_pads}]
+    end
+  end
+
+  defp get_new_tracks_notification(%{status: :waiting_on_pads} = state) do
+    new_tracks =
+      ClientGenServer.get_tracks_info(state.client_genserver)
+      |> Enum.map(fn {_id, stream_format} ->
+        pad_name =
+          if audio_stream_format?(stream_format),
+            do: :audio_output,
+            else: :video_output
+
+        {pad_name, stream_format}
+      end)
+
+    actions = [notify_parent: {:new_tracks, new_tracks}]
+    {actions, state}
+  end
+
+  defp start_running(state) do
+    actions = get_stream_formats(state) ++ get_redemands(state)
+    state = request_media_chunks(state)
+    {actions, state}
+  end
+
+  defp get_stream_formats(state) do
     stream_formats =
       ClientGenServer.get_tracks_info(state.client_genserver)
       |> Map.values()
 
     :ok = ensure_pads_match_stream_formats!(stream_formats, state)
 
-    actions =
-      stream_formats
-      |> Enum.map(fn stream_format ->
-        pad_ref =
-          if audio_stream_format?(stream_format),
-            do: state.audio_output.ref,
-            else: state.video_output.ref
+    stream_formats
+    |> Enum.map(fn stream_format ->
+      pad_ref =
+        if audio_stream_format?(stream_format),
+          do: state.audio_output.ref,
+          else: state.video_output.ref
 
-        {:stream_format, {pad_ref, stream_format}}
-      end)
+      {:stream_format, {pad_ref, stream_format}}
+    end)
+  end
 
-    state = request_media_chunks(state)
-    {actions, state}
+  defp get_redemands(state) do
+    [:audio_output, :video_output]
+    |> Enum.flat_map(fn pad_name ->
+      case state[pad_name].ref do
+        nil -> []
+        pad_ref -> [redemand: pad_ref]
+      end
+    end)
   end
 
   defp ensure_pads_match_stream_formats!(stream_formats, state) do
