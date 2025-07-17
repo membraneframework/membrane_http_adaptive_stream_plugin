@@ -25,12 +25,16 @@ defmodule Membrane.HLS.Source do
   def_output_pad :video_output,
     accepted_format: any_of(H264, %RemoteStream{content_format: H264}),
     flow_control: :manual,
-    demand_unit: :buffers
+    demand_unit: :buffers,
+    availability: :on_request,
+    max_instances: 1
 
   def_output_pad :audio_output,
     accepted_format: any_of(AAC, %RemoteStream{content_format: AAC}),
     flow_control: :manual,
-    demand_unit: :buffers
+    demand_unit: :buffers,
+    availability: :on_request,
+    max_instances: 1
 
   # The boundary on how many chunks of one stream will be requested
   # from Membrane.HLS.Source.ClientGenServer at once.
@@ -88,6 +92,7 @@ defmodule Membrane.HLS.Source do
   @impl true
   def handle_init(_ctx, opts) do
     initial_pad_state = %{
+      ref: nil,
       requested: 0,
       qex: Qex.new(),
       qex_size: 0,
@@ -107,6 +112,12 @@ defmodule Membrane.HLS.Source do
   end
 
   @impl true
+  def handle_pad_added(Pad.ref(pad_name, _id) = pad_ref, _ctx, state) do
+    state = state |> put_in([pad_name, :ref], pad_ref)
+    {[], state}
+  end
+
+  @impl true
   def handle_setup(_ctx, state) do
     {:ok, client_genserver} =
       ClientGenServer.start_link(state.url, state.variant_selection_policy)
@@ -119,18 +130,51 @@ defmodule Membrane.HLS.Source do
 
   @impl true
   def handle_playing(_ctx, state) do
-    {[audio_stream_format], [video_stream_format]} =
+    stream_formats =
       ClientGenServer.get_tracks_info(state.client_genserver)
       |> Map.values()
-      |> Enum.split_with(&audio_stream_format?/1)
 
-    actions = [
-      stream_format: {:audio_output, audio_stream_format},
-      stream_format: {:video_output, video_stream_format}
-    ]
+    :ok = ensure_pads_match_stream_formats!(stream_formats, state)
+
+    actions =
+      stream_formats
+      |> Enum.map(fn stream_format ->
+        pad_ref =
+          if audio_stream_format?(stream_format),
+            do: state.audio_output.ref,
+            else: state.video_output.ref
+
+        {:stream_format, {pad_ref, stream_format}}
+      end)
 
     state = request_media_chunks(state)
     {actions, state}
+  end
+
+  defp ensure_pads_match_stream_formats!(stream_formats, state) do
+    audio_format_occurs? =
+      Enum.any?(stream_formats, &audio_stream_format?/1)
+
+    video_format_occurs? =
+      Enum.any?(stream_formats, &(not audio_stream_format?(&1)))
+
+    if audio_format_occurs? and state.audio_output.ref == nil do
+      raise "Audio pad should be linked"
+    end
+
+    if video_format_occurs? and state.video_output.ref == nil do
+      raise "Video pad should be linked"
+    end
+
+    if not audio_format_occurs? and state.audio_output.ref != nil do
+      raise "Audio pad should not be linked"
+    end
+
+    if not video_format_occurs? and state.video_output.ref != nil do
+      raise "Video pad should not be linked"
+    end
+
+    :ok
   end
 
   defp audio_stream_format?(stream_format) do
@@ -151,7 +195,7 @@ defmodule Membrane.HLS.Source do
 
   @impl true
   def handle_info({data_type, %ExHLS.Chunk{} = chunk}, _ctx, state) do
-    pad_ref = data_type_to_pad_ref(data_type)
+    pad_name = data_type_to_pad_name(data_type)
 
     buffer = %Buffer{
       payload: chunk.payload,
@@ -162,55 +206,55 @@ defmodule Membrane.HLS.Source do
 
     state =
       state
-      |> update_in([pad_ref, :qex], &Qex.push(&1, buffer))
-      |> update_in([pad_ref, :qex_size], &(&1 + 1))
-      |> update_in([pad_ref, :requested], &(&1 - 1))
-      |> update_in([pad_ref, :oldest_buffer_dts], fn
+      |> update_in([pad_name, :qex], &Qex.push(&1, buffer))
+      |> update_in([pad_name, :qex_size], &(&1 + 1))
+      |> update_in([pad_name, :requested], &(&1 - 1))
+      |> update_in([pad_name, :oldest_buffer_dts], fn
         nil -> buffer.dts
         oldest_dts -> oldest_dts
       end)
       |> request_media_chunks()
 
-    {[redemand: pad_ref], state}
+    {[redemand: state[pad_name].ref], state}
   end
 
   @impl true
   def handle_info({data_type, :end_of_stream}, _ctx, state) do
-    pad_ref = data_type_to_pad_ref(data_type)
+    pad_name = data_type_to_pad_name(data_type)
 
     state =
-      if state[pad_ref].eos_received? do
+      if state[pad_name].eos_received? do
         state
       else
         state
-        |> put_in([pad_ref, :eos_received?], true)
-        |> update_in([pad_ref, :qex], &Qex.push(&1, :end_of_stream))
-        |> update_in([pad_ref, :qex_size], &(&1 + 1))
+        |> put_in([pad_name, :eos_received?], true)
+        |> update_in([pad_name, :qex], &Qex.push(&1, :end_of_stream))
+        |> update_in([pad_name, :qex_size], &(&1 + 1))
       end
 
-    state = state |> update_in([pad_ref, :requested], &(&1 - 1))
+    state = state |> update_in([pad_name, :requested], &(&1 - 1))
 
-    {[redemand: pad_ref], state}
+    {[redemand: state[pad_name].ref], state}
   end
 
-  defp data_type_to_pad_ref(:audio_chunk), do: :audio_output
-  defp data_type_to_pad_ref(:video_chunk), do: :video_output
+  defp data_type_to_pad_name(:audio_chunk), do: :audio_output
+  defp data_type_to_pad_name(:video_chunk), do: :video_output
 
-  defp pop_buffers(pad_ref, demand, state) do
-    how_many_pop = min(state[pad_ref].qex_size, demand)
+  defp pop_buffers(Pad.ref(pad_name, _id) = pad_ref, demand, state) do
+    how_many_pop = min(state[pad_name].qex_size, demand)
 
     1..how_many_pop//1
     |> Enum.flat_map_reduce(state, fn _i, state ->
-      {buffer_or_eos, qex} = state[pad_ref].qex |> Qex.pop!()
+      {buffer_or_eos, qex} = state[pad_name].qex |> Qex.pop!()
 
       state =
         state
-        |> put_in([pad_ref, :qex], qex)
-        |> update_in([pad_ref, :qex_size], &(&1 - 1))
+        |> put_in([pad_name, :qex], qex)
+        |> update_in([pad_name, :qex_size], &(&1 - 1))
 
       case buffer_or_eos do
         %Buffer{} = buffer ->
-          state = state |> put_in([pad_ref, :oldest_buffer_dts], buffer.dts)
+          state = state |> put_in([pad_name, :oldest_buffer_dts], buffer.dts)
           {[buffer: {pad_ref, buffer}], state}
 
         :end_of_stream ->
@@ -221,13 +265,13 @@ defmodule Membrane.HLS.Source do
 
   defp request_media_chunks(state) do
     [:audio_output, :video_output]
-    |> Enum.reduce(state, fn pad_ref, state ->
-      oldest_dts = state[pad_ref].oldest_buffer_dts
-      eos_received? = state[pad_ref].eos_received?
+    |> Enum.reduce(state, fn pad_name, state ->
+      %{eos_received?: eos_received?, oldest_buffer_dts: oldest_dts, ref: pad_ref} =
+        state[pad_name]
 
       request_size =
-        case state[pad_ref].qex |> Qex.first() do
-          _any when eos_received? ->
+        case state[pad_name].qex |> Qex.first() do
+          _any when pad_ref == nil or eos_received? ->
             0
 
           # todo: maybe we should handle rollovers
@@ -236,14 +280,14 @@ defmodule Membrane.HLS.Source do
             0
 
           _empty_or_not_new_enough ->
-            @requested_chunks_boundary - state[pad_ref].requested
+            @requested_chunks_boundary - state[pad_name].requested
         end
 
       1..request_size//1
-      |> Enum.each(fn _i -> request_single_chunk(pad_ref, state) end)
+      |> Enum.each(fn _i -> request_single_chunk(pad_name, state) end)
 
       state
-      |> update_in([pad_ref, :requested], &(&1 + request_size))
+      |> update_in([pad_name, :requested], &(&1 + request_size))
     end)
   end
 
