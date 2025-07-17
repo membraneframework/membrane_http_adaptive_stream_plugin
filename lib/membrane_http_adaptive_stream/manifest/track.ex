@@ -654,7 +654,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     new_window_duration = window_duration - segment.duration
 
     new_header =
-      case segment.attributes |> Enum.find(&match?({:discontinuity, {_, _}}, &1)) do
+      case segment.attributes |> Enum.find(&match?({:discontinuity, {_arg1, _arg2}}, &1)) do
         {:discontinuity, {new_header, seq_number}} ->
           {new_header, seq_number}
 
@@ -664,7 +664,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
 
     headers_acc =
       if new_header != header do
-        {header_name, _} = header
+        {header_name, _arg} = header
         [header_name | headers_acc]
       else
         headers_acc

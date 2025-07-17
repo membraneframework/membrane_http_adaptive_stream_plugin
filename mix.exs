@@ -63,14 +63,21 @@ defmodule Membrane.HTTPAdaptiveStream.MixProject do
 
   defp deps do
     [
-      {:membrane_core, "~> 1.0"},
+      {:membrane_core, "~> 1.2"},
       {:membrane_tee_plugin, "~> 0.12.0"},
       {:membrane_mp4_plugin, "~> 0.35.0"},
       {:membrane_aac_plugin, "~> 0.19.0"},
       {:membrane_h26x_plugin, "~> 0.10.0"},
+      {:ex_hls,
+       github: "membraneframework-labs/ex_hls", ref: "bf78d233b2f0a8409c8453df8e6dcb61a4e32c29"},
       {:bunch, "~> 1.6"},
       {:qex, "~> 0.5"},
       {:membrane_hackney_plugin, "~> 0.11.0", only: :test},
+      {:membrane_transcoder_plugin, "~> 0.3.2", only: :test},
+      # {:membrane_transcoder_plugin, path: "../membrane_transcoder_plugin", only: :test},
+      {:membrane_realtimer_plugin, "~> 0.10.1", only: :test},
+      {:membrane_portaudio_plugin, "~> 0.19.2", only: :test},
+      {:membrane_sdl_plugin, "~> 0.18.5", only: :test},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
       {:dialyxir, ">= 0.0.0", only: :dev, runtime: false},
       {:credo, ">= 0.0.0", only: :dev, runtime: false}
