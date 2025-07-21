@@ -89,8 +89,6 @@ defmodule Membrane.HLS.Source do
                 """
               ]
 
-  @typep status :: :initialized | :waiting_on_pads | :running
-
   @impl true
   def handle_init(_ctx, opts) do
     initial_pad_state = %{
@@ -105,6 +103,7 @@ defmodule Membrane.HLS.Source do
     state =
       Map.from_struct(opts)
       |> Map.merge(%{
+        # status will be either :initialized, :waiting_on_pads or :running
         status: :initialized,
         client_genserver: nil,
         new_tracks_notification: nil,
@@ -114,8 +113,6 @@ defmodule Membrane.HLS.Source do
 
     {[], state}
   end
-
-  # todo: refactor error messages in handle_pad_added/3
 
   @impl true
   def handle_setup(_ctx, state) do
@@ -135,6 +132,8 @@ defmodule Membrane.HLS.Source do
     {[], state}
   end
 
+  # todo: refactor error messages in handle_pad_added/3
+
   @impl true
   def handle_pad_added(Pad.ref(pad_name, _id) = pad_ref, ctx, state)
       when ctx.playback == :playing do
@@ -145,14 +144,14 @@ defmodule Membrane.HLS.Source do
 
     state = state |> put_in([pad_name, :ref], pad_ref)
 
-    if map_size(state.pads) == length(state.new_tracks_notification),
+    if map_size(ctx.pads) == length(state.new_tracks_notification),
       do: state |> start_running(),
       else: {[], state}
   end
 
   @impl true
   def handle_playing(_ctx, state) do
-    if state.audio_input.ref != nil or state.video_input.ref != nil do
+    if state.audio_output.ref != nil or state.video_output.ref != nil do
       state |> start_running()
     else
       state |> generate_new_tracks_notification()
@@ -245,17 +244,17 @@ defmodule Membrane.HLS.Source do
     Pad #{inspect(pad_name)} is not linked, but the HLS stream contains \
     #{pad_name_to_media_type(pad_name)} stream format.
 
-    Pads: #{inspect()}
+    Pads: #{get_pads(state) |> inspect()}
     Stream formats: #{inspect(stream_formats)}
     """
   end
 
   defp raise_redundant_pad_error(pad_name, stream_formats, state) do
     raise """
-    Pad #{inspect(pad_name)} is linked, but the HLS stream doesn't contain #{media_type} \
-    stream format.
+    Pad #{inspect(pad_name)} is linked, but the HLS stream doesn't contain \
+    #{pad_name_to_media_type(pad_name)} stream format.
 
-    Pads: #{inspect(pads)}
+    Pads: #{get_pads(state) |> inspect()}
     Stream formats: #{inspect(stream_formats)}
     """
   end
@@ -282,7 +281,7 @@ defmodule Membrane.HLS.Source do
   @impl true
   def handle_demand(pad_ref, demand, :buffers, _ctx, state)
       when state.status == :running do
-    {actions, state} = pop_items_from_qex(pad_ref, demand, state)
+    {actions, state} = pop_buffers(pad_ref, demand, state)
     state = request_media_chunks(state)
     {actions, state}
   end
@@ -348,7 +347,7 @@ defmodule Membrane.HLS.Source do
   defp pad_name_to_media_type(:audio_output), do: :audio
   defp pad_name_to_media_type(:video_output), do: :video
 
-  defp pop_items_from_qex(Pad.ref(pad_name, _id) = pad_ref, demand, state) do
+  defp pop_buffers(Pad.ref(pad_name, _id) = pad_ref, demand, state) do
     how_many_pop = min(state[pad_name].qex_size, demand)
 
     1..how_many_pop//1
