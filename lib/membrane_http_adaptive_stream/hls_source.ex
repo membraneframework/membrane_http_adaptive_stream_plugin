@@ -89,7 +89,7 @@ defmodule Membrane.HLS.Source do
                 """
               ]
 
-  @typep status :: :created | :waiting_on_pads_link | :playing
+  @typep status :: :initialized | :waiting_on_pads | :running
 
   @impl true
   def handle_init(_ctx, opts) do
@@ -105,7 +105,7 @@ defmodule Membrane.HLS.Source do
     state =
       Map.from_struct(opts)
       |> Map.merge(%{
-        status: false,
+        status: :initialized,
         client_genserver: nil,
         new_tracks_notification: nil,
         audio_output: initial_pad_state,
@@ -115,20 +115,7 @@ defmodule Membrane.HLS.Source do
     {[], state}
   end
 
-  # todo: kontynuuj tutaj
-
-  @impl true
-  def handle_pad_added(Pad.ref(pad_name, _id) = pad_ref, ctx, state)
-      when ctx.playback == :stopped do
-    state = state |> put_in([pad_name, :ref], pad_ref)
-    {[], state}
-  end
-
-  @impl true
-  def handle_pad_added(Pad.ref(pad_name, _id) = pad_ref, ctx, state)
-      when ctx.playback == :playing and state.status == :waiting_on_pads do
-    state = state |> put_in([pad_name, :ref], pad_ref)
-  end
+  # todo: refactor error messages in handle_pad_added/3
 
   @impl true
   def handle_setup(_ctx, state) do
@@ -142,16 +129,37 @@ defmodule Membrane.HLS.Source do
   end
 
   @impl true
+  def handle_pad_added(Pad.ref(pad_name, _id) = pad_ref, ctx, state)
+      when ctx.playback == :stopped do
+    state = state |> put_in([pad_name, :ref], pad_ref)
+    {[], state}
+  end
+
+  @impl true
+  def handle_pad_added(Pad.ref(pad_name, _id) = pad_ref, ctx, state)
+      when ctx.playback == :playing do
+    case state.status do
+      :waiting_on_pads -> :ok
+      :running -> raise "dupa"
+    end
+
+    state = state |> put_in([pad_name, :ref], pad_ref)
+
+    if map_size(state.pads) == length(state.new_tracks_notification),
+      do: state |> start_running(),
+      else: {[], state}
+  end
+
+  @impl true
   def handle_playing(_ctx, state) do
     if state.audio_input.ref != nil or state.video_input.ref != nil do
       state |> start_running()
     else
-      actions = send_new_tracks_notification(state)
-      [actions, %{state | status: :waiting_on_pads}]
+      state |> generate_new_tracks_notification()
     end
   end
 
-  defp get_new_tracks_notification(%{status: :waiting_on_pads} = state) do
+  defp generate_new_tracks_notification(%{status: :initialized} = state) do
     new_tracks =
       ClientGenServer.get_tracks_info(state.client_genserver)
       |> Enum.map(fn {_id, stream_format} ->
@@ -163,13 +171,23 @@ defmodule Membrane.HLS.Source do
         {pad_name, stream_format}
       end)
 
-    actions = [notify_parent: {:new_tracks, new_tracks}]
-    {actions, state}
+    state =
+      %{
+        state
+        | status: :waiting_on_pads,
+          new_tracks_notification: new_tracks
+      }
+
+    {[notify_parent: {:new_tracks, new_tracks}], state}
   end
 
-  defp start_running(state) do
+  defp start_running(%{status: :initialized} = state) do
     actions = get_stream_formats(state) ++ get_redemands(state)
-    state = request_media_chunks(state)
+
+    state =
+      %{state | status: :running}
+      |> request_media_chunks()
+
     {actions, state}
   end
 
@@ -192,13 +210,8 @@ defmodule Membrane.HLS.Source do
   end
 
   defp get_redemands(state) do
-    [:audio_output, :video_output]
-    |> Enum.flat_map(fn pad_name ->
-      case state[pad_name].ref do
-        nil -> []
-        pad_ref -> [redemand: pad_ref]
-      end
-    end)
+    get_pads(state)
+    |> Enum.flat_map(fn pad_ref -> [redemand: pad_ref] end)
   end
 
   defp ensure_pads_match_stream_formats!(stream_formats, state) do
@@ -209,22 +222,52 @@ defmodule Membrane.HLS.Source do
       Enum.any?(stream_formats, &(not audio_stream_format?(&1)))
 
     if audio_format_occurs? and state.audio_output.ref == nil do
-      raise "Audio pad should be linked"
+      raise_missing_pad_error(:audio_output, stream_formats, state)
     end
 
     if video_format_occurs? and state.video_output.ref == nil do
-      raise "Video pad should be linked"
+      raise_missing_pad_error(:video_output, stream_formats, state)
     end
 
     if not audio_format_occurs? and state.audio_output.ref != nil do
-      raise "Audio pad should not be linked"
+      raise_redundant_pad_error(:audio_output, stream_formats, state)
     end
 
     if not video_format_occurs? and state.video_output.ref != nil do
-      raise "Video pad should not be linked"
+      raise_redundant_pad_error(:video_output, stream_formats, state)
     end
 
     :ok
+  end
+
+  defp raise_missing_pad_error(pad_name, stream_formats, state) do
+    raise """
+    Pad #{inspect(pad_name)} is not linked, but the HLS stream contains \
+    #{pad_name_to_media_type(pad_name)} stream format.
+
+    Pads: #{inspect()}
+    Stream formats: #{inspect(stream_formats)}
+    """
+  end
+
+  defp raise_redundant_pad_error(pad_name, stream_formats, state) do
+    raise """
+    Pad #{inspect(pad_name)} is linked, but the HLS stream doesn't contain #{media_type} \
+    stream format.
+
+    Pads: #{inspect(pads)}
+    Stream formats: #{inspect(stream_formats)}
+    """
+  end
+
+  defp get_pads(state) do
+    [:audio_output, :video_output]
+    |> Enum.flat_map(fn pad_name ->
+      case state[pad_name].ref do
+        nil -> []
+        pad_ref -> [pad_ref]
+      end
+    end)
   end
 
   defp audio_stream_format?(stream_format) do
@@ -237,15 +280,27 @@ defmodule Membrane.HLS.Source do
   end
 
   @impl true
-  def handle_demand(pad_ref, demand, :buffers, _ctx, state) do
-    {actions, state} = pop_buffers(pad_ref, demand, state)
+  def handle_demand(pad_ref, demand, :buffers, _ctx, state)
+      when state.status == :running do
+    {actions, state} = pop_items_from_qex(pad_ref, demand, state)
     state = request_media_chunks(state)
     {actions, state}
   end
 
   @impl true
-  def handle_info({data_type, %ExHLS.Chunk{} = chunk}, _ctx, state) do
-    pad_name = data_type_to_pad_name(data_type)
+  def handle_demand(pad_ref, demand, :buffers, _ctx, state)
+      when state.status == :waiting_on_pads do
+    Membrane.Logger.debug("""
+    Ignoring demand (#{inspect(demand)} buffers) on pad #{inspect(pad_ref)} because thes\
+    element is still waiting for other pads to be linked.
+    """)
+
+    {[], state}
+  end
+
+  @impl true
+  def handle_info({chunk_type, %ExHLS.Chunk{} = chunk}, _ctx, state) do
+    pad_name = chunk_type_to_pad_name(chunk_type)
 
     buffer = %Buffer{
       payload: chunk.payload,
@@ -269,8 +324,8 @@ defmodule Membrane.HLS.Source do
   end
 
   @impl true
-  def handle_info({data_type, :end_of_stream}, _ctx, state) do
-    pad_name = data_type_to_pad_name(data_type)
+  def handle_info({chunk_type, :end_of_stream}, _ctx, state) do
+    pad_name = chunk_type_to_pad_name(chunk_type)
 
     state =
       if state[pad_name].eos_received? do
@@ -287,10 +342,13 @@ defmodule Membrane.HLS.Source do
     {[redemand: state[pad_name].ref], state}
   end
 
-  defp data_type_to_pad_name(:audio_chunk), do: :audio_output
-  defp data_type_to_pad_name(:video_chunk), do: :video_output
+  defp chunk_type_to_pad_name(:audio_chunk), do: :audio_output
+  defp chunk_type_to_pad_name(:video_chunk), do: :video_output
 
-  defp pop_buffers(Pad.ref(pad_name, _id) = pad_ref, demand, state) do
+  defp pad_name_to_media_type(:audio_output), do: :audio
+  defp pad_name_to_media_type(:video_output), do: :video
+
+  defp pop_items_from_qex(Pad.ref(pad_name, _id) = pad_ref, demand, state) do
     how_many_pop = min(state[pad_name].qex_size, demand)
 
     1..how_many_pop//1
