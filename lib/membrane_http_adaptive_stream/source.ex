@@ -1,4 +1,4 @@
-defmodule Membrane.HLS.Source do
+defmodule Membrane.HTTPAdaptiveStream.Source do
   @moduledoc """
   A Membrane Source element that fetches and demuxes HLS streams.
 
@@ -37,7 +37,7 @@ defmodule Membrane.HLS.Source do
     max_instances: 1
 
   # The boundary on how many chunks of one stream will be requested
-  # from Membrane.HLS.Source.ClientGenServer at once.
+  # from Membrane.HTTPAdaptiveStream.Source.ClientGenServer at once.
   @requested_chunks_boundary 5
 
   @variant_selection_policy_description """

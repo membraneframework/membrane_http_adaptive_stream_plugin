@@ -1,4 +1,4 @@
-defmodule Membrane.HLS.Source.Test do
+defmodule Membrane.HTTPAdaptiveStream.Source.Test do
   use ExUnit.Case, async: true
 
   import Membrane.ChildrenSpec
@@ -11,13 +11,13 @@ defmodule Membrane.HLS.Source.Test do
   @mpegts_url "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
   @fmp4_url "https://raw.githubusercontent.com/membraneframework-labs/ex_hls/refs/heads/plug-demuxing-engine-into-client/fixture/output.m3u8"
 
-  @ref_files_dir "test/membrane_http_adaptive_stream/integration_test/fixtures/hls_source"
+  @ref_files_dir "test/membrane_http_adaptive_stream/integration_test/fixtures/source"
   @fmp4_video_ref_file Path.join(@ref_files_dir, "fmp4/video.h264")
   @fmp4_audio_ref_file Path.join(@ref_files_dir, "fmp4/audio.aac")
   @mpeg_ts_video_ref_file Path.join(@ref_files_dir, "mpeg_ts/video.h264")
   @mpeg_ts_audio_ref_file Path.join(@ref_files_dir, "mpeg_ts/audio.aac")
 
-  describe "Membrane.HLS.Source demuxes audio and video from HLS stream" do
+  describe "Membrane.HTTPAdaptiveStream.Source demuxes audio and video from HLS stream" do
     @tag :tmp_dir
     test "(fMP4)", %{tmp_dir: tmp_dir} do
       audio_result_file = Path.join(tmp_dir, "audio.aac")
@@ -72,7 +72,7 @@ defmodule Membrane.HLS.Source.Test do
     end
   end
 
-  describe "Membrane.HLS.Source sends :new_tracks notification" do
+  describe "Membrane.HTTPAdaptiveStream.Source sends :new_tracks notification" do
     test "(fMP4)" do
       test_new_tracks_notification(
         @fmp4_url,
@@ -120,7 +120,7 @@ defmodule Membrane.HLS.Source.Test do
 
   defp test_new_tracks_notification(hls_url, video_format_validator, audio_format_validator) do
     source_spec =
-      child(:hls_source, %Membrane.HLS.Source{
+      child(:hls_source, %Membrane.HTTPAdaptiveStream.Source{
         url: hls_url,
         variant_selection_policy: :lowest_resolution
       })
@@ -159,7 +159,7 @@ defmodule Membrane.HLS.Source.Test do
 
   defp hls_to_file_pipeline_spec(url, audio_transcoder, audio_result_file, video_result_file) do
     [
-      child(:hls_source, %Membrane.HLS.Source{
+      child(:hls_source, %Membrane.HTTPAdaptiveStream.Source{
         url: url,
         variant_selection_policy: :lowest_resolution
       })

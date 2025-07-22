@@ -1,5 +1,5 @@
-defmodule Membrane.HLS.Source.ClientGenServer do
-  # This GenServer is used by Membrane.HLS.Source to allow downloading the
+defmodule Membrane.HTTPAdaptiveStream.Source.ClientGenServer do
+  # This GenServer is used by Membrane.HTTPAdaptiveStream.Source to allow downloading the
   # HLS segments asynchronously.
   @moduledoc false
 
@@ -8,7 +8,7 @@ defmodule Membrane.HLS.Source.ClientGenServer do
 
   @spec start_link(
           String.t(),
-          Membrane.HLS.Source.variant_selection_policy()
+          Membrane.HTTPAdaptiveStream.Source.variant_selection_policy()
         ) ::
           GenServer.on_start()
   def start_link(url, variant_selection_policy) do
@@ -28,7 +28,7 @@ defmodule Membrane.HLS.Source.ClientGenServer do
     GenServer.cast(client_genserver, {:request_video_chunk, self()})
   end
 
-  # this function should be called by Membrane.HLS.Source
+  # this function should be called by Membrane.HTTPAdaptiveStream.Source
   # before we start buffering the chunks, to avoid waiting
   # on downloading many segments
   @spec get_tracks_info(pid()) :: map()
