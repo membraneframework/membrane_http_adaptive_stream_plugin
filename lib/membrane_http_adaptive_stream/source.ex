@@ -62,6 +62,23 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
           | (variants_map :: %{integer() => ExHLS.Client.variant_description()} ->
                variant_id :: integer())
 
+  @typedoc """
+  Notification sent by #{inspect(__MODULE__)} to its parent when the element figures out what
+  tracks are present in the HLS stream.
+
+  Contains pads that should be linked to the element and stream formats that will be sent via
+  those pads.
+
+  If pads are linked before the element enters the `:playing` playback, the notification will
+  not be sent, but the pads will have to match the tracks in the HLS stream.
+  """
+  @type new_tracks_notification() ::
+          {:new_tracks,
+           [
+             {:audio_output, RemoteStream.t() | AAC.t()}
+             | {:video_output, RemoteStream.t() | H264.t()}
+           ]}
+
   def_options url: [
                 spec: String.t(),
                 description: "URL of the HLS playlist manifest"
@@ -132,21 +149,28 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
     {[], state}
   end
 
-  # todo: refactor error messages in handle_pad_added/3
-
   @impl true
   def handle_pad_added(Pad.ref(pad_name, _id) = pad_ref, ctx, state)
-      when ctx.playback == :playing do
-    case state.status do
-      :waiting_on_pads -> :ok
-      :running -> raise "dupa"
-    end
-
+      when ctx.playback == :playing and state.status == :waiting_on_pads do
     state = state |> put_in([pad_name, :ref], pad_ref)
 
     if map_size(ctx.pads) == length(state.new_tracks_notification),
       do: state |> start_running(),
       else: {[], state}
+  end
+
+  @impl true
+  def handle_pad_added(Pad.ref(pad_name, _id), ctx, state)
+      when ctx.playback == :playing and state.status == :running do
+    raise """
+    Tried to link pad #{inspect(pad_name)}, but all pads are already linked.
+
+    You must follow one of two scenarios:
+    1. Link all pads before an element enters the `:playing` playback.
+    2. Don't link any pads before an element enters the `:playing` playback,
+        wait until it generates `{:new_tracks, tracks}` parent notification
+        and then link pads accodrding to the notification.
+    """
   end
 
   @impl true
@@ -247,7 +271,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
     #{pad_name_to_media_type(pad_name)} stream format.
 
     Pads: #{get_pads(state) |> inspect()}
-    Stream formats: #{inspect(stream_formats)}
+    Stream formats of tracks in HLS playlist: #{inspect(stream_formats)}
     """
   end
 
@@ -258,7 +282,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
     #{pad_name_to_media_type(pad_name)} stream format.
 
     Pads: #{get_pads(state) |> inspect()}
-    Stream formats: #{inspect(stream_formats)}
+    Stream formats of tracks in HLS playlist: #{inspect(stream_formats)}
     """
   end
 
