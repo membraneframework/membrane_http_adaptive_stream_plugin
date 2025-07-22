@@ -90,7 +90,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
         end,
         fn audio_format ->
           assert %AAC{
-                   sample_rate: 44100,
+                   sample_rate: 44_100,
                    channels: 2,
                    mpeg_version: 2,
                    samples_per_frame: 1024,
