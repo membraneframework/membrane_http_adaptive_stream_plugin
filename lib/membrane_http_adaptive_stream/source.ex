@@ -240,6 +240,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
     :ok
   end
 
+  @spec raise_missing_pad_error(atom(), list(), map()) :: no_return()
   defp raise_missing_pad_error(pad_name, stream_formats, state) do
     raise """
     Pad #{inspect(pad_name)} is not linked, but the HLS stream contains \
@@ -250,6 +251,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
     """
   end
 
+  @spec raise_redundant_pad_error(atom(), list(), map()) :: no_return()
   defp raise_redundant_pad_error(pad_name, stream_formats, state) do
     raise """
     Pad #{inspect(pad_name)} is linked, but the HLS stream doesn't contain \
