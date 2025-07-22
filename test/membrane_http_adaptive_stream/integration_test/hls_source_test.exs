@@ -72,81 +72,91 @@ defmodule Membrane.HLS.Source.Test do
     end
   end
 
-  defmacrop test_new_tracks_notification(hls_url, video_format_pattern, audio_format_pattern) do
-    quote do
-      source_spec =
-        child(:hls_source, %Membrane.HLS.Source{
-          url: unquote(hls_url),
-          variant_selection_policy: :lowest_resolution
-        })
-
-      pipeline = Testing.Pipeline.start_link_supervised!(spec: source_spec)
-
-      # let's assert :new_tracks notification
-
-      assert_pipeline_notified(pipeline, :hls_source, {:new_tracks, new_tracks})
-
-      dbg(new_tracks)
-
-      assert length(new_tracks) == 2
-      assert unquote(video_format_pattern) = new_tracks[:video_output]
-      assert unquote(audio_format_pattern) = new_tracks[:audio_output]
-
-      # let's assert stream formats going via pads
-
-      linking_spec = [
-        get_child(:hls_source)
-        |> via_out(:video_output)
-        |> child(:video_sink, %Testing.Sink{}),
-        get_child(:hls_source)
-        |> via_out(:audio_output)
-        |> child(:audio_sink, %Testing.Sink{})
-      ]
-
-      Testing.Pipeline.execute_actions(pipeline, spec: linking_spec)
-
-      assert_sink_stream_format(pipeline, :video_sink, unquote(video_format_pattern))
-      assert_sink_stream_format(pipeline, :audio_sink, unquote(audio_format_pattern))
-
-      Testing.Pipeline.terminate(pipeline)
-    end
-  end
-
   describe "Membrane.HLS.Source sends :new_tracks notification" do
     @tag :a
+
     test "(fMP4)" do
       test_new_tracks_notification(
         @fmp4_url,
-        %H264{
-          width: 480,
-          height: 270,
-          alignment: :au,
-          nalu_in_metadata?: false,
-          stream_structure:
-            {:avc1,
-             <<1, 100, 0, 21, 255, 225, 0, 28, 103, 100, 0, 21, 172, 217, 65, 224>> <> _rest}
-        },
-        %AAC{
-          sample_rate: 44100,
-          channels: 2,
-          mpeg_version: 2,
-          samples_per_frame: 1024,
-          frames_per_buffer: 1,
-          encapsulation: :none,
-          config:
-            {:esds,
-             <<3, 128, 128, 128, 37, 0, 2, 0, 4, 128, 128, 128, 23, 64, 21, 0, 0, 0>> <> _rest}
-        }
+        fn video_format ->
+          assert %H264{
+                   width: 480,
+                   height: 270,
+                   alignment: :au,
+                   nalu_in_metadata?: false,
+                   stream_structure:
+                     {:avc1,
+                      <<1, 100, 0, 21, 255, 225, 0, 28, 103, 100, 0, 21, 172, 217, 65, 224>> <>
+                        _rest}
+                 } = video_format
+        end,
+        fn audio_format ->
+          assert %AAC{
+                   sample_rate: 44100,
+                   channels: 2,
+                   mpeg_version: 2,
+                   samples_per_frame: 1024,
+                   frames_per_buffer: 1,
+                   encapsulation: :none,
+                   config:
+                     {:esds,
+                      <<3, 128, 128, 128, 37, 0, 2, 0, 4, 128, 128, 128, 23, 64, 21, 0, 0, 0>> <>
+                        _rest}
+                 } = audio_format
+        end
       )
     end
 
     test "(MPEG-TS)" do
       test_new_tracks_notification(
         @mpegts_url,
-        %RemoteStream{content_format: H264, type: :bytestream},
-        %RemoteStream{content_format: AAC, type: :bytestream}
+        fn video_format ->
+          assert %RemoteStream{content_format: H264, type: :bytestream} = video_format
+        end,
+        fn audio_format ->
+          assert %RemoteStream{content_format: AAC, type: :bytestream} = audio_format
+        end
       )
     end
+  end
+
+  defp test_new_tracks_notification(hls_url, video_format_validator, audio_format_validator) do
+    source_spec =
+      child(:hls_source, %Membrane.HLS.Source{
+        url: hls_url,
+        variant_selection_policy: :lowest_resolution
+      })
+
+    pipeline = Testing.Pipeline.start_link_supervised!(spec: source_spec)
+
+    # let's assert :new_tracks notification
+
+    assert_pipeline_notified(pipeline, :hls_source, {:new_tracks, new_tracks})
+
+    assert length(new_tracks) == 2
+    new_tracks[:video_output] |> video_format_validator.()
+    new_tracks[:audio_output] |> audio_format_validator.()
+
+    # let's assert stream formats going via pads
+
+    linking_spec = [
+      get_child(:hls_source)
+      |> via_out(:video_output)
+      |> child(:video_sink, Testing.Sink),
+      get_child(:hls_source)
+      |> via_out(:audio_output)
+      |> child(:audio_sink, Testing.Sink)
+    ]
+
+    Testing.Pipeline.execute_actions(pipeline, spec: linking_spec)
+
+    assert_sink_stream_format(pipeline, :video_sink, video_format)
+    video_format |> video_format_validator.()
+
+    assert_sink_stream_format(pipeline, :audio_sink, audio_format)
+    audio_format |> audio_format_validator.()
+
+    Testing.Pipeline.terminate(pipeline)
   end
 
   defp pipeline_spec(url, audio_transcoder, audio_result_file, video_result_file) do

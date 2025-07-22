@@ -180,7 +180,8 @@ defmodule Membrane.HLS.Source do
     {[notify_parent: {:new_tracks, new_tracks}], state}
   end
 
-  defp start_running(%{status: :initialized} = state) do
+  defp start_running(%{status: status} = state)
+       when status in [:initialized, :waiting_on_pads] do
     actions = get_stream_formats(state) ++ get_redemands(state)
 
     state =
