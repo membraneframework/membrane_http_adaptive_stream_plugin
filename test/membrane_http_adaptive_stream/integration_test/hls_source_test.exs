@@ -24,7 +24,7 @@ defmodule Membrane.HLS.Source.Test do
       video_result_file = Path.join(tmp_dir, "video.h264")
 
       spec =
-        pipeline_spec(
+        hls_to_file_pipeline_spec(
           @fmp4_url,
           %Membrane.Transcoder{output_stream_format: Membrane.AAC},
           audio_result_file,
@@ -48,7 +48,7 @@ defmodule Membrane.HLS.Source.Test do
       video_result_file = Path.join(tmp_dir, "video.h264")
 
       spec =
-        pipeline_spec(
+        hls_to_file_pipeline_spec(
           @mpegts_url,
           %Membrane.Transcoder{
             assumed_input_stream_format: %Membrane.AAC{
@@ -73,8 +73,6 @@ defmodule Membrane.HLS.Source.Test do
   end
 
   describe "Membrane.HLS.Source sends :new_tracks notification" do
-    @tag :a
-
     test "(fMP4)" do
       test_new_tracks_notification(
         @fmp4_url,
@@ -159,7 +157,7 @@ defmodule Membrane.HLS.Source.Test do
     Testing.Pipeline.terminate(pipeline)
   end
 
-  defp pipeline_spec(url, audio_transcoder, audio_result_file, video_result_file) do
+  defp hls_to_file_pipeline_spec(url, audio_transcoder, audio_result_file, video_result_file) do
     [
       child(:hls_source, %Membrane.HLS.Source{
         url: url,
