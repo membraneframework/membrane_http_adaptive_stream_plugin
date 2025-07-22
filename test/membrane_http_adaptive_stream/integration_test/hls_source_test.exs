@@ -35,7 +35,7 @@ defmodule Membrane.HLS.Source.Test do
       Process.sleep(10_000)
       Testing.Pipeline.terminate(pipeline)
 
-      # fixtures created locally with a quite good internet connection have
+      # reference files created locally with a quite good internet connection have
       #  - 139_085 bytes for audio
       #  - 500_571 bytes for video
       assert_track(audio_result_file, @fmp4_audio_ref_file, 70_000)
@@ -64,7 +64,7 @@ defmodule Membrane.HLS.Source.Test do
       Process.sleep(10_000)
       Testing.Pipeline.terminate(pipeline)
 
-      # fixtures created locally with a quite good internet connection have
+      # reference files created locally with a quite good internet connection have
       #  - 78_732 bytes for audio
       #  - 136_754 bytes for video
       assert_track(audio_result_file, @mpeg_ts_audio_ref_file, 40_000)
@@ -181,9 +181,9 @@ defmodule Membrane.HLS.Source.Test do
     ]
   end
 
-  defp assert_track(result_file, fixture, asserted_bytes) do
+  defp assert_track(result_file, reference_file, asserted_bytes) do
     <<expected_prefix::binary-size(asserted_bytes), _sufix::binary>> =
-      fixture |> File.read!()
+      reference_file |> File.read!()
 
     assert result_file
            |> File.read!()
