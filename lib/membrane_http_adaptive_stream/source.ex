@@ -136,9 +136,6 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
     {:ok, client_genserver} =
       ClientGenServer.start_link(state.url, state.variant_selection_policy)
 
-    # todo: maybe we should call here `get_tracks_info/1` to start downloading segments
-    # or we should start buffering frames?
-
     {[], %{state | client_genserver: client_genserver}}
   end
 
@@ -175,6 +172,10 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
 
   @impl true
   def handle_playing(_ctx, state) do
+    # both start_running/1 and generate_new_tracks_notification/1 functions
+    # call ClientGenServer.get_tracks_info/1 that triggers downloading first
+    # segments of the HLS stream
+
     if state.audio_output.ref != nil or state.video_output.ref != nil do
       state |> start_running()
     else
