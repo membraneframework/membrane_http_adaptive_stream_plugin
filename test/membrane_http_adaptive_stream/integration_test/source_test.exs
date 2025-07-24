@@ -70,6 +70,38 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
       assert_track(audio_result_file, @mpeg_ts_audio_ref_file, 40_000)
       assert_track(video_result_file, @mpeg_ts_video_ref_file, 70_000)
     end
+    
+    @tag :tmp_dir
+    @tag :sometag
+    test "(MPEG-TS) with start_at option", %{tmp_dir: tmp_dir} do
+      audio_result_file = Path.join(tmp_dir, "audio.aac")
+      video_result_file = Path.join(tmp_dir, "video.h264")
+      start_at = Membrane.Time.seconds(10)
+
+      spec =
+        hls_to_file_pipeline_spec(
+          @mpegts_url,
+          %Membrane.Transcoder{
+            assumed_input_stream_format: %Membrane.AAC{
+              encapsulation: :ADTS
+            },
+            output_stream_format: Membrane.AAC
+          },
+          audio_result_file,
+          video_result_file,
+          start_at
+        )
+
+      pipeline = Testing.Pipeline.start_link_supervised!(spec: spec)
+      Process.sleep(10_000)
+      Testing.Pipeline.terminate(pipeline)
+
+      # reference files created locally with a quite good internet connection have
+      #  - 78_732 bytes for audio
+      #  - 136_754 bytes for video
+      assert_track(audio_result_file, @mpeg_ts_audio_ref_file, 40_000)
+      assert_track(video_result_file, @mpeg_ts_video_ref_file, 70_000)
+    end
   end
 
   describe "Membrane.HTTPAdaptiveStream.Source sends :new_tracks notification" do
@@ -157,11 +189,12 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
     Testing.Pipeline.terminate(pipeline)
   end
 
-  defp hls_to_file_pipeline_spec(url, audio_transcoder, audio_result_file, video_result_file) do
+  defp hls_to_file_pipeline_spec(url, audio_transcoder, audio_result_file, video_result_file, start_at \\ 0) do
     [
       child(:hls_source, %Membrane.HTTPAdaptiveStream.Source{
         url: url,
-        variant_selection_policy: :lowest_resolution
+        variant_selection_policy: :lowest_resolution,
+        start_at: start_at
       })
       |> via_out(:video_output)
       |> child(%Membrane.Transcoder{

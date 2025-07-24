@@ -104,6 +104,17 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
 
                 Defaults to `:highest_resolution`.
                 """
+              ],
+              start_at: [
+                spec: Membrane.Time.t(),
+                default: 0,
+                description: """
+                Specifies the decoding timestamp of 
+                the first sample that should be read from each of the tracks.
+
+                If there is no sample with exactly such a timestamp, that sample
+                will be the first sample with DTS greater than provided timestamp.
+                """
               ]
 
   @impl true
@@ -134,7 +145,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
   @impl true
   def handle_setup(_ctx, state) do
     {:ok, client_genserver} =
-      ClientGenServer.start_link(state.url, state.variant_selection_policy)
+      ClientGenServer.start_link(state.url, state.variant_selection_policy, Membrane.Time.as_milliseconds(state.start_at, :round))
 
     {[], %{state | client_genserver: client_genserver}}
   end

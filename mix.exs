@@ -69,7 +69,7 @@ defmodule Membrane.HTTPAdaptiveStream.MixProject do
       {:membrane_aac_plugin, "~> 0.19.0"},
       {:membrane_h26x_plugin, "~> 0.10.0"},
       {:ex_hls,
-       github: "membraneframework-labs/ex_hls", ref: "88847ba9a547366fd3f4868d49b72bd1e68ae412"},
+       github: "membraneframework-labs/ex_hls", ref: "5b0227b898559678df25962424d1469f49f48810"},
       {:bunch, "~> 1.6"},
       {:qex, "~> 0.5"},
       {:membrane_hackney_plugin, "~> 0.11.0", only: :test},
