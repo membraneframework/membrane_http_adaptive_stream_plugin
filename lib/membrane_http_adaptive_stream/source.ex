@@ -107,14 +107,15 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
               ],
               start_at: [
                 spec: Membrane.Time.t(),
-                default: 0,
+                default: Membrane.Time.seconds(0),
                 description: """
                 Specifies the decoding timestamp of 
                 the first sample that should be read from each of the tracks.
 
                 If there is no sample with exactly such a timestamp, that sample
                 will be the first sample with DTS greater than provided timestamp.
-                """
+                """,
+                inspector: &Membrane.Time.inspect/1
               ]
 
   @impl true
@@ -148,7 +149,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
       ClientGenServer.start_link(
         state.url,
         state.variant_selection_policy,
-        Membrane.Time.as_milliseconds(state.start_at, :round)
+        state.start_at
       )
 
     {[], %{state | client_genserver: client_genserver}}
