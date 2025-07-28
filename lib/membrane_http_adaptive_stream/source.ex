@@ -145,7 +145,11 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
   @impl true
   def handle_setup(_ctx, state) do
     {:ok, client_genserver} =
-      ClientGenServer.start_link(state.url, state.variant_selection_policy, Membrane.Time.as_milliseconds(state.start_at, :round))
+      ClientGenServer.start_link(
+        state.url,
+        state.variant_selection_policy,
+        Membrane.Time.as_milliseconds(state.start_at, :round)
+      )
 
     {[], %{state | client_genserver: client_genserver}}
   end

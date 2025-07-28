@@ -70,7 +70,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
       assert_track(audio_result_file, @mpeg_ts_audio_ref_file, 40_000)
       assert_track(video_result_file, @mpeg_ts_video_ref_file, 70_000)
     end
-    
+
     @tag :tmp_dir
     @tag :sometag
     test "(MPEG-TS) with start_at option", %{tmp_dir: tmp_dir} do
@@ -189,7 +189,13 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
     Testing.Pipeline.terminate(pipeline)
   end
 
-  defp hls_to_file_pipeline_spec(url, audio_transcoder, audio_result_file, video_result_file, start_at \\ 0) do
+  defp hls_to_file_pipeline_spec(
+         url,
+         audio_transcoder,
+         audio_result_file,
+         video_result_file,
+         start_at \\ 0
+       ) do
     [
       child(:hls_source, %Membrane.HTTPAdaptiveStream.Source{
         url: url,
