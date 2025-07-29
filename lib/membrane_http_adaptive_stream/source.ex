@@ -109,7 +109,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
                 spec: Membrane.Time.t(),
                 default: Membrane.Time.seconds(0),
                 description: """
-                Specifies the decoding timestamp of 
+                Specifies the decoding timestamp of
                 the first sample that should be read from each of the tracks.
 
                 If there is no sample with exactly such a timestamp, that sample
