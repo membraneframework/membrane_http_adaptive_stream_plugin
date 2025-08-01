@@ -16,6 +16,8 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
   @fmp4_audio_ref_file Path.join(@ref_files_dir, "fmp4/audio.aac")
   @mpeg_ts_video_ref_file Path.join(@ref_files_dir, "mpeg_ts/video.h264")
   @mpeg_ts_audio_ref_file Path.join(@ref_files_dir, "mpeg_ts/audio.aac")
+  @skipped_mpeg_ts_video_ref_file Path.join(@ref_files_dir, "mpeg_ts/skipped_video.h264")
+  @skipped_mpeg_ts_audio_ref_file Path.join(@ref_files_dir, "mpeg_ts/skipped_audio.aac")
 
   describe "Membrane.HTTPAdaptiveStream.Source demuxes audio and video from HLS stream" do
     @tag :tmp_dir
@@ -69,6 +71,37 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
       #  - 136_754 bytes for video
       assert_track(audio_result_file, @mpeg_ts_audio_ref_file, 40_000)
       assert_track(video_result_file, @mpeg_ts_video_ref_file, 70_000)
+    end
+
+    @tag :tmp_dir
+    test "(MPEG-TS) with how_much_to_skip option", %{tmp_dir: tmp_dir} do
+      audio_result_file = Path.join(tmp_dir, "audio.aac")
+      video_result_file = Path.join(tmp_dir, "video.h264")
+      how_much_to_skip = Membrane.Time.seconds(10)
+
+      spec =
+        hls_to_file_pipeline_spec(
+          @mpegts_url,
+          %Membrane.Transcoder{
+            assumed_input_stream_format: %Membrane.AAC{
+              encapsulation: :ADTS
+            },
+            output_stream_format: Membrane.AAC
+          },
+          audio_result_file,
+          video_result_file,
+          how_much_to_skip
+        )
+
+      pipeline = Testing.Pipeline.start_link_supervised!(spec: spec)
+      Process.sleep(10_000)
+      Testing.Pipeline.terminate(pipeline)
+
+      # reference files created locally with a quite good internet connection have
+      #  - 78_732 bytes for audio
+      #  - 136_754 bytes for video
+      assert_track(audio_result_file, @skipped_mpeg_ts_audio_ref_file, 40_000)
+      assert_track(video_result_file, @skipped_mpeg_ts_video_ref_file, 70_000)
     end
   end
 
@@ -157,11 +190,19 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
     Testing.Pipeline.terminate(pipeline)
   end
 
-  defp hls_to_file_pipeline_spec(url, audio_transcoder, audio_result_file, video_result_file) do
+  @default_how_much_to_skip Membrane.Time.seconds(0)
+  defp hls_to_file_pipeline_spec(
+         url,
+         audio_transcoder,
+         audio_result_file,
+         video_result_file,
+         how_much_to_skip \\ @default_how_much_to_skip
+       ) do
     [
       child(:hls_source, %Membrane.HTTPAdaptiveStream.Source{
         url: url,
-        variant_selection_policy: :lowest_resolution
+        variant_selection_policy: :lowest_resolution,
+        how_much_to_skip: how_much_to_skip
       })
       |> via_out(:video_output)
       |> child(%Membrane.Transcoder{

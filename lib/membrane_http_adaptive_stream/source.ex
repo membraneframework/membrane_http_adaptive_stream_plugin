@@ -104,6 +104,14 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
 
                 Defaults to `:highest_resolution`.
                 """
+              ],
+              how_much_to_skip: [
+                spec: Membrane.Time.t(),
+                default: Membrane.Time.seconds(0),
+                description: """
+                Specifies how much time should be discarded from each of the tracks.
+                """,
+                inspector: &Membrane.Time.inspect/1
               ]
 
   @impl true
@@ -134,7 +142,11 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
   @impl true
   def handle_setup(_ctx, state) do
     {:ok, client_genserver} =
-      ClientGenServer.start_link(state.url, state.variant_selection_policy)
+      ClientGenServer.start_link(
+        state.url,
+        state.variant_selection_policy,
+        state.how_much_to_skip
+      )
 
     {[], %{state | client_genserver: client_genserver}}
   end
