@@ -12,11 +12,11 @@ defmodule Membrane.HTTPAdaptiveStream.Source.ClientGenServer do
           Membrane.Time.t()
         ) ::
           GenServer.on_start()
-  def start_link(url, variant_selection_policy, start_at) do
+  def start_link(url, variant_selection_policy, how_much_to_skip) do
     GenServer.start_link(__MODULE__,
       url: url,
       variant_selection_policy: variant_selection_policy,
-      start_at: start_at
+      how_much_to_skip: start_at
     )
   end
 
@@ -39,11 +39,15 @@ defmodule Membrane.HTTPAdaptiveStream.Source.ClientGenServer do
   end
 
   @impl true
-  def init(url: url, variant_selection_policy: variant_selection_policy, start_at: start_at) do
+  def init(
+        url: url,
+        variant_selection_policy: variant_selection_policy,
+        how_much_to_skip: how_much_to_skip
+      ) do
     state = %{
       url: url,
       variant_selection_policy: variant_selection_policy,
-      start_at: start_at,
+      how_much_to_skip: how_much_to_skip,
       client: nil
     }
 
@@ -52,10 +56,10 @@ defmodule Membrane.HTTPAdaptiveStream.Source.ClientGenServer do
 
   @impl true
   def handle_continue(:setup, state) do
-    start_at_ms = Membrane.Time.as_milliseconds(state.start_at, :round)
+    how_much_to_skip_ms = Membrane.Time.as_milliseconds(state.how_much_to_skip, :round)
 
     state =
-      %{state | client: Client.new(state.url, start_at_ms)}
+      %{state | client: Client.new(state.url, how_much_to_skip_ms)}
       |> choose_variant()
 
     {:noreply, state}

@@ -74,10 +74,10 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
     end
 
     @tag :tmp_dir
-    test "(MPEG-TS) with start_at option", %{tmp_dir: tmp_dir} do
+    test "(MPEG-TS) with how_much_to_skip option", %{tmp_dir: tmp_dir} do
       audio_result_file = Path.join(tmp_dir, "audio.aac")
       video_result_file = Path.join(tmp_dir, "video.h264")
-      start_at = Membrane.Time.seconds(10)
+      how_much_to_skip = Membrane.Time.seconds(10)
 
       spec =
         hls_to_file_pipeline_spec(
@@ -90,7 +90,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
           },
           audio_result_file,
           video_result_file,
-          start_at
+          how_much_to_skip
         )
 
       pipeline = Testing.Pipeline.start_link_supervised!(spec: spec)
@@ -190,19 +190,19 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
     Testing.Pipeline.terminate(pipeline)
   end
 
-  @default_start_at Membrane.Time.seconds(0)
+  @default_how_much_to_skip Membrane.Time.seconds(0)
   defp hls_to_file_pipeline_spec(
          url,
          audio_transcoder,
          audio_result_file,
          video_result_file,
-         start_at \\ @default_start_at
+         how_much_to_skip \\ @default_how_much_to_skip
        ) do
     [
       child(:hls_source, %Membrane.HTTPAdaptiveStream.Source{
         url: url,
         variant_selection_policy: :lowest_resolution,
-        start_at: start_at
+        how_much_to_skip: how_much_to_skip
       })
       |> via_out(:video_output)
       |> child(%Membrane.Transcoder{

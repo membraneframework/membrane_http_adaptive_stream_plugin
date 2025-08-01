@@ -105,15 +105,11 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
                 Defaults to `:highest_resolution`.
                 """
               ],
-              start_at: [
+              how_much_to_skip: [
                 spec: Membrane.Time.t(),
                 default: Membrane.Time.seconds(0),
                 description: """
-                Specifies the decoding timestamp of
-                the first sample that should be read from each of the tracks.
-
-                If there is no sample with exactly such a timestamp, that sample
-                will be the first sample with DTS greater than provided timestamp.
+                Specifies how much time should be discarded from each of the tracks.
                 """,
                 inspector: &Membrane.Time.inspect/1
               ]
@@ -149,7 +145,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
       ClientGenServer.start_link(
         state.url,
         state.variant_selection_policy,
-        state.start_at
+        state.how_much_to_skip
       )
 
     {[], %{state | client_genserver: client_genserver}}
