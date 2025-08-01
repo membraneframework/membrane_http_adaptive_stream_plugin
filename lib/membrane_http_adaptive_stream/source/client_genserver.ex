@@ -16,7 +16,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source.ClientGenServer do
     GenServer.start_link(__MODULE__,
       url: url,
       variant_selection_policy: variant_selection_policy,
-      how_much_to_skip: start_at
+      how_much_to_skip: how_much_to_skip
     )
   end
 
