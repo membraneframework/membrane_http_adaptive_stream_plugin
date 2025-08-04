@@ -122,7 +122,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
       qex: Qex.new(),
       qex_size: 0,
       oldest_buffer_dts: nil,
-      eos_received?: false
+      eos_received?: false,
     }
 
     state =
@@ -133,7 +133,8 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
         client_genserver: nil,
         new_tracks_notification: nil,
         audio_output: initial_pad_state,
-        video_output: initial_pad_state
+        video_output: initial_pad_state,
+        event_sent?: false
       })
 
     {[], state}
@@ -244,6 +245,16 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
 
       {:stream_format, {pad_ref, stream_format}}
     end)
+  end
+
+  def get_events(state) do
+    if not state.event_sent? do
+      how_much_skipped = ClientGenServer.how_much_skipped(state.client_genserver) 
+      get_pads(state)
+      |> Enum.flat_map(fn pad_ref -> [event: {pad_ref, %__MODULE__.SkippedEvent{how_much_skipped: how_much_skipped}}] end)
+    else
+      []
+    end
   end
 
   defp get_redemands(state) do
@@ -402,7 +413,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
       case buffer_or_eos do
         %Buffer{} = buffer ->
           state = state |> put_in([pad_name, :oldest_buffer_dts], buffer.dts)
-          {[buffer: {pad_ref, buffer}], state}
+          {get_events(state) ++ [buffer: {pad_ref, buffer}], %{state | event_sent?: true}}
 
         :end_of_stream ->
           {[end_of_stream: pad_ref], state}
