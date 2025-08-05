@@ -122,7 +122,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
       qex: Qex.new(),
       qex_size: 0,
       oldest_buffer_dts: nil,
-      eos_received?: false,
+      eos_received?: false
     }
 
     state =
@@ -249,9 +249,12 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
 
   def get_events(state) do
     if not state.event_sent? do
-      how_much_skipped = ClientGenServer.how_much_skipped(state.client_genserver) 
+      how_much_skipped = ClientGenServer.how_much_skipped(state.client_genserver)
+
       get_pads(state)
-      |> Enum.flat_map(fn pad_ref -> [event: {pad_ref, %__MODULE__.SkippedEvent{how_much_skipped: how_much_skipped}}] end)
+      |> Enum.flat_map(fn pad_ref ->
+        [event: {pad_ref, %Membrane.Event.Discontinuity{duration: how_much_skipped}}]
+      end)
     else
       []
     end
