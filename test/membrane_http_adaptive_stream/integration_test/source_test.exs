@@ -95,6 +95,11 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
 
       pipeline = Testing.Pipeline.start_link_supervised!(spec: spec)
       Process.sleep(10_000)
+      desired_skipped_duration = Membrane.Time.seconds(10)
+
+      assert_received {:event_observed,
+                       %Membrane.Event.Discontinuity{duration: ^desired_skipped_duration}}
+
       Testing.Pipeline.terminate(pipeline)
 
       # reference files created locally with a quite good internet connection have
@@ -198,6 +203,8 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
          video_result_file,
          how_much_to_skip \\ @default_how_much_to_skip
        ) do
+    parent = self()
+
     [
       child(:hls_source, %Membrane.HTTPAdaptiveStream.Source{
         url: url,
@@ -216,6 +223,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
       |> via_out(:audio_output)
       |> child(audio_transcoder)
       |> child(Membrane.Realtimer)
+      |> child(%Membrane.Debug.Filter{handle_event: &send(parent, {:event_observed, &1})})
       |> child(%Membrane.File.Sink{
         location: audio_result_file
       })
