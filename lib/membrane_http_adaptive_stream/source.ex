@@ -110,6 +110,11 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
                 default: Membrane.Time.seconds(0),
                 description: """
                 Specifies how much time should be discarded from each of the tracks.
+
+                Please note that an actual discarded part of the stream might will be at most of that length
+                because it needs to be aligned with HLS segments distribution.
+                The source will send an `Membrane.Event.Discontinuity` event with `:duration` field
+                representing duration of the discarded part of the stream.
                 """,
                 inspector: &Membrane.Time.inspect/1
               ]
@@ -247,7 +252,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
     end)
   end
 
-  def get_discontinuity_events(%{initial_discontinuity_event_sent?: false} = state) do
+  defp get_discontinuity_events(%{initial_discontinuity_event_sent?: false} = state) do
     how_much_skipped = ClientGenServer.how_much_skipped(state.client_genserver)
 
     get_pads(state)
@@ -256,7 +261,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
     end)
   end
 
-  def get_discontinuity_events(_state) do
+  defp get_discontinuity_events(_state) do
     []
   end
 
@@ -437,7 +442,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
           _any when pad_ref == nil or eos_received? ->
             0
 
-          # todo: maybe we should handle rollovers
+          # maybe we should handle rollovers
           {:value, %Buffer{dts: newest_dts}}
           when newest_dts - oldest_dts >= state.buffered_stream_time ->
             0
