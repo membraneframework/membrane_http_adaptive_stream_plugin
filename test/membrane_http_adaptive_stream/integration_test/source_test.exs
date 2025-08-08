@@ -77,7 +77,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
     test "(MPEG-TS) with how_much_to_skip option", %{tmp_dir: tmp_dir} do
       audio_result_file = Path.join(tmp_dir, "audio.aac")
       video_result_file = Path.join(tmp_dir, "video.h264")
-      how_much_to_skip = Membrane.Time.seconds(10)
+      how_much_to_skip = Membrane.Time.seconds(11)
 
       spec =
         hls_to_file_pipeline_spec(

@@ -134,7 +134,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
         new_tracks_notification: nil,
         audio_output: initial_pad_state,
         video_output: initial_pad_state,
-        event_sent?: false
+        initial_discontinuity_event_sent?: false
       })
 
     {[], state}
@@ -247,17 +247,17 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
     end)
   end
 
-  def get_events(state) do
-    if not state.event_sent? do
-      how_much_skipped = ClientGenServer.how_much_skipped(state.client_genserver)
+  def get_discontinuity_events(%{initial_discontinuity_event_sent?: false} = state) do
+    how_much_skipped = ClientGenServer.how_much_skipped(state.client_genserver)
 
-      get_pads(state)
-      |> Enum.flat_map(fn pad_ref ->
-        [event: {pad_ref, %Membrane.Event.Discontinuity{duration: how_much_skipped}}]
-      end)
-    else
-      []
-    end
+    get_pads(state)
+    |> Enum.flat_map(fn pad_ref ->
+      [event: {pad_ref, %Membrane.Event.Discontinuity{duration: how_much_skipped}}]
+    end)
+  end
+
+  def get_discontinuity_events(_state) do
+    []
   end
 
   defp get_redemands(state) do
@@ -416,7 +416,9 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
       case buffer_or_eos do
         %Buffer{} = buffer ->
           state = state |> put_in([pad_name, :oldest_buffer_dts], buffer.dts)
-          {get_events(state) ++ [buffer: {pad_ref, buffer}], %{state | event_sent?: true}}
+
+          {get_discontinuity_events(state) ++ [buffer: {pad_ref, buffer}],
+           %{state | initial_discontinuity_event_sent?: true}}
 
         :end_of_stream ->
           {[end_of_stream: pad_ref], state}
