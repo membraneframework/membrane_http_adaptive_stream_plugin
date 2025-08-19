@@ -253,11 +253,11 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
   end
 
   defp get_discontinuity_events(%{initial_discontinuity_event_sent?: false} = state) do
-    how_much_skipped = ClientGenServer.how_much_skipped(state.client_genserver)
+    how_much_truly_skipped = ClientGenServer.how_much_truly_skipped(state.client_genserver)
 
     get_pads(state)
     |> Enum.flat_map(fn pad_ref ->
-      [event: {pad_ref, %Membrane.Event.Discontinuity{duration: how_much_skipped}}]
+      [event: {pad_ref, %Membrane.Event.Discontinuity{duration: how_much_truly_skipped}}]
     end)
   end
 

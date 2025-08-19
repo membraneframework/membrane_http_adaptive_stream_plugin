@@ -38,9 +38,9 @@ defmodule Membrane.HTTPAdaptiveStream.Source.ClientGenServer do
     GenServer.call(client_genserver, :get_tracks_info)
   end
 
-  @spec how_much_skipped(pid()) :: Membrane.Time.t()
-  def how_much_skipped(client_genserver) do
-    GenServer.call(client_genserver, :how_much_skipped)
+  @spec how_much_truly_skipped(pid()) :: Membrane.Time.t()
+  def how_much_truly_skipped(client_genserver) do
+    GenServer.call(client_genserver, :how_much_truly_skipped)
   end
 
   @impl true
@@ -54,7 +54,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source.ClientGenServer do
       variant_selection_policy: variant_selection_policy,
       how_much_to_skip: how_much_to_skip,
       client: nil,
-      how_much_skipped: nil
+      how_much_truly_skipped: nil
     }
 
     {:ok, state, {:continue, :setup}}
@@ -109,8 +109,8 @@ defmodule Membrane.HTTPAdaptiveStream.Source.ClientGenServer do
 
     state =
       put_in(
-        state.how_much_skipped,
-        state.client.base_timestamp_ms |> round() |> Membrane.Time.milliseconds()
+        state.how_much_truly_skipped,
+        Client.get_how_much_truly_skipped_ms(client) |> Membrane.Time.milliseconds()
       )
 
     send(pid, {:audio_chunk, chunk})
@@ -123,8 +123,8 @@ defmodule Membrane.HTTPAdaptiveStream.Source.ClientGenServer do
 
     state =
       put_in(
-        state.how_much_skipped,
-        state.client.base_timestamp_ms |> round() |> Membrane.Time.milliseconds()
+        state.how_much_truly_skipped,
+        Client.get_how_much_truly_skipped_ms(client) |> Membrane.Time.milliseconds()
       )
 
     send(pid, {:video_chunk, chunk})
@@ -138,7 +138,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source.ClientGenServer do
   end
 
   @impl true
-  def handle_call(:how_much_skipped, _from, state) do
-    {:reply, state.how_much_skipped, state}
+  def handle_call(:how_much_truly_skipped, _from, state) do
+    {:reply, state.how_much_truly_skipped, state}
   end
 end

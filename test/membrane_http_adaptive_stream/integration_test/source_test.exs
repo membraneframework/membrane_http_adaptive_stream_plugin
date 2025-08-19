@@ -52,12 +52,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
       spec =
         hls_to_file_pipeline_spec(
           @mpegts_url,
-          %Membrane.Transcoder{
-            assumed_input_stream_format: %Membrane.AAC{
-              encapsulation: :ADTS
-            },
-            output_stream_format: Membrane.AAC
-          },
+          %Membrane.AAC.Parser{out_encapsulation: :ADTS},
           audio_result_file,
           video_result_file
         )
@@ -82,12 +77,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
       spec =
         hls_to_file_pipeline_spec(
           @mpegts_url,
-          %Membrane.Transcoder{
-            assumed_input_stream_format: %Membrane.AAC{
-              encapsulation: :ADTS
-            },
-            output_stream_format: Membrane.AAC
-          },
+          %Membrane.AAC.Parser{out_encapsulation: :ADTS},
           audio_result_file,
           video_result_file,
           how_much_to_skip
@@ -198,7 +188,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
   @default_how_much_to_skip Membrane.Time.seconds(0)
   defp hls_to_file_pipeline_spec(
          url,
-         audio_transcoder,
+         audio_processor,
          audio_result_file,
          video_result_file,
          how_much_to_skip \\ @default_how_much_to_skip
@@ -221,7 +211,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
       }),
       get_child(:hls_source)
       |> via_out(:audio_output)
-      |> child(audio_transcoder)
+      |> child(audio_processor)
       |> child(Membrane.Realtimer)
       |> child(%Membrane.Debug.Filter{handle_event: &send(parent, {:event_observed, &1})})
       |> child(%Membrane.File.Sink{
