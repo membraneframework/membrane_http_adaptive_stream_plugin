@@ -104,6 +104,19 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
 
                 Defaults to `:highest_resolution`.
                 """
+              ],
+              how_much_to_skip: [
+                spec: Membrane.Time.t(),
+                default: Membrane.Time.seconds(0),
+                description: """
+                Specifies how much time should be discarded from each of the tracks.
+
+                Please note that an actual discarded part of the stream might will be at most of that length
+                because it needs to be aligned with HLS segments distribution.
+                The source will send an `Membrane.Event.Discontinuity` event with `:duration` field
+                representing duration of the discarded part of the stream.
+                """,
+                inspector: &Membrane.Time.inspect/1
               ]
 
   @impl true
@@ -125,7 +138,8 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
         client_genserver: nil,
         new_tracks_notification: nil,
         audio_output: initial_pad_state,
-        video_output: initial_pad_state
+        video_output: initial_pad_state,
+        initial_discontinuity_event_sent?: false
       })
 
     {[], state}
@@ -134,7 +148,11 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
   @impl true
   def handle_setup(_ctx, state) do
     {:ok, client_genserver} =
-      ClientGenServer.start_link(state.url, state.variant_selection_policy)
+      ClientGenServer.start_link(
+        state.url,
+        state.variant_selection_policy,
+        state.how_much_to_skip
+      )
 
     {[], %{state | client_genserver: client_genserver}}
   end
@@ -232,6 +250,19 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
 
       {:stream_format, {pad_ref, stream_format}}
     end)
+  end
+
+  defp get_discontinuity_events(%{initial_discontinuity_event_sent?: false} = state) do
+    how_much_truly_skipped = ClientGenServer.how_much_truly_skipped(state.client_genserver)
+
+    get_pads(state)
+    |> Enum.flat_map(fn pad_ref ->
+      [event: {pad_ref, %Membrane.Event.Discontinuity{duration: how_much_truly_skipped}}]
+    end)
+  end
+
+  defp get_discontinuity_events(_state) do
+    []
   end
 
   defp get_redemands(state) do
@@ -390,7 +421,9 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
       case buffer_or_eos do
         %Buffer{} = buffer ->
           state = state |> put_in([pad_name, :oldest_buffer_dts], buffer.dts)
-          {[buffer: {pad_ref, buffer}], state}
+
+          {get_discontinuity_events(state) ++ [buffer: {pad_ref, buffer}],
+           %{state | initial_discontinuity_event_sent?: true}}
 
         :end_of_stream ->
           {[end_of_stream: pad_ref], state}
@@ -409,7 +442,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
           _any when pad_ref == nil or eos_received? ->
             0
 
-          # todo: maybe we should handle rollovers
+          # maybe we should handle rollovers
           {:value, %Buffer{dts: newest_dts}}
           when newest_dts - oldest_dts >= state.buffered_stream_time ->
             0
