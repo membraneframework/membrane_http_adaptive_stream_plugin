@@ -32,10 +32,9 @@ defmodule Membrane.HTTPAdaptiveStream.Source.ClientGenServer do
     GenServer.cast(client_genserver, {:request_chunk_or_eos, self()})
   end
 
-  @spec get_skipped_segments_cumulative_duration_ms(pid()) ::
-          {:ok, Membrane.Time.t()} | {:error, reason :: any()}
-  def get_skipped_segments_cumulative_duration_ms(client_genserver) do
-    GenServer.call(client_genserver, :get_skipped_segments_cumulative_duration_ms)
+  @spec get_skipped_segments_cumulative_duration(pid()) :: Membrane.Time.t()
+  def get_skipped_segments_cumulative_duration(client_genserver) do
+    GenServer.call(client_genserver, :get_skipped_segments_cumulative_duration)
   end
 
   # this function should be called by Membrane.HTTPAdaptiveStream.Source
@@ -140,7 +139,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source.ClientGenServer do
   end
 
   @impl true
-  def handle_call(:get_skipped_segments_cumulative_duration_ms, _from, state) do
+  def handle_call(:get_skipped_segments_cumulative_duration, _from, state) do
     {:ok, skipped_duration_ms} =
       Client.get_skipped_segments_cumulative_duration_ms(state.client)
 

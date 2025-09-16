@@ -107,7 +107,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
                 description: """
                 Specifies how much time should be discarded from each of the tracks.
 
-                Please note that an actual discarded part of the stream might will be at most of that length
+                Please note that an actual discarded part of the stream might be at most of that length
                 because it needs to be aligned with HLS segments distribution.
                 The source will send an `Membrane.Event.Discontinuity` event with `:duration` field
                 representing duration of the discarded part of the stream.
@@ -230,13 +230,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
   defp start_streaming(%{status: status} = state)
        when status in [:initialized, :waiting_on_pads] do
     actions = get_stream_formats(state) ++ get_redemands(state)
-
-    state = %{
-      state
-      | status: :streaming
-        # stream: Client.generate_stream(state.client_genserver)
-    }
-
+    state = %{state | status: :streaming}
     {actions, state}
   end
 
@@ -326,7 +320,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
 
   defp get_discontinuity_events(%{initial_discontinuity_event_sent?: false} = state) do
     skipped_segments_cumulative_duration =
-      ClientGenServer.get_skipped_segments_cumulative_duration_ms(state.client_genserver)
+      ClientGenServer.get_skipped_segments_cumulative_duration(state.client_genserver)
 
     event = %Membrane.Event.Discontinuity{duration: skipped_segments_cumulative_duration}
 
