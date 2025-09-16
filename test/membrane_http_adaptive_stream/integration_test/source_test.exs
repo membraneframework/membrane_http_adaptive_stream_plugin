@@ -188,7 +188,6 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
       assert File.read!(video_result_file) == File.read!(@live_mpeg_ts_video_ref_file)
     end
 
-    @tag :x
     @tag :live
     @tag :tmp_dir
     test "Live HLS stream played from the middle", %{tmp_dir: tmp_dir} do
