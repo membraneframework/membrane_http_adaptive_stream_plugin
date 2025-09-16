@@ -4,22 +4,29 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
   import Membrane.ChildrenSpec
   import Membrane.Testing.Assertions
 
-  alias Membrane.{AAC, H264, RemoteStream}
+  require Logger
 
+  alias Membrane.{AAC, H264, RemoteStream}
   alias Membrane.Testing
 
   @mpegts_url "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
   @fmp4_url "https://raw.githubusercontent.com/membraneframework-labs/ex_hls/refs/heads/plug-demuxing-engine-into-client/fixture/output.m3u8"
+  @bbb_33s_mp4_url "https://github.com/membraneframework/static/raw/refs/heads/gh-pages/samples/big-buck-bunny/bun33s.mp4"
 
   @ref_files_dir "test/membrane_http_adaptive_stream/integration_test/fixtures/source"
   @fmp4_video_ref_file Path.join(@ref_files_dir, "fmp4/video.h264")
   @fmp4_audio_ref_file Path.join(@ref_files_dir, "fmp4/audio.aac")
-  @mpeg_ts_video_ref_file Path.join(@ref_files_dir, "mpeg_ts/video.h264")
-  @mpeg_ts_audio_ref_file Path.join(@ref_files_dir, "mpeg_ts/audio.aac")
+  @mpeg_ts_video_ref_file Path.join(@ref_files_dir, "mpeg_ts/vod/video.h264")
+  @mpeg_ts_audio_ref_file Path.join(@ref_files_dir, "mpeg_ts/vod/audio.aac")
+  @live_mpeg_ts_video_ref_file Path.join(@ref_files_dir, "mpeg_ts/live/video.h264")
+  @live_mpeg_ts_audio_ref_file Path.join(@ref_files_dir, "mpeg_ts/live/audio.aac")
+  @cut_live_mpeg_ts_video_ref_file Path.join(@ref_files_dir, "mpeg_ts/live_cut/video.h264")
+  @cut_live_mpeg_ts_audio_ref_file Path.join(@ref_files_dir, "mpeg_ts/live_cut/audio.aac")
   @skipped_mpeg_ts_video_ref_file Path.join(@ref_files_dir, "mpeg_ts/skipped_video.h264")
   @skipped_mpeg_ts_audio_ref_file Path.join(@ref_files_dir, "mpeg_ts/skipped_audio.aac")
 
-  describe "Membrane.HTTPAdaptiveStream.Source demuxes audio and video from HLS stream" do
+  describe "Membrane.HTTPAdaptiveStream.Source demuxes audio and video from VoD HLS stream" do
+    @tag :vod
     @tag :tmp_dir
     test "(fMP4)", %{tmp_dir: tmp_dir} do
       audio_result_file = Path.join(tmp_dir, "audio.aac")
@@ -44,6 +51,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
       assert_track(video_result_file, @fmp4_video_ref_file, 200_000)
     end
 
+    @tag :vod
     @tag :tmp_dir
     test "(MPEG-TS)", %{tmp_dir: tmp_dir} do
       audio_result_file = Path.join(tmp_dir, "audio.aac")
@@ -101,6 +109,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
   end
 
   describe "Membrane.HTTPAdaptiveStream.Source sends :new_tracks notification" do
+    @tag :vod
     test "(fMP4)" do
       test_new_tracks_notification(
         @fmp4_url,
@@ -133,6 +142,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
       )
     end
 
+    @tag :vod
     test "(MPEG-TS)" do
       test_new_tracks_notification(
         @mpegts_url,
@@ -146,6 +156,129 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
     end
   end
 
+  describe "Membrane.HTTPAdaptiveStream.Source demuxes audio and video from" do
+    @tag :live
+    @tag :tmp_dir
+    test "Live HLS stream", %{tmp_dir: tmp_dir} do
+      index_m3u8 = Path.join(tmp_dir, "index.m3u8")
+      generate_live_hls(@bbb_33s_mp4_url, index_m3u8)
+
+      await_until_file_exists(index_m3u8)
+      Process.sleep(7_000)
+
+      audio_result_file = Path.join(tmp_dir, "audio.aac")
+      video_result_file = Path.join(tmp_dir, "video.h264")
+
+      spec =
+        hls_to_file_pipeline_spec(
+          index_m3u8,
+          %Membrane.AAC.Parser{out_encapsulation: :ADTS},
+          audio_result_file,
+          video_result_file
+        )
+
+      pipeline = Testing.Pipeline.start_link_supervised!(spec: spec)
+
+      assert_end_of_stream(pipeline, :video_sink, :input, 45_000)
+      assert_end_of_stream(pipeline, :audio_sink, :input)
+
+      Testing.Pipeline.terminate(pipeline)
+
+      assert File.read!(audio_result_file) == File.read!(@live_mpeg_ts_audio_ref_file)
+      assert File.read!(video_result_file) == File.read!(@live_mpeg_ts_video_ref_file)
+    end
+
+    @tag :x
+    @tag :live
+    @tag :tmp_dir
+    test "Live HLS stream played from the middle", %{tmp_dir: tmp_dir} do
+      index_m3u8 = Path.join(tmp_dir, "index.m3u8")
+      generate_live_hls(@bbb_33s_mp4_url, index_m3u8)
+
+      await_until_file_exists(index_m3u8)
+      Process.sleep(20_000)
+
+      spec =
+        child(:hls_source, %Membrane.HTTPAdaptiveStream.Source{
+          url: index_m3u8,
+          variant_selection_policy: :lowest_resolution
+        })
+
+      pipeline = Testing.Pipeline.start_link_supervised!(spec: spec)
+
+      assert_pipeline_notified(pipeline, :hls_source, {:new_tracks, new_tracks}, 5000)
+      assert length(new_tracks) == 2
+
+      assert new_tracks[:video_output] ==
+               %Membrane.RemoteStream{
+                 content_format: Membrane.H264,
+                 type: :bytestream
+               }
+
+      assert new_tracks[:audio_output] ==
+               %Membrane.RemoteStream{
+                 content_format: Membrane.AAC,
+                 type: :bytestream
+               }
+
+      audio_result_file = Path.join(tmp_dir, "audio.aac")
+      video_result_file = Path.join(tmp_dir, "video.h264")
+
+      sink_spec = [
+        get_child(:hls_source)
+        |> via_out(:video_output)
+        |> child(%Membrane.Transcoder{
+          output_stream_format: Membrane.H264
+        })
+        |> child(Membrane.Realtimer)
+        |> child(:video_sink, %Membrane.File.Sink{
+          location: video_result_file
+        }),
+        get_child(:hls_source)
+        |> via_out(:audio_output)
+        |> child(%Membrane.AAC.Parser{out_encapsulation: :ADTS})
+        |> child(Membrane.Realtimer)
+        |> child(:audio_sink, %Membrane.File.Sink{
+          location: audio_result_file
+        })
+      ]
+
+      Testing.Pipeline.execute_actions(pipeline, spec: sink_spec)
+
+      assert_end_of_stream(pipeline, :video_sink, :input, 25_000)
+      assert_end_of_stream(pipeline, :audio_sink, :input)
+
+      Testing.Pipeline.terminate(pipeline)
+
+      assert File.read!(audio_result_file) == File.read!(@cut_live_mpeg_ts_audio_ref_file)
+      assert File.read!(video_result_file) == File.read!(@cut_live_mpeg_ts_video_ref_file)
+    end
+  end
+
+  defp generate_live_hls(source_mp4, index_m3u8) do
+    start_supervised!(
+      {
+        MuonTrap.Daemon,
+        [
+          "ffmpeg",
+          [
+            "-re",
+            "-i",
+            source_mp4,
+            "-c",
+            "copy",
+            "-f",
+            "hls",
+            "-hls_list_size",
+            "8",
+            index_m3u8
+          ]
+        ]
+      },
+      restart: :transient
+    )
+  end
+
   defp test_new_tracks_notification(hls_url, video_format_validator, audio_format_validator) do
     source_spec =
       child(:hls_source, %Membrane.HTTPAdaptiveStream.Source{
@@ -157,8 +290,8 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
 
     # let's assert :new_tracks notification
 
-    assert_pipeline_notified(pipeline, :hls_source, {:new_tracks, new_tracks})
-
+    # bad internet connection may cause the test to fail when the timeout is default 2s
+    assert_pipeline_notified(pipeline, :hls_source, {:new_tracks, new_tracks}, 5000)
     assert length(new_tracks) == 2
     new_tracks[:video_output] |> video_format_validator.()
     new_tracks[:audio_output] |> audio_format_validator.()
@@ -206,7 +339,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
         output_stream_format: Membrane.H264
       })
       |> child(Membrane.Realtimer)
-      |> child(%Membrane.File.Sink{
+      |> child(:video_sink, %Membrane.File.Sink{
         location: video_result_file
       }),
       get_child(:hls_source)
@@ -214,7 +347,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
       |> child(audio_processor)
       |> child(Membrane.Realtimer)
       |> child(%Membrane.Debug.Filter{handle_event: &send(parent, {:event_observed, &1})})
-      |> child(%Membrane.File.Sink{
+      |> child(:audio_sink, %Membrane.File.Sink{
         location: audio_result_file
       })
     ]
@@ -227,5 +360,20 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
     assert result_file
            |> File.read!()
            |> String.starts_with?(expected_prefix)
+  end
+
+  defp await_until_file_exists(file_path, wait_s \\ 30) do
+    cond do
+      wait_s <= 0 ->
+        raise "File #{file_path} does not exist after waiting for 30 seconds"
+
+      File.exists?(file_path) ->
+        :ok
+
+      true ->
+        Logger.debug("Waiting for file #{file_path} to be created...")
+        Process.sleep(1000)
+        await_until_file_exists(file_path, wait_s - 1)
+    end
   end
 end
