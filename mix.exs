@@ -1,7 +1,7 @@
 defmodule Membrane.HTTPAdaptiveStream.MixProject do
   use Mix.Project
 
-  @version "0.19.0"
+  @version "0.20.0"
   @github_url "https://github.com/membraneframework/membrane_http_adaptive_stream_plugin"
 
   def project do
@@ -68,9 +68,12 @@ defmodule Membrane.HTTPAdaptiveStream.MixProject do
       {:membrane_mp4_plugin, "~> 0.36.0"},
       {:membrane_aac_plugin, "~> 0.19.0"},
       {:membrane_h26x_plugin, "~> 0.10.0"},
-      {:ex_hls, "~> 0.0.1"},
+      {:stream_split, "~> 0.1.7"},
+      {:ex_hls, "~> 0.1.0"},
       {:bunch, "~> 1.6"},
       {:qex, "~> 0.5"},
+      {:muontrap, "~> 1.6", only: :test},
+      {:membrane_raw_audio_parser_plugin, "~> 0.4.0", only: :test},
       {:membrane_hackney_plugin, "~> 0.11.0", only: :test},
       {:membrane_transcoder_plugin, "~> 0.3.2", only: :test},
       {:membrane_realtimer_plugin, "~> 0.10.1", only: :test},

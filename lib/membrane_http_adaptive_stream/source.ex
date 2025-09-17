@@ -36,10 +36,6 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
     availability: :on_request,
     max_instances: 1
 
-  # The boundary on how many chunks of one stream will be requested
-  # from Membrane.HTTPAdaptiveStream.Source.ClientGenServer at once.
-  @requested_chunks_boundary 5
-
   @variant_selection_policy_description """
   The policy used to select a variant from the list of available variants.
 
@@ -111,7 +107,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
                 description: """
                 Specifies how much time should be discarded from each of the tracks.
 
-                Please note that an actual discarded part of the stream might will be at most of that length
+                Please note that an actual discarded part of the stream might be at most of that length
                 because it needs to be aligned with HLS segments distribution.
                 The source will send an `Membrane.Event.Discontinuity` event with `:duration` field
                 representing duration of the discarded part of the stream.
@@ -121,24 +117,16 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
 
   @impl true
   def handle_init(_ctx, opts) do
-    initial_pad_state = %{
-      ref: nil,
-      requested: 0,
-      qex: Qex.new(),
-      qex_size: 0,
-      oldest_buffer_dts: nil,
-      eos_received?: false
-    }
-
     state =
       Map.from_struct(opts)
       |> Map.merge(%{
-        # status will be either :initialized, :waiting_on_pads or :running
+        # status will be either :initialized, :waiting_on_pads or :streaming
         status: :initialized,
         client_genserver: nil,
+        stream: nil,
         new_tracks_notification: nil,
-        audio_output: initial_pad_state,
-        video_output: initial_pad_state,
+        pad_refs: %{video_output: nil, audio_output: nil},
+        waiting_on_client_genserver_response?: false,
         initial_discontinuity_event_sent?: false
       })
 
@@ -146,37 +134,25 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
   end
 
   @impl true
-  def handle_setup(_ctx, state) do
-    {:ok, client_genserver} =
-      ClientGenServer.start_link(
-        state.url,
-        state.variant_selection_policy,
-        state.how_much_to_skip
-      )
-
-    {[], %{state | client_genserver: client_genserver}}
-  end
-
-  @impl true
   def handle_pad_added(Pad.ref(pad_name, _id) = pad_ref, ctx, state)
       when ctx.playback == :stopped do
-    state = state |> put_in([pad_name, :ref], pad_ref)
+    state = state |> put_in([:pad_refs, pad_name], pad_ref)
     {[], state}
   end
 
   @impl true
   def handle_pad_added(Pad.ref(pad_name, _id) = pad_ref, ctx, state)
       when ctx.playback == :playing and state.status == :waiting_on_pads do
-    state = state |> put_in([pad_name, :ref], pad_ref)
+    state = state |> put_in([:pad_refs, pad_name], pad_ref)
 
     if map_size(ctx.pads) == length(state.new_tracks_notification),
-      do: state |> start_running(),
+      do: state |> start_streaming(),
       else: {[], state}
   end
 
   @impl true
   def handle_pad_added(Pad.ref(pad_name, _id), ctx, state)
-      when ctx.playback == :playing and state.status == :running do
+      when ctx.playback == :playing and state.status == :streaming do
     raise """
     Tried to link pad #{inspect(pad_name)}, but all pads are already linked.
 
@@ -189,21 +165,49 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
   end
 
   @impl true
-  def handle_playing(_ctx, state) do
-    # both start_running/1 and generate_new_tracks_notification/1 functions
+  def handle_playing(ctx, state) do
+    # both start_streaming/1 and generate_new_tracks_notification/1 functions
     # call ClientGenServer.get_tracks_info/1 that triggers downloading first
     # segments of the HLS stream
 
-    if state.audio_output.ref != nil or state.video_output.ref != nil do
-      state |> start_running()
+    state = create_client_gen_server(ctx, state)
+
+    if Map.values(state.pad_refs) != [nil, nil] do
+      state |> start_streaming()
     else
       state |> generate_new_tracks_notification()
     end
   end
 
+  defp create_client_gen_server(ctx, state) do
+    start_link_arg = %{
+      url: state.url,
+      variant_selection_policy: state.variant_selection_policy,
+      source: self(),
+      how_much_to_skip: state.how_much_to_skip
+    }
+
+    Membrane.UtilitySupervisor.start_link_child(
+      ctx.utility_supervisor,
+      {__MODULE__.ClientGenServer, start_link_arg}
+    )
+
+    client_genserver =
+      receive do
+        {:client_genserver, client_genserver} -> client_genserver
+      after
+        5_000 ->
+          raise "Timeout waiting for #{inspect(__MODULE__)}.ClientGenServer initialization"
+      end
+
+    %{state | client_genserver: client_genserver}
+  end
+
   defp generate_new_tracks_notification(%{status: :initialized} = state) do
+    tracks_info = ClientGenServer.get_tracks_info(state.client_genserver)
+
     new_tracks =
-      ClientGenServer.get_tracks_info(state.client_genserver)
+      tracks_info
       |> Enum.map(fn {_id, stream_format} ->
         pad_name =
           if audio_stream_format?(stream_format),
@@ -223,14 +227,10 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
     {[notify_parent: {:new_tracks, new_tracks}], state}
   end
 
-  defp start_running(%{status: status} = state)
+  defp start_streaming(%{status: status} = state)
        when status in [:initialized, :waiting_on_pads] do
     actions = get_stream_formats(state) ++ get_redemands(state)
-
-    state =
-      %{state | status: :running}
-      |> request_media_chunks()
-
+    state = %{state | status: :streaming}
     {actions, state}
   end
 
@@ -242,27 +242,14 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
     :ok = ensure_pads_match_stream_formats!(stream_formats, state)
 
     stream_formats
-    |> Enum.map(fn stream_format ->
+    |> Enum.flat_map(fn stream_format ->
       pad_ref =
         if audio_stream_format?(stream_format),
-          do: state.audio_output.ref,
-          else: state.video_output.ref
+          do: state.pad_refs.audio_output,
+          else: state.pad_refs.video_output
 
-      {:stream_format, {pad_ref, stream_format}}
+      [stream_format: {pad_ref, stream_format}]
     end)
-  end
-
-  defp get_discontinuity_events(%{initial_discontinuity_event_sent?: false} = state) do
-    how_much_truly_skipped = ClientGenServer.how_much_truly_skipped(state.client_genserver)
-
-    get_pads(state)
-    |> Enum.flat_map(fn pad_ref ->
-      [event: {pad_ref, %Membrane.Event.Discontinuity{duration: how_much_truly_skipped}}]
-    end)
-  end
-
-  defp get_discontinuity_events(_state) do
-    []
   end
 
   defp get_redemands(state) do
@@ -277,19 +264,19 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
     video_format_occurs? =
       Enum.any?(stream_formats, &(not audio_stream_format?(&1)))
 
-    if audio_format_occurs? and state.audio_output.ref == nil do
+    if audio_format_occurs? and state.pad_refs.audio_output == nil do
       raise_missing_pad_error(:audio_output, stream_formats, state)
     end
 
-    if video_format_occurs? and state.video_output.ref == nil do
+    if video_format_occurs? and state.pad_refs.video_output == nil do
       raise_missing_pad_error(:video_output, stream_formats, state)
     end
 
-    if not audio_format_occurs? and state.audio_output.ref != nil do
+    if not audio_format_occurs? and state.pad_refs.audio_output != nil do
       raise_redundant_pad_error(:audio_output, stream_formats, state)
     end
 
-    if not video_format_occurs? and state.video_output.ref != nil do
+    if not video_format_occurs? and state.pad_refs.video_output != nil do
       raise_redundant_pad_error(:video_output, stream_formats, state)
     end
 
@@ -319,13 +306,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
   end
 
   defp get_pads(state) do
-    [:audio_output, :video_output]
-    |> Enum.flat_map(fn pad_name ->
-      case state[pad_name].ref do
-        nil -> []
-        pad_ref -> [pad_ref]
-      end
-    end)
+    state.pad_refs |> Map.values() |> Enum.reject(&(&1 == nil))
   end
 
   defp audio_stream_format?(stream_format) do
@@ -337,19 +318,36 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
     end
   end
 
+  defp get_discontinuity_events(%{initial_discontinuity_event_sent?: false} = state) do
+    skipped_segments_cumulative_duration =
+      ClientGenServer.get_skipped_segments_cumulative_duration(state.client_genserver)
+
+    event = %Membrane.Event.Discontinuity{duration: skipped_segments_cumulative_duration}
+
+    get_pads(state)
+    |> Enum.flat_map(&[event: {&1, event}])
+  end
+
+  defp get_discontinuity_events(_state), do: []
+
   @impl true
-  def handle_demand(pad_ref, demand, :buffers, _ctx, state)
-      when state.status == :running do
-    {actions, state} = pop_buffers(pad_ref, demand, state)
-    state = request_media_chunks(state)
-    {actions, state}
+  def handle_demand(_pad_ref, _demand, :buffers, _ctx, state)
+      when state.status == :streaming and not state.waiting_on_client_genserver_response? do
+    ClientGenServer.request_chunk_or_eos(state.client_genserver)
+    {[], %{state | waiting_on_client_genserver_response?: true}}
+  end
+
+  @impl true
+  def handle_demand(_pad_ref, _demand, :buffers, _ctx, state)
+      when state.waiting_on_client_genserver_response? do
+    {[], state}
   end
 
   @impl true
   def handle_demand(pad_ref, demand, :buffers, _ctx, state)
       when state.status == :waiting_on_pads do
     Membrane.Logger.debug("""
-    Ignoring demand (#{inspect(demand)} buffers) on pad #{inspect(pad_ref)} because thes\
+    Ignoring demand (#{inspect(demand)} buffers) on pad #{inspect(pad_ref)} because this \
     element is still waiting for other pads to be linked.
     """)
 
@@ -357,111 +355,40 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
   end
 
   @impl true
-  def handle_info({chunk_type, %ExHLS.Chunk{} = chunk}, _ctx, state) do
-    pad_name = chunk_type_to_pad_name(chunk_type)
+  def handle_info({:chunk, %ExHLS.Chunk{} = chunk}, _ctx, state) do
+    buffer =
+      %Buffer{
+        payload: chunk.payload,
+        pts: chunk.pts_ms |> Membrane.Time.milliseconds(),
+        dts: chunk.dts_ms |> Membrane.Time.milliseconds(),
+        metadata: chunk.metadata
+      }
 
-    buffer = %Buffer{
-      payload: chunk.payload,
-      pts: chunk.pts_ms |> Membrane.Time.milliseconds(),
-      dts: chunk.dts_ms |> Membrane.Time.milliseconds(),
-      metadata: chunk.metadata
+    buffer_pad_ref =
+      case chunk.media_type do
+        :audio -> state.pad_refs.audio_output
+        :video -> state.pad_refs.video_output
+      end
+
+    actions =
+      get_discontinuity_events(state) ++
+        [buffer: {buffer_pad_ref, buffer}] ++ get_redemands(state)
+
+    state = %{
+      state
+      | waiting_on_client_genserver_response?: false,
+        initial_discontinuity_event_sent?: true
     }
 
-    state =
-      state
-      |> update_in([pad_name, :qex], &Qex.push(&1, buffer))
-      |> update_in([pad_name, :qex_size], &(&1 + 1))
-      |> update_in([pad_name, :requested], &(&1 - 1))
-      |> update_in([pad_name, :oldest_buffer_dts], fn
-        nil -> buffer.dts
-        oldest_dts -> oldest_dts
-      end)
-      |> request_media_chunks()
-
-    {[redemand: state[pad_name].ref], state}
+    {actions, state}
   end
 
   @impl true
-  def handle_info({chunk_type, :end_of_stream}, _ctx, state) do
-    pad_name = chunk_type_to_pad_name(chunk_type)
-
-    state =
-      if state[pad_name].eos_received? do
-        state
-      else
-        state
-        |> put_in([pad_name, :eos_received?], true)
-        |> update_in([pad_name, :qex], &Qex.push(&1, :end_of_stream))
-        |> update_in([pad_name, :qex_size], &(&1 + 1))
-      end
-
-    state = state |> update_in([pad_name, :requested], &(&1 - 1))
-
-    {[redemand: state[pad_name].ref], state}
+  def handle_info(:end_of_stream, _ctx, state) do
+    actions = get_pads(state) |> Enum.flat_map(&[end_of_stream: &1])
+    {actions, state}
   end
-
-  defp chunk_type_to_pad_name(:audio_chunk), do: :audio_output
-  defp chunk_type_to_pad_name(:video_chunk), do: :video_output
 
   defp pad_name_to_media_type(:audio_output), do: :audio
   defp pad_name_to_media_type(:video_output), do: :video
-
-  defp pop_buffers(Pad.ref(pad_name, _id) = pad_ref, demand, state) do
-    how_many_pop = min(state[pad_name].qex_size, demand)
-
-    1..how_many_pop//1
-    |> Enum.flat_map_reduce(state, fn _i, state ->
-      {buffer_or_eos, qex} = state[pad_name].qex |> Qex.pop!()
-
-      state =
-        state
-        |> put_in([pad_name, :qex], qex)
-        |> update_in([pad_name, :qex_size], &(&1 - 1))
-
-      case buffer_or_eos do
-        %Buffer{} = buffer ->
-          state = state |> put_in([pad_name, :oldest_buffer_dts], buffer.dts)
-
-          {get_discontinuity_events(state) ++ [buffer: {pad_ref, buffer}],
-           %{state | initial_discontinuity_event_sent?: true}}
-
-        :end_of_stream ->
-          {[end_of_stream: pad_ref], state}
-      end
-    end)
-  end
-
-  defp request_media_chunks(state) do
-    [:audio_output, :video_output]
-    |> Enum.reduce(state, fn pad_name, state ->
-      %{eos_received?: eos_received?, oldest_buffer_dts: oldest_dts, ref: pad_ref} =
-        state[pad_name]
-
-      request_size =
-        case state[pad_name].qex |> Qex.first() do
-          _any when pad_ref == nil or eos_received? ->
-            0
-
-          # maybe we should handle rollovers
-          {:value, %Buffer{dts: newest_dts}}
-          when newest_dts - oldest_dts >= state.buffered_stream_time ->
-            0
-
-          _empty_or_not_new_enough ->
-            @requested_chunks_boundary - state[pad_name].requested
-        end
-
-      1..request_size//1
-      |> Enum.each(fn _i -> request_single_chunk(pad_name, state) end)
-
-      state
-      |> update_in([pad_name, :requested], &(&1 + request_size))
-    end)
-  end
-
-  defp request_single_chunk(:audio_output, state),
-    do: ClientGenServer.request_audio_chunk(state.client_genserver)
-
-  defp request_single_chunk(:video_output, state),
-    do: ClientGenServer.request_video_chunk(state.client_genserver)
 end
