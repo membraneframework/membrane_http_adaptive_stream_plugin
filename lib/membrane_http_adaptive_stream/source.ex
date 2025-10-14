@@ -22,6 +22,8 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
     RemoteStream
   }
 
+  alias Membrane.HTTPAdaptiveStream.TDENEvent
+
   def_output_pad :video_output,
     accepted_format: any_of(H264, %RemoteStream{content_format: H264}),
     flow_control: :manual,
@@ -132,7 +134,8 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
         new_tracks_notification: nil,
         pad_refs: %{video_output: nil, audio_output: nil},
         waiting_on_client_genserver_response?: false,
-        initial_discontinuity_event_sent?: false
+        initial_discontinuity_event_sent?: false,
+        tden: nil
       })
 
     {[], state}
@@ -382,7 +385,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
   end
 
   @impl true
-  def handle_info({:chunk, %ExHLS.Chunk{} = chunk}, _ctx, state) do
+  def handle_info({:chunk, %ExHLS.Chunk{} = chunk}, ctx, state) do
     buffer =
       %Buffer{
         payload: chunk.payload,
@@ -391,20 +394,29 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
         metadata: chunk.metadata
       }
 
+    tden = state.tden || chunk.metadata.tden
+
     buffer_pad_ref =
       case chunk.media_type do
         :audio -> state.pad_refs.audio_output
         :video -> state.pad_refs.video_output
       end
 
+    tden_actions =
+      if state.tden == nil and tden != nil,
+        do: Map.keys(ctx.pads) |> Enum.flat_map(&[event: {&1, %TDENEvent{timestamp: tden}}]),
+        else: []
+
     actions =
       get_discontinuity_events(state) ++
+        tden_actions ++
         [buffer: {buffer_pad_ref, buffer}] ++ get_redemands(state)
 
     state = %{
       state
       | waiting_on_client_genserver_response?: false,
-        initial_discontinuity_event_sent?: true
+        initial_discontinuity_event_sent?: true,
+        tden: state.tden || tden
     }
 
     {actions, state}
