@@ -135,7 +135,8 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
         pad_refs: %{video_output: nil, audio_output: nil},
         waiting_on_client_genserver_response?: false,
         initial_discontinuity_event_sent?: false,
-        tden: nil
+        tden: nil,
+        target_duration: nil
       })
 
     {[], state}
@@ -402,9 +403,19 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
         :video -> state.pad_refs.video_output
       end
 
+    state =
+      if state.target_duration == nil do
+        target_duration = ClientGenServer.get_target_duration(state.client_genserver)
+        %{state | target_duration: target_duration}
+      else
+        state
+      end
+
     tden_actions =
       if state.tden == nil and tden != nil,
-        do: Map.keys(ctx.pads) |> Enum.flat_map(&[event: {&1, %TDENEvent{timestamp: tden}}]),
+        do:
+          Map.keys(ctx.pads)
+          |> Enum.flat_map(&[event: {&1, %TDENEvent{timestamp: tden + state.target_duration}}]),
         else: []
 
     actions =

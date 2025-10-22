@@ -45,6 +45,11 @@ defmodule Membrane.HTTPAdaptiveStream.Source.ClientGenServer do
     GenServer.call(client_genserver, :get_tracks_info)
   end
 
+  @spec get_target_duration(pid()) :: integer()
+  def get_target_duration(client_genserver) do
+    GenServer.call(client_genserver, :get_target_duration)
+  end
+
   @impl true
   def init(
         url: url,
@@ -150,5 +155,12 @@ defmodule Membrane.HTTPAdaptiveStream.Source.ClientGenServer do
   @impl true
   def handle_call(:get_tracks_info, _from, state) do
     {:reply, state.tracks_info, state}
+  end
+
+  @impl true
+  def handle_call(:get_target_duration, _from, state) do
+    require Logger
+    Logger.warning("TARGET DURATION: #{inspect(state.client.media_playlist)}")
+    {:reply, state.client.media_playlist.target_duration, state}
   end
 end
