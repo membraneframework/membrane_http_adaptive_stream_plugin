@@ -159,8 +159,6 @@ defmodule Membrane.HTTPAdaptiveStream.Source.ClientGenServer do
 
   @impl true
   def handle_call(:get_target_duration, _from, state) do
-    require Logger
-    Logger.warning("TARGET DURATION: #{inspect(state.client.media_playlist)}")
-    {:reply, state.client.media_playlist.target_duration, state}
+    {:reply, state.client.media_playlist.info.target_duration, state}
   end
 end
