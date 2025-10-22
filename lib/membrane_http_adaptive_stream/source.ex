@@ -405,7 +405,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
 
     state =
       if state.target_duration == nil do
-        target_duration = ClientGenServer.get_target_duration(state.client_genserver)
+        target_duration = ClientGenServer.get_first_segment_duration(state.client_genserver)
         %{state | target_duration: target_duration}
       else
         state
@@ -415,7 +415,12 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
       if state.tden == nil and tden != nil,
         do:
           Map.keys(ctx.pads)
-          |> Enum.flat_map(&[event: {&1, %TDENEvent{timestamp: tden + state.target_duration}}]),
+          |> Enum.flat_map(
+            &[
+              event:
+                {&1, %TDENEvent{timestamp: tden_to_epoch_seconds(tden, state.target_duration)}}
+            ]
+          ),
         else: []
 
     actions =
@@ -441,4 +446,10 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
 
   defp pad_name_to_media_type(:audio_output), do: :audio
   defp pad_name_to_media_type(:video_output), do: :video
+
+  defp tden_to_epoch_seconds(tden, duration) do
+    {:ok, datetime, _offset} = DateTime.from_iso8601(tden <> "Z")
+    epoch_seconds = round(DateTime.to_unix(datetime) + duration)
+    epoch_seconds
+  end
 end

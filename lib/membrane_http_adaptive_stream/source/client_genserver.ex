@@ -45,9 +45,9 @@ defmodule Membrane.HTTPAdaptiveStream.Source.ClientGenServer do
     GenServer.call(client_genserver, :get_tracks_info)
   end
 
-  @spec get_target_duration(pid()) :: integer()
-  def get_target_duration(client_genserver) do
-    GenServer.call(client_genserver, :get_target_duration)
+  @spec get_first_segment_duration(pid()) :: integer()
+  def get_first_segment_duration(client_genserver) do
+    GenServer.call(client_genserver, :get_first_segment_duration)
   end
 
   @impl true
@@ -158,7 +158,13 @@ defmodule Membrane.HTTPAdaptiveStream.Source.ClientGenServer do
   end
 
   @impl true
-  def handle_call(:get_target_duration, _from, state) do
-    {:reply, state.client.media_playlist.info.target_duration, state}
+  def handle_call(:get_first_segment_duration, _from, state) do
+    first_segment =
+      Enum.find(state.client.media_playlist.timeline, fn
+        %ExM3U8.Tags.Segment{} -> true
+        _other -> false
+      end)
+
+    {:reply, first_segment.duration, state}
   end
 end
