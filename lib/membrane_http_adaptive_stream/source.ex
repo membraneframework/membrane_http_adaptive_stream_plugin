@@ -412,7 +412,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
       end
 
     tden_actions =
-      if state.tden == nil and tden != nil,
+      if state.tden == nil and tden != nil and tden != [],
         do:
           Map.keys(ctx.pads)
           |> Enum.flat_map(
