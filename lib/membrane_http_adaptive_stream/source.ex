@@ -395,7 +395,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
         metadata: chunk.metadata
       }
 
-    tden = state.tden || chunk.metadata.tden
+    tden = state.tden || chunk.metadata[:tden_tag]
 
     buffer_pad_ref =
       case chunk.media_type do

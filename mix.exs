@@ -69,7 +69,7 @@ defmodule Membrane.HTTPAdaptiveStream.MixProject do
       {:membrane_aac_plugin, "~> 0.19.0"},
       {:membrane_h26x_plugin, "~> 0.10.0"},
       {:stream_split, "~> 0.1.7"},
-      {:ex_hls, "~> 0.1.5"},
+      {:ex_hls, "~> 0.2.0"},
       {:bunch, "~> 1.6"},
       {:qex, "~> 0.5"},
       {:muontrap, "~> 1.6", only: :test},
