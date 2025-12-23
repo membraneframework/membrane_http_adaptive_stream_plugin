@@ -410,7 +410,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
       else
         state
       end
-
+  
     tden_actions =
       if state.tden == nil and tden != nil,
         do:
