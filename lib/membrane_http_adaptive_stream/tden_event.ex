@@ -3,8 +3,8 @@ defmodule Membrane.HTTPAdaptiveStream.TDENEvent do
 
   @type timestamp :: String.t()
 
-  defstruct [:timestamp]
+  defstruct [:timestamp, :buffer_ts]
 
   @typedoc @moduledoc
-  @type t :: %__MODULE__{timestamp: timestamp()}
+  @type t :: %__MODULE__{timestamp: timestamp(), buffer_ts: Membrane.Time.t()}
 end
