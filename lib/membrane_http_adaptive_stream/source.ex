@@ -418,7 +418,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
           |> Enum.flat_map(
             &[
               event:
-                {&1, %TDENEvent{timestamp: tden_to_epoch_seconds(tden, state.target_duration), buffer_ts: buffer.dts || buffer.pts}}
+                {&1, %TDENEvent{timestamp: tden_to_membrane_time(tden, state.target_duration), tden_buffer_ts: buffer.dts || buffer.pts}}
             ]
           ),
         else: []
@@ -447,9 +447,8 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
   defp pad_name_to_media_type(:audio_output), do: :audio
   defp pad_name_to_media_type(:video_output), do: :video
 
-  defp tden_to_epoch_seconds(tden, duration) do
+  defp tden_to_membrane_time(tden, duration) do
     {:ok, datetime, _offset} = DateTime.from_iso8601(tden <> "Z")
-    epoch_seconds = round(DateTime.to_unix(datetime) + duration)
-    epoch_seconds
+    round(DateTime.to_unix(datetime) + duration) |> Membrane.Time.seconds()
   end
 end
