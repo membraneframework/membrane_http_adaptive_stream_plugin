@@ -321,8 +321,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   Marks the track as finished and finalize last segment if needed. After this action, it won't be possible to add any new segments to the track.
   """
   @spec finish(t) :: {Changeset.t(), t()}
-  def finish(track) do
-    {changset, track} = maybe_finalize_current_segment(track)
+  def finish(%__MODULE__{} = track) do
+    {changset, %__MODULE__{} = track} = maybe_finalize_current_segment(track)
     {changset, %__MODULE__{track | finished?: true}}
   end
 
@@ -604,7 +604,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     {[], [], track}
   end
 
-  defp pop_stale_segments_and_headers(track) do
+  defp pop_stale_segments_and_headers(%__MODULE__{} = track) do
     %__MODULE__{
       segments: segments,
       window_duration: window_duration,

@@ -151,16 +151,7 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
            segments
            |> Qex.reverse()
            |> Enum.drop_while(&(&1.type == :partial)),
-         {skip_count, skip_duration} <-
-           latest_full_segments
-           |> Enum.with_index()
-           |> Enum.reduce_while(0, fn {segment, idx}, duration ->
-             duration = duration + segment.duration
-
-             if duration >= min_duration,
-               do: {:halt, {Enum.count(latest_full_segments) - idx - 1, duration}},
-               else: {:cont, duration}
-           end),
+         {skip_count, skip_duration} <- process_skip(latest_full_segments),
          true <- skip_count > 0 do
       delta_ctx = %{
         skip_count: skip_count,
@@ -177,6 +168,18 @@ defmodule Membrane.HTTPAdaptiveStream.HLS do
     track.target_window_duration == :infinity
   end
 
+  defp process_skip(latest_full_segments) do
+    
+           latest_full_segments
+           |> Enum.with_index()
+           |> Enum.reduce_while(0, fn {segment, idx}, duration ->
+             duration = duration + segment.duration
+
+             if duration >= min_duration,
+               do: {:halt, {Enum.count(latest_full_segments) - idx - 1, duration}},
+               else: {:cont, duration}
+           end)
+end
   defp build_media_playlist_path(track, opts \\ [delta?: false])
 
   defp build_media_playlist_path(%Track{} = track, delta?: true) do
