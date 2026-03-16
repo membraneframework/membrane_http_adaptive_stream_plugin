@@ -72,7 +72,8 @@ defmodule Membrane.HTTPAdaptiveStream.Source.ClientGenServer do
 
   @impl true
   def handle_continue(:setup, state) do
-    client = Client.new(state.url, how_much_to_skip_ms: state.how_much_to_skip_ms, live_edge_mode?: true)
+    client =
+      Client.new(state.url, how_much_to_skip_ms: state.how_much_to_skip_ms, live_edge_mode?: true)
 
     state =
       %{state | client: client}

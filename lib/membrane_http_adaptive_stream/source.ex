@@ -410,7 +410,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
       else
         state
       end
-  
+
     tden_actions =
       if state.tden == nil and tden != nil,
         do:
@@ -418,7 +418,11 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
           |> Enum.flat_map(
             &[
               event:
-                {&1, %TDENEvent{timestamp: tden_to_membrane_time(tden, state.target_duration), tden_buffer_ts: buffer.dts || buffer.pts}}
+                {&1,
+                 %TDENEvent{
+                   timestamp: tden_to_membrane_time(tden, state.target_duration),
+                   tden_buffer_timestamp: buffer.dts || buffer.pts
+                 }}
             ]
           ),
         else: []
