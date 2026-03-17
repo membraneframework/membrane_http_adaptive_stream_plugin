@@ -72,7 +72,7 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
             impl_state: any,
             cache_enabled?: bool,
             cache: map,
-            stored_manifests: MapSet.t()
+            stored_manifests: MapSet.t() | any() # thanks dialyzer ;-;
           }
 
   @doc """
