@@ -421,7 +421,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
                 {&1,
                  %TDENEvent{
                    timestamp: tden_to_membrane_time(tden, state.target_duration),
-                   tden_buffer_timestamp: buffer.dts || buffer.pts
+                   tden_buffer_timestamp: buffer.dts
                  }}
             ]
           ),
