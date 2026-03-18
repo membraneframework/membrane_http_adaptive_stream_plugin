@@ -141,7 +141,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
 
   @type id_t :: any
 
-  @type segments_t :: Qex.t(Segment.t())
+  @type segments_t :: Qex.t()
 
   @type segment_duration_t :: Membrane.Time.t() | Ratio.t()
 
@@ -321,8 +321,8 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   Marks the track as finished and finalize last segment if needed. After this action, it won't be possible to add any new segments to the track.
   """
   @spec finish(t) :: {Changeset.t(), t()}
-  def finish(track) do
-    {changset, track} = maybe_finalize_current_segment(track)
+  def finish(%__MODULE__{} = track) do
+    {changset, %__MODULE__{} = track} = maybe_finalize_current_segment(track)
     {changset, %__MODULE__{track | finished?: true}}
   end
 
@@ -330,7 +330,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   Return new track with all stale segments restored, resulting in playback of historic data.
   Only works with 'persist?' option enabled.
   """
-  @spec from_beginning(t()) :: t()
+  @spec from_beginning(t()) :: t() | no_return()
   def from_beginning(%__MODULE__{persist?: true} = track) do
     %__MODULE__{
       track
@@ -451,14 +451,6 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   # The current segment is supposed to be of type `:partial`, meaning that it is still in a phase
   # of gathering partial segments before being finalized into a full segment. There can only be
   # a single such segment and it must be the last one.
-  @spec add_partial_segment(
-          t,
-          segment_payload_t(),
-          boolean,
-          segment_duration_t,
-          segment_size_t
-        ) ::
-          {Changeset.t(), t()}
   defp add_partial_segment(
          %__MODULE__{finished?: false} = track,
          payload,
@@ -506,7 +498,6 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
 
   # Finalize current segment, if it's possible. Otherwise do nothing.
   # Returns Changeset
-  @spec maybe_finalize_current_segment(t()) :: {Changeset.t(), t}
   defp maybe_finalize_current_segment(%__MODULE__{finished?: false, segments: segments} = track) do
     case Qex.pop_back(segments) do
       {{:value, %Segment{type: :partial}}, _segments} -> finalize_current_segment(track)
@@ -523,7 +514,6 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
   # This function aims to finalize the current (latest) segment
   # that is still incomplete so it can live on its own and so a new segment can
   # get started.
-  @spec finalize_current_segment(t()) :: {Changeset.t(), t}
   defp finalize_current_segment(%__MODULE__{finished?: false} = track) do
     {%Segment{type: :partial, parts: parts} = last_segment, segments} =
       Qex.pop_back!(track.segments)
@@ -604,7 +594,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest.Track do
     {[], [], track}
   end
 
-  defp pop_stale_segments_and_headers(track) do
+  defp pop_stale_segments_and_headers(%__MODULE__{} = track) do
     %__MODULE__{
       segments: segments,
       window_duration: window_duration,

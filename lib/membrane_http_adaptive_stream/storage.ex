@@ -72,7 +72,8 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
             impl_state: any,
             cache_enabled?: bool,
             cache: map,
-            stored_manifests: MapSet.t()
+            # thanks dialyzer ;-;
+            stored_manifests: MapSet.t() | any()
           }
 
   @doc """
@@ -257,7 +258,7 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   """
   @spec cleanup(t, id :: any(), segments :: segments(), header :: header() | nil) ::
           {callback_result_t, t}
-  def cleanup(storage, id, segments, header) do
+  def cleanup(%__MODULE__{} = storage, id, segments, header) do
     %__MODULE__{storage_impl: storage_impl, impl_state: impl_state, stored_manifests: manifests} =
       storage
 
@@ -295,7 +296,7 @@ defmodule Membrane.HTTPAdaptiveStream.Storage do
   Clears the manifest cache.
   """
   @spec clear_cache(t) :: t
-  def clear_cache(storage) do
+  def clear_cache(%__MODULE__{} = storage) do
     %__MODULE__{storage | cache: %{}}
   end
 
