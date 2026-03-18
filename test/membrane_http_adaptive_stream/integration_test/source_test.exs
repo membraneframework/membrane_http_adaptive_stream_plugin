@@ -174,6 +174,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
           audio_result_file,
           video_result_file
         )
+
       pipeline = Testing.Pipeline.start_link_supervised!(spec: spec)
 
       assert_end_of_stream(pipeline, :video_sink, :input, 45_000)
