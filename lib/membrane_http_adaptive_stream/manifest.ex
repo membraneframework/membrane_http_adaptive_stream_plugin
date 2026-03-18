@@ -32,7 +32,7 @@ defmodule Membrane.HTTPAdaptiveStream.Manifest do
   Returns the name under which the header file should be stored.
   """
   @spec add_track(t, Track.Config.t()) :: {header_name :: String.t(), t}
-  def add_track(manifest, %Track.Config{} = config) do
+  def add_track(%__MODULE__{} = manifest, %Track.Config{} = config) do
     track = Track.new(config)
     manifest = %__MODULE__{manifest | tracks: Map.put(manifest.tracks, config.id, track)}
     {track.header_name, manifest}

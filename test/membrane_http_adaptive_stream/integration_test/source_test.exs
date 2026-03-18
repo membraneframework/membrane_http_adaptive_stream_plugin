@@ -159,7 +159,6 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
   describe "Membrane.HTTPAdaptiveStream.Source demuxes audio and video from" do
     @tag :live
     @tag :tmp_dir
-    @tag :x
     test "Live HLS stream", %{tmp_dir: tmp_dir} do
       index_m3u8 = Path.join(tmp_dir, "index.m3u8")
       generate_live_hls(@bbb_33s_mp4_url, index_m3u8)
