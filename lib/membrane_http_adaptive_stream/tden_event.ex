@@ -4,13 +4,18 @@ defmodule Membrane.HTTPAdaptiveStream.TDENEvent do
   frame was encoded - read from the ID3v2.4 `TDEN` tag.
 
   Contains two fields:
-  * timestamp - "encoding time" of a sample, as embeded in `TDEN` tag.
-  * tden_buffer_timestamp - timestmap of a buffer based on which TDEN event was generated 
+  * encoding_ts - "encoding time" (represented as unix time) of a sample, as embeded in `TDEN` tag.
+  * buffer_ts - decoding timestmap of a buffer based on which TDEN event was generated.
+  * segment_duration - duration of the first segment of the HLS playlist from  which TDEN tag was read.
   """
   @derive Membrane.EventProtocol
 
-  defstruct [:timestamp, :tden_buffer_timestamp]
+  defstruct [:encoding_ts, :buffer_ts, :segment_duration]
 
   @typedoc @moduledoc
-  @type t :: %__MODULE__{timestamp: Membrane.Time.t(), tden_buffer_timestamp: Membrane.Time.t()}
+  @type t :: %__MODULE__{
+          encoding_ts: Membrane.Time.t(),
+          buffer_ts: Membrane.Time.t(),
+          segment_duration: Membrane.Time.t()
+        }
 end

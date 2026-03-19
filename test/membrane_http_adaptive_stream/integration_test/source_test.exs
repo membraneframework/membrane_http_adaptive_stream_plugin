@@ -94,17 +94,19 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
 
       pipeline = Testing.Pipeline.start_link_supervised!(spec: spec)
 
-      timestamp = Membrane.Time.seconds(1_761_034_072)
-      tden_buffer_timestamp = Membrane.Time.milliseconds(3328)
+      encoding_ts = Membrane.Time.seconds(1_761_034_070)
+      buffer_ts = Membrane.Time.milliseconds(3328)
+      segment_duration = Membrane.Time.seconds(2)
 
-      Process.sleep(5000)
+      assert_receive {:event_observed,
+                      %TDENEvent{
+                        encoding_ts: ^encoding_ts,
+                        buffer_ts: ^buffer_ts,
+                        segment_duration: ^segment_duration
+                      }},
+                     5000
+
       Testing.Pipeline.terminate(pipeline)
-
-      assert_received {:event_observed,
-                       %TDENEvent{
-                         timestamp: ^timestamp,
-                         tden_buffer_timestamp: ^tden_buffer_timestamp
-                       }}
     end
 
     @tag :tmp_dir

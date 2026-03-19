@@ -24,19 +24,21 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
 
   alias Membrane.HTTPAdaptiveStream.TDENEvent
 
-  def_output_pad :video_output,
+  def_output_pad(:video_output,
     accepted_format: any_of(H264, %RemoteStream{content_format: H264}),
     flow_control: :manual,
     demand_unit: :buffers,
     availability: :on_request,
     max_instances: 1
+  )
 
-  def_output_pad :audio_output,
+  def_output_pad(:audio_output,
     accepted_format: any_of(AAC, %RemoteStream{content_format: AAC}),
     flow_control: :manual,
     demand_unit: :buffers,
     availability: :on_request,
     max_instances: 1
+  )
 
   @variant_selection_policy_description """
   The policy used to select a variant from the list of available variants.
@@ -77,45 +79,47 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
              | {:video_output, RemoteStream.t() | H264.t()}
            ]}
 
-  def_options url: [
-                spec: String.t(),
-                description: "URL of the HLS playlist manifest"
-              ],
-              buffered_stream_time: [
-                spec: Membrane.Time.t(),
-                default: Membrane.Time.seconds(5),
-                inspector: &Membrane.Time.inspect/1,
-                description: """
-                Amount of time of stream, that will be buffered by #{inspect(__MODULE__)}.
+  def_options(
+    url: [
+      spec: String.t(),
+      description: "URL of the HLS playlist manifest"
+    ],
+    buffered_stream_time: [
+      spec: Membrane.Time.t(),
+      default: Membrane.Time.seconds(5),
+      inspector: &Membrane.Time.inspect/1,
+      description: """
+      Amount of time of stream, that will be buffered by #{inspect(__MODULE__)}.
 
-                Defaults to 5 seconds.
+      Defaults to 5 seconds.
 
-                Due to implementation details, the amount of the buffered stream might
-                be slightly different than specified value.
-                """
-              ],
-              variant_selection_policy: [
-                spec: variant_selection_policy(),
-                default: :highest_resolution,
-                description: """
-                #{@variant_selection_policy_description}
+      Due to implementation details, the amount of the buffered stream might
+      be slightly different than specified value.
+      """
+    ],
+    variant_selection_policy: [
+      spec: variant_selection_policy(),
+      default: :highest_resolution,
+      description: """
+      #{@variant_selection_policy_description}
 
-                Defaults to `:highest_resolution`.
-                """
-              ],
-              how_much_to_skip: [
-                spec: Membrane.Time.t(),
-                default: Membrane.Time.seconds(0),
-                description: """
-                Specifies how much time should be discarded from each of the tracks.
+      Defaults to `:highest_resolution`.
+      """
+    ],
+    how_much_to_skip: [
+      spec: Membrane.Time.t(),
+      default: Membrane.Time.seconds(0),
+      description: """
+      Specifies how much time should be discarded from each of the tracks.
 
-                Please note that an actual discarded part of the stream might be at most of that length
-                because it needs to be aligned with HLS segments distribution.
-                The source will send an `Membrane.Event.Discontinuity` event with `:duration` field
-                representing duration of the discarded part of the stream.
-                """,
-                inspector: &Membrane.Time.inspect/1
-              ]
+      Please note that an actual discarded part of the stream might be at most of that length
+      because it needs to be aligned with HLS segments distribution.
+      The source will send an `Membrane.Event.Discontinuity` event with `:duration` field
+      representing duration of the discarded part of the stream.
+      """,
+      inspector: &Membrane.Time.inspect/1
+    ]
+  )
 
   @impl true
   def handle_init(_ctx, opts) do
@@ -395,37 +399,13 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
         metadata: chunk.metadata
       }
 
-    tden = state.tden || chunk.metadata[:tden_tag]
-
     buffer_pad_ref =
       case chunk.media_type do
         :audio -> state.pad_refs.audio_output
         :video -> state.pad_refs.video_output
       end
 
-    state =
-      if state.target_duration == nil do
-        target_duration = ClientGenServer.get_first_segment_duration(state.client_genserver)
-        %{state | target_duration: target_duration}
-      else
-        state
-      end
-
-    tden_actions =
-      if state.tden == nil and tden != nil,
-        do:
-          Map.keys(ctx.pads)
-          |> Enum.flat_map(
-            &[
-              event:
-                {&1,
-                 %TDENEvent{
-                   timestamp: tden_to_membrane_time(tden, state.target_duration),
-                   tden_buffer_timestamp: buffer.dts
-                 }}
-            ]
-          ),
-        else: []
+    {tden_actions, state} = handle_tden_tag(chunk, ctx.pads, state)
 
     actions =
       get_discontinuity_events(state) ++
@@ -435,8 +415,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
     state = %{
       state
       | waiting_on_client_genserver_response?: false,
-        initial_discontinuity_event_sent?: true,
-        tden: state.tden || tden
+        initial_discontinuity_event_sent?: true
     }
 
     {actions, state}
@@ -448,11 +427,34 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
     {actions, state}
   end
 
+  defp handle_tden_tag(chunk, pads, state) do
+    tden = chunk.metadata[:tden_tag]
+
+    if tden != nil and tden != state.tden do
+      tden_event = %TDENEvent{
+        encoding_ts: tden_to_membrane_time(tden),
+        buffer_ts: chunk.dts_ms |> Membrane.Time.milliseconds(),
+        segment_duration:
+          (ClientGenServer.get_first_segment_duration_sec(state.client_genserver) * 1_000_000_000)
+          |> round()
+          |> Membrane.Time.nanoseconds()
+      }
+
+      tden_actions =
+        Map.keys(pads)
+        |> Enum.map(&{:event, {&1, tden_event}})
+
+      {tden_actions, %{state | tden: tden}}
+    else
+      {[], state}
+    end
+  end
+
   defp pad_name_to_media_type(:audio_output), do: :audio
   defp pad_name_to_media_type(:video_output), do: :video
 
-  defp tden_to_membrane_time(tden, duration) do
+  defp tden_to_membrane_time(tden) do
     {:ok, datetime, _offset} = DateTime.from_iso8601(tden <> "Z")
-    round(DateTime.to_unix(datetime) + duration) |> Membrane.Time.seconds()
+    DateTime.to_unix(datetime) |> round() |> Membrane.Time.seconds()
   end
 end
