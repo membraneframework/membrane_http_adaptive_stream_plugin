@@ -436,7 +436,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
     tden = chunk.metadata[:tden_tag]
 
     if tden != nil and tden != state.tden do
-      # we found the first TDEN tag
+      # we found a new TDEN tag
       tden_event = %TDENEvent{
         encoding_ts: tden_to_membrane_time(tden),
         buffer_ts: chunk.dts_ms |> Membrane.Time.milliseconds(),
