@@ -140,7 +140,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
         waiting_on_client_genserver_response?: false,
         initial_discontinuity_event_sent?: false,
         tden: nil,
-        target_duration: nil
+        target_duration_sec: nil
       })
 
     {[], state}
@@ -428,14 +428,19 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
   end
 
   defp handle_tden_tag(chunk, pads, state) do
+    target_duration_sec =
+      state.target_duration_sec || ClientGenServer.get_target_duration_sec(state.client_genserver)
+    state = %{state | target_duration_sec: target_duration_sec}
+
     tden = chunk.metadata[:tden_tag]
 
     if tden != nil and tden != state.tden do
+      # we found the first TDEN tag
       tden_event = %TDENEvent{
         encoding_ts: tden_to_membrane_time(tden),
         buffer_ts: chunk.dts_ms |> Membrane.Time.milliseconds(),
-        segment_duration:
-          (ClientGenServer.get_first_segment_duration_sec(state.client_genserver) * 1_000_000_000)
+        target_duration:
+          (target_duration_sec * 1_000_000_000)
           |> round()
           |> Membrane.Time.nanoseconds()
       }

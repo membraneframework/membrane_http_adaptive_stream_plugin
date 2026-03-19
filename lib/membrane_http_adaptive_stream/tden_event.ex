@@ -6,16 +6,12 @@ defmodule Membrane.HTTPAdaptiveStream.TDENEvent do
   Contains two fields:
   * encoding_ts - "encoding time" (represented as unix time) of a sample, as embeded in `TDEN` tag.
   * buffer_ts - decoding timestmap of a buffer based on which TDEN event was generated.
-  * segment_duration - duration of the first segment of the HLS playlist from  which TDEN tag was read.
+  * target_duration - duration read from #EXT-X-TARGETDURATION tag of an .m3u8 playlist (might be used to shift the encoding timestamp)
   """
   @derive Membrane.EventProtocol
 
-  defstruct [:encoding_ts, :buffer_ts, :segment_duration]
+  defstruct [:encoding_ts, :buffer_ts, :target_duration]
 
   @typedoc @moduledoc
-  @type t :: %__MODULE__{
-          encoding_ts: Membrane.Time.t(),
-          buffer_ts: Membrane.Time.t(),
-          segment_duration: Membrane.Time.t()
-        }
+  @type t :: %__MODULE__{encoding_ts: Membrane.Time.t(), buffer_ts: Membrane.Time.t(), target_duration: Membrane.Time.t()}
 end
