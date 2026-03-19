@@ -13,5 +13,9 @@ defmodule Membrane.HTTPAdaptiveStream.TDENEvent do
   defstruct [:encoding_ts, :buffer_ts, :target_duration]
 
   @typedoc @moduledoc
-  @type t :: %__MODULE__{encoding_ts: Membrane.Time.t(), buffer_ts: Membrane.Time.t(), target_duration: Membrane.Time.t()}
+  @type t :: %__MODULE__{
+          encoding_ts: Membrane.Time.t(),
+          buffer_ts: Membrane.Time.t(),
+          target_duration: Membrane.Time.t()
+        }
 end

@@ -430,6 +430,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
   defp handle_tden_tag(chunk, pads, state) do
     target_duration_sec =
       state.target_duration_sec || ClientGenServer.get_target_duration_sec(state.client_genserver)
+
     state = %{state | target_duration_sec: target_duration_sec}
 
     tden = chunk.metadata[:tden_tag]
