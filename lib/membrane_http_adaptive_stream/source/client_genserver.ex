@@ -55,7 +55,8 @@ defmodule Membrane.HTTPAdaptiveStream.Source.ClientGenServer do
         url: url,
         variant_selection_policy: variant_selection_policy,
         source: source,
-        how_much_to_skip: how_much_to_skip
+        how_much_to_skip: how_much_to_skip,
+        live_edge_mode?: live_edge_mode?
       ) do
     state = %{
       url: url,
@@ -64,7 +65,8 @@ defmodule Membrane.HTTPAdaptiveStream.Source.ClientGenServer do
       how_much_to_skip_ms: Membrane.Time.as_milliseconds(how_much_to_skip, :round),
       client: nil,
       stream: nil,
-      tracks_info: nil
+      tracks_info: nil,
+      live_edge_mode?: live_edge_mode?
     }
 
     {:ok, state, {:continue, :setup}}
@@ -73,7 +75,10 @@ defmodule Membrane.HTTPAdaptiveStream.Source.ClientGenServer do
   @impl true
   def handle_continue(:setup, state) do
     client =
-      Client.new(state.url, how_much_to_skip_ms: state.how_much_to_skip_ms, live_edge_mode?: true)
+      Client.new(state.url,
+        how_much_to_skip_ms: state.how_much_to_skip_ms,
+        live_edge_mode?: state.live_edge_mode?
+      )
 
     state =
       %{state | client: client}

@@ -190,7 +190,8 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
       url: state.url,
       variant_selection_policy: state.variant_selection_policy,
       source: self(),
-      how_much_to_skip: state.how_much_to_skip
+      how_much_to_skip: state.how_much_to_skip,
+      live_edge_mode?: state.live_edge_mode?
     }
 
     Membrane.UtilitySupervisor.start_link_child(
