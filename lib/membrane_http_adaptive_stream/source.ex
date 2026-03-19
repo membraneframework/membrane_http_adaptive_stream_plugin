@@ -8,6 +8,9 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
   after this element to parse the video and audio streams respectively,
   because the stream formats returned by this element can differ depending
   on the type of the HLS stream (MPEG-TS or fMP4).
+
+  The source sends `Membrane.HTTPAdaptiveStream.TDENEvent` each time a
+  TDEN (encoding timestamp) ID3v2.4 tag is encountered in MPEG-TS segment.
   """
 
   use Membrane.Source
