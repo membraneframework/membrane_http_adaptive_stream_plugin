@@ -79,47 +79,45 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
              | {:video_output, RemoteStream.t() | H264.t()}
            ]}
 
-  def_options(
-    url: [
-      spec: String.t(),
-      description: "URL of the HLS playlist manifest"
-    ],
-    buffered_stream_time: [
-      spec: Membrane.Time.t(),
-      default: Membrane.Time.seconds(5),
-      inspector: &Membrane.Time.inspect/1,
-      description: """
-      Amount of time of stream, that will be buffered by #{inspect(__MODULE__)}.
+  def_options url: [
+                spec: String.t(),
+                description: "URL of the HLS playlist manifest"
+              ],
+              buffered_stream_time: [
+                spec: Membrane.Time.t(),
+                default: Membrane.Time.seconds(5),
+                inspector: &Membrane.Time.inspect/1,
+                description: """
+                Amount of time of stream, that will be buffered by #{inspect(__MODULE__)}.
 
-      Defaults to 5 seconds.
+                Defaults to 5 seconds.
 
-      Due to implementation details, the amount of the buffered stream might
-      be slightly different than specified value.
-      """
-    ],
-    variant_selection_policy: [
-      spec: variant_selection_policy(),
-      default: :highest_resolution,
-      description: """
-      #{@variant_selection_policy_description}
+                Due to implementation details, the amount of the buffered stream might
+                be slightly different than specified value.
+                """
+              ],
+              variant_selection_policy: [
+                spec: variant_selection_policy(),
+                default: :highest_resolution,
+                description: """
+                #{@variant_selection_policy_description}
 
-      Defaults to `:highest_resolution`.
-      """
-    ],
-    how_much_to_skip: [
-      spec: Membrane.Time.t(),
-      default: Membrane.Time.seconds(0),
-      description: """
-      Specifies how much time should be discarded from each of the tracks.
+                Defaults to `:highest_resolution`.
+                """
+              ],
+              how_much_to_skip: [
+                spec: Membrane.Time.t(),
+                default: Membrane.Time.seconds(0),
+                description: """
+                Specifies how much time should be discarded from each of the tracks.
 
-      Please note that an actual discarded part of the stream might be at most of that length
-      because it needs to be aligned with HLS segments distribution.
-      The source will send an `Membrane.Event.Discontinuity` event with `:duration` field
-      representing duration of the discarded part of the stream.
-      """,
-      inspector: &Membrane.Time.inspect/1
-    ]
-  )
+                Please note that an actual discarded part of the stream might be at most of that length
+                because it needs to be aligned with HLS segments distribution.
+                The source will send an `Membrane.Event.Discontinuity` event with `:duration` field
+                representing duration of the discarded part of the stream.
+                """,
+                inspector: &Membrane.Time.inspect/1
+              ]
 
   @impl true
   def handle_init(_ctx, opts) do
