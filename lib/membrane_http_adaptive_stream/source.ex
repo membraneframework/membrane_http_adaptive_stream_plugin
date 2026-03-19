@@ -24,21 +24,19 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
 
   alias Membrane.HTTPAdaptiveStream.TDENEvent
 
-  def_output_pad(:video_output,
+  def_output_pad :video_output,
     accepted_format: any_of(H264, %RemoteStream{content_format: H264}),
     flow_control: :manual,
     demand_unit: :buffers,
     availability: :on_request,
     max_instances: 1
-  )
 
-  def_output_pad(:audio_output,
+  def_output_pad :audio_output,
     accepted_format: any_of(AAC, %RemoteStream{content_format: AAC}),
     flow_control: :manual,
     demand_unit: :buffers,
     availability: :on_request,
     max_instances: 1
-  )
 
   @variant_selection_policy_description """
   The policy used to select a variant from the list of available variants.
@@ -83,17 +81,17 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
                 spec: String.t(),
                 description: "URL of the HLS playlist manifest"
               ],
-              buffered_stream_time: [
-                spec: Membrane.Time.t(),
-                default: Membrane.Time.seconds(5),
-                inspector: &Membrane.Time.inspect/1,
+              live_edge_mode?: [
+                spec: boolean(),
+                default: false,
                 description: """
-                Amount of time of stream, that will be buffered by #{inspect(__MODULE__)}.
+                Turns on live edge mode of the source (please do not
+                confuse it with the Low Latency HLS extension which is not supported by the client!).
 
-                Defaults to 5 seconds.
-
-                Due to implementation details, the amount of the buffered stream might
-                be slightly different than specified value.
+                In this mode the source starts playing the playlist as fast as possible, and skips to the most
+                recent segment.
+                Please note that this is not compliant with the HLS specification and might cause playback stalls.
+                The live edge mode is turned off by default
                 """
               ],
               variant_selection_policy: [
