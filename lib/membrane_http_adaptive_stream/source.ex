@@ -84,19 +84,6 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
                 spec: String.t(),
                 description: "URL of the HLS playlist manifest"
               ],
-              live_edge_mode?: [
-                spec: boolean(),
-                default: false,
-                description: """
-                Turns on live edge mode of the source (please do not
-                confuse it with the Low Latency HLS extension which is not supported by the client!).
-
-                In this mode the source starts playing the playlist as fast as possible, and skips to the most
-                recent segment.
-                Please note that this is not compliant with the HLS specification and might cause playback stalls.
-                The live edge mode is turned off by default
-                """
-              ],
               variant_selection_policy: [
                 spec: variant_selection_policy(),
                 default: :highest_resolution,
@@ -118,6 +105,19 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
                 representing duration of the discarded part of the stream.
                 """,
                 inspector: &Membrane.Time.inspect/1
+              ],
+              live_edge_mode?: [
+                spec: boolean(),
+                default: false,
+                description: """
+                Turns on live edge mode of the source (please do not
+                confuse it with the Low Latency HLS extension which is not supported by the source!).
+
+                In this mode the source starts playing the playlist as fast as possible, and skips to the most
+                recent segment.
+                Please note that this is not compliant with the HLS specification and might cause playback stalls.
+                The live edge mode is turned off by default.
+                """
               ]
 
   @impl true
