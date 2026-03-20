@@ -232,7 +232,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
 
     @tag :live
     @tag :tmp_dir
-    test "Live HLS stream played from the middle", %{tmp_dir: tmp_dir} do
+    test "Live HLS stream played from the middle with live_edge_mode?: true", %{tmp_dir: tmp_dir} do
       index_m3u8 = Path.join(tmp_dir, "index.m3u8")
       generate_live_hls(@bbb_33s_mp4_url, index_m3u8)
       :ok = await_until_media_sequence_is_3(index_m3u8)
@@ -240,7 +240,8 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
       spec =
         child(:hls_source, %Membrane.HTTPAdaptiveStream.Source{
           url: index_m3u8,
-          variant_selection_policy: :lowest_resolution
+          variant_selection_policy: :lowest_resolution,
+          live_edge_mode?: true
         })
 
       pipeline = Testing.Pipeline.start_link_supervised!(spec: spec)

@@ -10,20 +10,23 @@ defmodule Membrane.HTTPAdaptiveStream.Source.ClientGenServer do
           url: String.t(),
           variant_selection_policy: Membrane.HTTPAdaptiveStream.Source.variant_selection_policy(),
           source: pid(),
-          how_much_to_skip: Membrane.Time.t()
+          how_much_to_skip: Membrane.Time.t(),
+          live_edge_mode?: boolean()
         }) ::
           GenServer.on_start()
   def start_link(%{
         url: url,
         variant_selection_policy: variant_selection_policy,
         source: source,
-        how_much_to_skip: how_much_to_skip
+        how_much_to_skip: how_much_to_skip,
+        live_edge_mode?: live_edge_mode?
       }) do
     GenServer.start_link(__MODULE__,
       url: url,
       variant_selection_policy: variant_selection_policy,
       source: source,
-      how_much_to_skip: how_much_to_skip
+      how_much_to_skip: how_much_to_skip,
+      live_edge_mode?: live_edge_mode?
     )
   end
 
