@@ -80,6 +80,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
 
     @tag :vod
     @tag :tmp_dir
+    @tag :sometag
     test "(MPEG-TS) with TDEN tags", %{tmp_dir: tmp_dir} do
       audio_result_file = Path.join(tmp_dir, "audio.aac")
       video_result_file = Path.join(tmp_dir, "video.h264")
@@ -94,7 +95,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
 
       pipeline = Testing.Pipeline.start_link_supervised!(spec: spec)
 
-      encoding_datetime1 = Membrane.Time.seconds(1_761_034_070)
+      encoding_datetime1 = ~U[2025-10-21 08:07:50Z]
       buffer_ts1 = Membrane.Time.milliseconds(3328)
       target_duration = Membrane.Time.seconds(2)
 
@@ -106,7 +107,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
                       }},
                      5000
 
-      encoding_datetime2 = Membrane.Time.seconds(1_761_034_072)
+      encoding_datetime2 = ~U[2025-10-21 08:07:52Z]
       buffer_ts2 = Membrane.Time.milliseconds(5333)
 
       assert_receive {:event_observed,
