@@ -7,9 +7,11 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
   require Logger
 
   alias Membrane.{AAC, H264, RemoteStream}
+  alias Membrane.HTTPAdaptiveStream.TDENEvent
   alias Membrane.Testing
 
   @mpegts_url "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
+  @mpegts_with_tden_url "https://raw.githubusercontent.com/membraneframework/ex_hls/refs/heads/master/test/fixtures/mpeg_ts_with_tden/output_playlist.m3u8"
   @fmp4_url "https://raw.githubusercontent.com/membraneframework-labs/ex_hls/refs/heads/plug-demuxing-engine-into-client/fixture/output.m3u8"
   @bbb_33s_mp4_url "https://github.com/membraneframework/static/raw/refs/heads/gh-pages/samples/big-buck-bunny/bun33s.mp4"
 
@@ -74,6 +76,49 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
       #  - 136_754 bytes for video
       assert_track(audio_result_file, @mpeg_ts_audio_ref_file, 40_000)
       assert_track(video_result_file, @mpeg_ts_video_ref_file, 70_000)
+    end
+
+    @tag :vod
+    @tag :tmp_dir
+    @tag :sometag
+    test "(MPEG-TS) with TDEN tags", %{tmp_dir: tmp_dir} do
+      audio_result_file = Path.join(tmp_dir, "audio.aac")
+      video_result_file = Path.join(tmp_dir, "video.h264")
+
+      spec =
+        hls_to_file_pipeline_spec(
+          @mpegts_with_tden_url,
+          %Membrane.AAC.Parser{out_encapsulation: :ADTS},
+          audio_result_file,
+          video_result_file
+        )
+
+      pipeline = Testing.Pipeline.start_link_supervised!(spec: spec)
+
+      encoding_datetime1 = ~U[2025-10-21 08:07:50Z]
+      buffer_ts1 = Membrane.Time.milliseconds(3328)
+      target_duration = Membrane.Time.seconds(2)
+
+      assert_receive {:event_observed,
+                      %TDENEvent{
+                        encoding_datetime: ^encoding_datetime1,
+                        buffer_ts: ^buffer_ts1,
+                        target_duration: ^target_duration
+                      }},
+                     5000
+
+      encoding_datetime2 = ~U[2025-10-21 08:07:52Z]
+      buffer_ts2 = Membrane.Time.milliseconds(5333)
+
+      assert_receive {:event_observed,
+                      %TDENEvent{
+                        encoding_datetime: ^encoding_datetime2,
+                        buffer_ts: ^buffer_ts2,
+                        target_duration: ^target_duration
+                      }},
+                     5000
+
+      Testing.Pipeline.terminate(pipeline)
     end
 
     @tag :tmp_dir
@@ -188,7 +233,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
 
     @tag :live
     @tag :tmp_dir
-    test "Live HLS stream played from the middle", %{tmp_dir: tmp_dir} do
+    test "Live HLS stream played from the middle with live_edge_mode?: true", %{tmp_dir: tmp_dir} do
       index_m3u8 = Path.join(tmp_dir, "index.m3u8")
       generate_live_hls(@bbb_33s_mp4_url, index_m3u8)
       :ok = await_until_media_sequence_is_3(index_m3u8)
@@ -196,7 +241,8 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
       spec =
         child(:hls_source, %Membrane.HTTPAdaptiveStream.Source{
           url: index_m3u8,
-          variant_selection_policy: :lowest_resolution
+          variant_selection_policy: :lowest_resolution,
+          live_edge_mode?: true
         })
 
       pipeline = Testing.Pipeline.start_link_supervised!(spec: spec)
