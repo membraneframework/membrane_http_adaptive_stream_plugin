@@ -431,33 +431,31 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
     {actions, state}
   end
 
-  defp handle_tden_tag(chunk, pads, state) do
+  defp handle_tden_tag(%{metadata: %{tden_tag: tden}} = chunk, pads, %{tden: state_tden} = state)
+       when not is_nil(tden) and state_tden != tden do
     target_duration_sec =
-      state.target_duration_sec || ClientGenServer.get_target_duration_sec(state.client_genserver)
+      state.target_duration_sec ||
+        ClientGenServer.get_target_duration_sec(state.client_genserver)
 
-    state = %{state | target_duration_sec: target_duration_sec}
+    # we found a new TDEN tag
+    tden_event = %TDENEvent{
+      encoding_datetime: tden_to_datetime(tden),
+      buffer_ts: chunk.dts_ms |> Membrane.Time.milliseconds(),
+      target_duration:
+        target_duration_sec
+        |> Ratio.new()
+        |> Membrane.Time.seconds()
+    }
 
-    tden = chunk.metadata[:tden_tag]
+    tden_actions =
+      Map.keys(pads)
+      |> Enum.map(&{:event, {&1, tden_event}})
 
-    if tden != nil and tden != state.tden do
-      # we found a new TDEN tag
-      tden_event = %TDENEvent{
-        encoding_datetime: tden_to_datetime(tden),
-        buffer_ts: chunk.dts_ms |> Membrane.Time.milliseconds(),
-        target_duration:
-          target_duration_sec
-          |> Ratio.new()
-          |> Membrane.Time.seconds()
-      }
+    {tden_actions, %{state | tden: tden, target_duration_sec: target_duration_sec}}
+  end
 
-      tden_actions =
-        Map.keys(pads)
-        |> Enum.map(&{:event, {&1, tden_event}})
-
-      {tden_actions, %{state | tden: tden}}
-    else
-      {[], state}
-    end
+  defp handle_tden_tag(_chunk, _pads, state) do
+    {[], state}
   end
 
   defp pad_name_to_media_type(:audio_output), do: :audio
