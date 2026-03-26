@@ -27,19 +27,21 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
 
   alias Membrane.HTTPAdaptiveStream.TDENEvent
 
-  def_output_pad :video_output,
+  def_output_pad(:video_output,
     accepted_format: any_of(H264, %RemoteStream{content_format: H264}),
     flow_control: :manual,
     demand_unit: :buffers,
     availability: :on_request,
     max_instances: 1
+  )
 
-  def_output_pad :audio_output,
+  def_output_pad(:audio_output,
     accepted_format: any_of(AAC, %RemoteStream{content_format: AAC}),
     flow_control: :manual,
     demand_unit: :buffers,
     availability: :on_request,
     max_instances: 1
+  )
 
   @variant_selection_policy_description """
   The policy used to select a variant from the list of available variants.
@@ -80,45 +82,47 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
              | {:video_output, RemoteStream.t() | H264.t()}
            ]}
 
-  def_options url: [
-                spec: String.t(),
-                description: "URL of the HLS playlist manifest"
-              ],
-              variant_selection_policy: [
-                spec: variant_selection_policy(),
-                default: :highest_resolution,
-                description: """
-                #{@variant_selection_policy_description}
+  def_options(
+    url: [
+      spec: String.t(),
+      description: "URL of the HLS playlist manifest"
+    ],
+    variant_selection_policy: [
+      spec: variant_selection_policy(),
+      default: :highest_resolution,
+      description: """
+      #{@variant_selection_policy_description}
 
-                Defaults to `:highest_resolution`.
-                """
-              ],
-              how_much_to_skip: [
-                spec: Membrane.Time.t(),
-                default: Membrane.Time.seconds(0),
-                description: """
-                Specifies how much time should be discarded from each of the tracks.
+      Defaults to `:highest_resolution`.
+      """
+    ],
+    how_much_to_skip: [
+      spec: Membrane.Time.t(),
+      default: Membrane.Time.seconds(0),
+      description: """
+      Specifies how much time should be discarded from each of the tracks.
 
-                Please note that an actual discarded part of the stream might be at most of that length
-                because it needs to be aligned with HLS segments distribution.
-                The source will send an `Membrane.Event.Discontinuity` event with `:duration` field
-                representing duration of the discarded part of the stream.
-                """,
-                inspector: &Membrane.Time.inspect/1
-              ],
-              live_edge_mode?: [
-                spec: boolean(),
-                default: false,
-                description: """
-                Turns on live edge mode of the source (please do not
-                confuse it with the Low Latency HLS extension which is not supported by the source!).
+      Please note that an actual discarded part of the stream might be at most of that length
+      because it needs to be aligned with HLS segments distribution.
+      The source will send an `Membrane.Event.Discontinuity` event with `:duration` field
+      representing duration of the discarded part of the stream.
+      """,
+      inspector: &Membrane.Time.inspect/1
+    ],
+    live_edge_mode?: [
+      spec: boolean(),
+      default: false,
+      description: """
+      Turns on live edge mode of the source (please do not
+      confuse it with the Low Latency HLS extension which is not supported by the source!).
 
-                In this mode the source starts playing the playlist as fast as possible, and skips to the most
-                recent segment.
-                Please note that this is not compliant with the HLS specification and might cause playback stalls.
-                The live edge mode is turned off by default.
-                """
-              ]
+      In this mode the source starts playing the playlist as fast as possible, and skips to the most
+      recent segment.
+      Please note that this is not compliant with the HLS specification and might cause playback stalls.
+      The live edge mode is turned off by default.
+      """
+    ]
+  )
 
   @impl true
   def handle_init(_ctx, opts) do
@@ -438,12 +442,12 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
     if tden != nil and tden != state.tden do
       # we found a new TDEN tag
       tden_event = %TDENEvent{
-        encoding_ts: tden_to_membrane_time(tden),
+        encoding_datetime: tden_to_datetime(tden),
         buffer_ts: chunk.dts_ms |> Membrane.Time.milliseconds(),
         target_duration:
-          (target_duration_sec * 1_000_000_000)
-          |> round()
-          |> Membrane.Time.nanoseconds()
+          target_duration_sec
+          |> Ratio.new()
+          |> Membrane.Time.seconds()
       }
 
       tden_actions =
@@ -459,8 +463,8 @@ defmodule Membrane.HTTPAdaptiveStream.Source do
   defp pad_name_to_media_type(:audio_output), do: :audio
   defp pad_name_to_media_type(:video_output), do: :video
 
-  defp tden_to_membrane_time(tden) do
+  defp tden_to_datetime(tden) do
     {:ok, datetime, _offset} = DateTime.from_iso8601(tden <> "Z")
-    DateTime.to_unix(datetime) |> round() |> Membrane.Time.seconds()
+    datetime
   end
 end
