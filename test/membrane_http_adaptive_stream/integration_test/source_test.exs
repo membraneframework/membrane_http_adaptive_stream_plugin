@@ -10,10 +10,12 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
   alias Membrane.HTTPAdaptiveStream.TDENEvent
   alias Membrane.Testing
 
+  @ex_hls_fixtures_url "https://raw.githubusercontent.com/membraneframework/ex_hls/refs/heads/master/test/fixtures"
+
   @mpegts_url "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
-  @mpegts_with_tden_url "https://raw.githubusercontent.com/membraneframework/ex_hls/refs/heads/master/test/fixtures/mpeg_ts_with_tden/output_playlist.m3u8"
-  @fmp4_with_tden_url "https://raw.githubusercontent.com/membraneframework/ex_hls/refs/heads/master/test/fixtures/fmp4_with_tden/output_playlist.m3u8"
-  @fmp4_url "https://raw.githubusercontent.com/membraneframework-labs/ex_hls/refs/heads/plug-demuxing-engine-into-client/fixture/output.m3u8"
+  @mpegts_with_tden_url Path.join(@ex_hls_fixtures_url, "mpeg_ts_with_tden/output_playlist.m3u8")
+  @fmp4_with_tden_url Path.join(@ex_hls_fixtures_url, "fmp4_with_tden/output_playlist.m3u8")
+  @fmp4_url Path.join(@ex_hls_fixtures_url, "fmp4/output.m3u8")
   @bbb_33s_mp4_url "https://github.com/membraneframework/static/raw/refs/heads/gh-pages/samples/big-buck-bunny/bun33s.mp4"
 
   @ref_files_dir "test/membrane_http_adaptive_stream/integration_test/fixtures/source"
