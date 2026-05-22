@@ -10,9 +10,12 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
   alias Membrane.HTTPAdaptiveStream.TDENEvent
   alias Membrane.Testing
 
+  @ex_hls_fixtures_url "https://raw.githubusercontent.com/membraneframework/ex_hls/refs/heads/master/test/fixtures"
+
   @mpegts_url "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
-  @mpegts_with_tden_url "https://raw.githubusercontent.com/membraneframework/ex_hls/refs/heads/master/test/fixtures/mpeg_ts_with_tden/output_playlist.m3u8"
-  @fmp4_url "https://raw.githubusercontent.com/membraneframework-labs/ex_hls/refs/heads/plug-demuxing-engine-into-client/fixture/output.m3u8"
+  @mpegts_with_tden_url Path.join(@ex_hls_fixtures_url, "mpeg_ts_with_tden/output_playlist.m3u8")
+  @fmp4_with_tden_url Path.join(@ex_hls_fixtures_url, "fmp4_with_tden/output_playlist.m3u8")
+  @fmp4_url Path.join(@ex_hls_fixtures_url, "fmp4/output.m3u8")
   @bbb_33s_mp4_url "https://github.com/membraneframework/static/raw/refs/heads/gh-pages/samples/big-buck-bunny/bun33s.mp4"
 
   @ref_files_dir "test/membrane_http_adaptive_stream/integration_test/fixtures/source"
@@ -80,7 +83,6 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
 
     @tag :vod
     @tag :tmp_dir
-    @tag :sometag
     test "(MPEG-TS) with TDEN tags", %{tmp_dir: tmp_dir} do
       audio_result_file = Path.join(tmp_dir, "audio.aac")
       video_result_file = Path.join(tmp_dir, "video.h264")
@@ -114,6 +116,37 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
                       %TDENEvent{
                         encoding_datetime: ^encoding_datetime2,
                         buffer_ts: ^buffer_ts2,
+                        target_duration: ^target_duration
+                      }},
+                     5000
+
+      Testing.Pipeline.terminate(pipeline)
+    end
+
+    @tag :vod
+    @tag :tmp_dir
+    test "(fMP4) with TDEN tags", %{tmp_dir: tmp_dir} do
+      audio_result_file = Path.join(tmp_dir, "audio.aac")
+      video_result_file = Path.join(tmp_dir, "video.h264")
+
+      spec =
+        hls_to_file_pipeline_spec(
+          @fmp4_with_tden_url,
+          %Membrane.AAC.Parser{out_encapsulation: :ADTS},
+          audio_result_file,
+          video_result_file
+        )
+
+      pipeline = Testing.Pipeline.start_link_supervised!(spec: spec)
+
+      encoding_datetime1 = ~U[2026-05-20T14:33:58Z]
+      buffer_ts1 = Membrane.Time.milliseconds(210_058)
+      target_duration = Membrane.Time.seconds(2)
+
+      assert_receive {:event_observed,
+                      %TDENEvent{
+                        encoding_datetime: ^encoding_datetime1,
+                        buffer_ts: ^buffer_ts1,
                         target_duration: ^target_duration
                       }},
                      5000
