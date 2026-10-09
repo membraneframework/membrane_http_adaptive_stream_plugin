@@ -25,8 +25,6 @@ defmodule Membrane.HTTPAdaptiveStream.Sink do
 
   use Membrane.Sink
 
-  require Membrane.HTTPAdaptiveStream.Manifest.SegmentAttribute
-
   alias Membrane.CMAF
   alias Membrane.HTTPAdaptiveStream.Manifest
   alias Membrane.HTTPAdaptiveStream.Storage

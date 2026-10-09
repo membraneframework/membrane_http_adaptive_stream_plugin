@@ -440,7 +440,7 @@ defmodule Membrane.HTTPAdaptiveStream.Source.Test do
   end
 
   defp assert_track(result_file, reference_file, asserted_bytes) do
-    <<expected_prefix::binary-size(asserted_bytes), _sufix::binary>> =
+    <<expected_prefix::binary-size(^asserted_bytes), _sufix::binary>> =
       reference_file |> File.read!()
 
     assert result_file
